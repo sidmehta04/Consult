@@ -1,0 +1,1154 @@
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  AlertCircle,
+  ClipboardList,
+  User,
+  Stethoscope,
+  Pill,
+  Phone,
+  Video,
+  ListFilter,
+  FileText,
+  Info,
+  Loader2,
+  UserCheck,
+  UserX,
+  Users,
+  Coffee,
+} from "lucide-react";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  serverTimestamp,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+} from "firebase/firestore";
+import { firestore } from "../../firebase";
+import DoctorStatusIndicator from "./DocStatus";
+import PharmacistStatusIndicator from "./PharmasistAvailable";
+
+const NurseCaseForm = ({ currentUser, onCreateCase }) => {
+  const [formData, setFormData] = useState({
+    patientName: "",
+    emrNumber: "",
+    chiefComplaint: "",
+    consultationType: "tele",
+    contactInfo: "",
+    notes: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [error, setError] = useState("");
+  const [assignedDoctor, setAssignedDoctor] = useState(null);
+  const [assignedPharmacist, setAssignedPharmacist] = useState(null);
+  const [doctorSearchAttempted, setDoctorSearchAttempted] = useState(false);
+  const [pharmacistSearchAttempted, setPharmacistSearchAttempted] = useState(false);
+  const [doctorsData, setDoctorsData] = useState([]);
+  const [pharmacistsData, setPharmacistsData] = useState([]);
+
+  useEffect(() => {
+    const fetchProfessionals = async () => {
+      try {
+        // Get nurse's data
+        const nurseRef = doc(firestore, "users", currentUser.uid);
+        const nurseSnapshot = await getDoc(nurseRef);
+
+        if (!nurseSnapshot.exists()) return;
+
+        const nurseData = nurseSnapshot.data();
+        
+        // Check if the nurse has direct pharmacist assignments (created by RO)
+        if (nurseData.assignedPharmacists) {
+          // This nurse was created by an RO with a pharmacist hierarchy
+          await fetchAllPharmacists(nurseData);
+          await findAvailablePharmacistFast(nurseData);
+        } else if (nurseData.reportingTo) {
+          // This nurse was created by a pharmacist directly
+          // Get the creating pharmacist's info
+          const pharmacistRef = doc(firestore, "users", nurseData.reportingTo);
+          const pharmacistSnap = await getDoc(pharmacistRef);
+
+          if (pharmacistSnap.exists()) {
+            const pharmacistData = pharmacistSnap.data();
+            setAssignedPharmacist({
+              id: pharmacistSnap.id,
+              name: pharmacistData.name,
+              type: "primary",
+              availabilityStatus: pharmacistData.availabilityStatus || "available",
+              caseCount: 0
+            });
+          }
+        }
+        
+        // Continue with doctor fetching (existing code)
+        if (nurseData.assignedDoctors) {
+          // Get all doctors
+          await fetchAllDoctors(nurseData);
+        } else if (nurseData.reportingTo) {
+          // Get creating pharmacist to check doctor hierarchy
+          const pharmacistRef = doc(firestore, "users", nurseData.reportingTo);
+          const pharmacistSnap = await getDoc(pharmacistRef);
+
+          if (pharmacistSnap.exists()) {
+            const pharmacistData = pharmacistSnap.data();
+            await fetchAllDoctors(pharmacistData);
+            await findAvailableDoctorFast(pharmacistData);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching assigned professionals:", err);
+      }
+    };
+
+    fetchProfessionals();
+  }, [currentUser.uid]);
+
+  const fetchAllDoctors = async (userData) => {
+    try {
+      const assignedDoctors = userData.assignedDoctors || {};
+
+      // Get all doctors in one query
+      const allDoctorsQuery = query(
+        collection(firestore, "users"),
+        where("role", "==", "doctor")
+      );
+      const allDoctorsSnapshot = await getDocs(allDoctorsQuery);
+      const doctors = [];
+
+      allDoctorsSnapshot.docs.forEach((docSnap) => {
+        const doctorData = docSnap.data();
+        doctors.push({
+          id: docSnap.id,
+          name: doctorData.name,
+          availabilityStatus: doctorData.availabilityStatus || "available",
+          isHierarchy:
+            docSnap.id === assignedDoctors.primary
+              ? "primary"
+              : docSnap.id === assignedDoctors.secondary
+              ? "secondary"
+              : docSnap.id === assignedDoctors.tertiary
+              ? "tertiary"
+              : null,
+        });
+      });
+
+      setDoctorsData(doctors);
+
+      // Now find the best available doctor
+      await findAvailableDoctorFast(userData);
+    } catch (err) {
+      console.error("Error fetching doctors:", err);
+    }
+  };
+  
+  // Main issue: fetchAllPharmacists function doesn't set case counts
+// Modified fetchAllPharmacists to include case counts
+
+// Update in fetchAllPharmacists function
+const fetchAllPharmacists = async (nurseData) => {
+  try {
+    const assignedPharmacists = nurseData.assignedPharmacists || {};
+
+    // Get all pharmacists in one query
+    const allPharmacistsQuery = query(
+      collection(firestore, "users"),
+      where("role", "==", "pharmacist")
+    );
+    const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
+    
+    // Create a map of pharmacists
+    const pharmacistsMap = {};
+    allPharmacistsSnapshot.docs.forEach((docSnap) => {
+      const pharmacistData = docSnap.data();
+      pharmacistsMap[docSnap.id] = {
+        id: docSnap.id,
+        name: pharmacistData.name,
+        availabilityStatus: pharmacistData.availabilityStatus || "available",
+        isHierarchy:
+          docSnap.id === assignedPharmacists.primary
+            ? "primary"
+            : docSnap.id === assignedPharmacists.secondary
+            ? "secondary"
+            : docSnap.id === assignedPharmacists.tertiary
+            ? "tertiary"
+            : null,
+        caseCount: 0, // Initialize case count to 0
+      };
+    });
+
+    // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
+    const activeCasesQuery = query(
+      collection(firestore, "cases"),
+      where("pharmacistCompleted", "==", false),
+      where("isIncomplete", "!=", true) // This filters out incomplete cases
+    );
+
+    const activeCasesSnapshot = await getDocs(activeCasesQuery);
+
+    // Count cases per pharmacist
+    activeCasesSnapshot.docs.forEach((doc) => {
+      const caseData = doc.data();
+      if (caseData.pharmacistId) {
+        const pharmacistId = caseData.pharmacistId;
+        if (pharmacistsMap[pharmacistId]) {
+          pharmacistsMap[pharmacistId].caseCount = 
+            (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
+        }
+      }
+    });
+
+    // Now convert the map to an array for state
+    setPharmacistsData(Object.values(pharmacistsMap));
+  } catch (err) {
+    console.error("Error fetching pharmacists:", err);
+  }
+};
+
+  const findAvailableDoctorFast = async (userData) => {
+    setDoctorSearchAttempted(true);
+    try {
+      console.log("User data:", userData);
+
+      // CRITICAL FIX: The function is receiving pharmacist data, not nurse data
+      // For pharmacists, the doctor assignments are in doctorHierarchy array, not assignedDoctors object
+
+      let primaryDoctorId, secondaryDoctorId, tertiaryDoctorId;
+      let assignToAnyDoctor = userData.assignToAnyDoctor || false;
+
+      // Check if we're dealing with a nurse (has assignedDoctors object) or pharmacist (has doctorHierarchy array)
+      if (
+        userData.assignedDoctors &&
+        Object.keys(userData.assignedDoctors).length > 0
+      ) {
+        console.log("Processing NURSE data with assignedDoctors object");
+        const assignedDoctors = userData.assignedDoctors;
+
+        primaryDoctorId = assignedDoctors.primary;
+        secondaryDoctorId = assignedDoctors.secondary;
+        tertiaryDoctorId = assignedDoctors.tertiary;
+
+        // Check if assignToAnyDoctor is in the nested structure
+        if (assignedDoctors.assignToAnyDoctor !== undefined) {
+          assignToAnyDoctor = assignedDoctors.assignToAnyDoctor;
+        }
+      } else if (
+        userData.doctorHierarchy &&
+        Array.isArray(userData.doctorHierarchy)
+      ) {
+        console.log("Processing PHARMACIST data with doctorHierarchy array");
+        // Extract doctors from the doctorHierarchy array
+        primaryDoctorId = userData.doctorHierarchy[0];
+        secondaryDoctorId = userData.doctorHierarchy[1];
+        tertiaryDoctorId = userData.doctorHierarchy[2];
+      } else {
+        console.error("No doctor assignments found in data");
+        setError("No doctors configured. Please contact support.");
+        return;
+      }
+
+      console.log("Doctor IDs:", {
+        primaryDoctorId,
+        secondaryDoctorId,
+        tertiaryDoctorId,
+        assignToAnyDoctor,
+      });
+
+      // Validate we have at least one doctor
+      if (!primaryDoctorId && !secondaryDoctorId && !tertiaryDoctorId) {
+        console.error("No doctors assigned in the hierarchy");
+        setError(
+          "No doctors configured in your hierarchy. Please contact support."
+        );
+        return;
+      }
+
+      // Get all doctors
+      const allDoctorsQuery = query(
+        collection(firestore, "users"),
+        where("role", "==", "doctor")
+      );
+
+      const allDoctorsSnapshot = await getDocs(allDoctorsQuery);
+      console.log(`Found ${allDoctorsSnapshot.docs.length} doctors`);
+
+      // Build doctors map
+      const doctorsMap = {};
+      allDoctorsSnapshot.docs.forEach((doc) => {
+        const doctorData = doc.data();
+        doctorsMap[doc.id] = {
+          id: doc.id,
+          name: doctorData.name || "Doctor",
+          availabilityStatus: doctorData.availabilityStatus || "available",
+          caseCount: 0,
+        };
+      });
+
+      // Get active cases to count doctor workload
+      const activeCasesQuery = query(
+        collection(firestore, "cases"),
+        where("doctorCompleted", "==", false)
+      );
+
+      const activeCasesSnapshot = await getDocs(activeCasesQuery);
+
+      // Count cases per doctor
+      activeCasesSnapshot.docs.forEach((doc) => {
+        const caseData = doc.data();
+        if (caseData.assignedDoctors?.primary) {
+          const doctorId = caseData.assignedDoctors.primary;
+          if (doctorsMap[doctorId]) {
+            doctorsMap[doctorId].caseCount =
+              (doctorsMap[doctorId].caseCount || 0) + 1;
+          }
+        }
+      });
+
+      // Log doctor status
+      console.log("Available doctors:");
+      Object.values(doctorsMap).forEach((doctor) => {
+        console.log(
+          `${doctor.name}: status=${doctor.availabilityStatus}, cases=${doctor.caseCount}`
+        );
+      });
+
+      // Store doctors data for UI
+      setDoctorsData(Object.values(doctorsMap));
+
+      // Check doctor availability
+      const isDoctorAvailable = (id) => {
+        if (!id || !doctorsMap[id]) return false;
+
+        const doctor = doctorsMap[id];
+        const isUnavailable =
+          doctor.availabilityStatus === "unavailable" ||
+          doctor.availabilityStatus === "on_break";
+        const isAtCapacity = (doctor.caseCount || 0) >= 5;
+
+        const isAvailable = !isUnavailable && !isAtCapacity;
+        console.log(`Doctor ${doctor.name} availability: ${isAvailable}`);
+
+        return isAvailable;
+      };
+
+      // Function to assign a doctor
+      const assignDoctor = (id, type) => {
+        const doctor = doctorsMap[id];
+        if (!doctor) return false;
+
+        console.log(`Assigning to ${type} doctor ${doctor.name}`);
+        setAssignedDoctor({
+          id: id,
+          name: doctor.name,
+          type: type,
+          availabilityStatus: doctor.availabilityStatus,
+          caseCount: doctor.caseCount || 0,
+        });
+        return true;
+      };
+
+      // SIMPLE PRIORITY LOGIC:
+      // 1. Try primary doctor first
+      if (primaryDoctorId && isDoctorAvailable(primaryDoctorId)) {
+        return assignDoctor(primaryDoctorId, "primary");
+      }
+
+      // 2. Try secondary doctor
+      if (secondaryDoctorId && isDoctorAvailable(secondaryDoctorId)) {
+        return assignDoctor(secondaryDoctorId, "secondary");
+      }
+
+      // 3. Try tertiary doctor
+      if (tertiaryDoctorId && isDoctorAvailable(tertiaryDoctorId)) {
+        return assignDoctor(tertiaryDoctorId, "tertiary");
+      }
+
+      // 4. If assignToAnyDoctor is enabled, try any other doctor
+      if (assignToAnyDoctor) {
+        const availableFallbackDoctors = Object.values(doctorsMap)
+          .filter((doctor) => {
+            // Skip hierarchy doctors (already checked)
+            if (
+              doctor.id === primaryDoctorId ||
+              doctor.id === secondaryDoctorId ||
+              doctor.id === tertiaryDoctorId
+            ) {
+              return false;
+            }
+
+            // Check availability
+            const isUnavailable =
+              doctor.availabilityStatus === "unavailable" ||
+              doctor.availabilityStatus === "on_break";
+            const isAtCapacity = (doctor.caseCount || 0) >= 5;
+
+            return !isUnavailable && !isAtCapacity;
+          })
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+
+        console.log("Available fallback doctors:", availableFallbackDoctors);
+
+        if (availableFallbackDoctors.length > 0) {
+          const bestDoctor = availableFallbackDoctors[0];
+          console.log(`Assigning to fallback doctor ${bestDoctor.name}`);
+          return assignDoctor(bestDoctor.id, "available");
+        }
+      }
+
+      // No available doctors
+      console.log("No available doctors found");
+      setError(
+        "No available doctors found. All doctors are unavailable or at capacity."
+      );
+    } catch (err) {
+      console.error("Error finding doctor:", err);
+      setError("Failed to find available doctor. Please try again.");
+    }
+  };
+  
+  const findAvailablePharmacistFast = async (userData) => {
+    setPharmacistSearchAttempted(true);
+    try {
+      // For nurses with assigned pharmacists from RO
+      let primaryPharmacistId, secondaryPharmacistId, tertiaryPharmacistId;
+      let assignToAnyPharmacist = userData.assignedPharmacists?.assignToAnyPharmacist || false;
+  
+      if (
+        userData.assignedPharmacists &&
+        Object.keys(userData.assignedPharmacists).length > 0
+      ) {
+        const assignedPharmacists = userData.assignedPharmacists;
+  
+        primaryPharmacistId = assignedPharmacists.primary;
+        secondaryPharmacistId = assignedPharmacists.secondary;
+        tertiaryPharmacistId = assignedPharmacists.tertiary;
+      }
+  
+      // Validate we have at least one pharmacist
+      if (!primaryPharmacistId && !secondaryPharmacistId && !tertiaryPharmacistId) {
+        console.error("No pharmacists assigned in the hierarchy");
+        return;
+      }
+  
+      // Get all pharmacists
+      const allPharmacistsQuery = query(
+        collection(firestore, "users"),
+        where("role", "==", "pharmacist")
+      );
+  
+      const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
+      const pharmacistsMap = {};
+      
+      allPharmacistsSnapshot.docs.forEach((doc) => {
+        const pharmacistData = doc.data();
+        pharmacistsMap[doc.id] = {
+          id: doc.id,
+          name: pharmacistData.name || "Pharmacist",
+          availabilityStatus: pharmacistData.availabilityStatus || "available",
+          caseCount: 0,
+        };
+      });
+  
+      // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
+      const activeCasesQuery = query(
+        collection(firestore, "cases"),
+        where("pharmacistCompleted", "==", false),
+        where("isIncomplete", "!=", true) // This is the key change
+      );
+  
+      const activeCasesSnapshot = await getDocs(activeCasesQuery);
+  
+      // Count cases per pharmacist
+      activeCasesSnapshot.docs.forEach((doc) => {
+        const caseData = doc.data();
+        if (caseData.pharmacistId) {
+          const pharmacistId = caseData.pharmacistId;
+          if (pharmacistsMap[pharmacistId]) {
+            pharmacistsMap[pharmacistId].caseCount =
+              (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
+          }
+        }
+      });
+  
+      // Check pharmacist availability
+      const isPharmacistAvailable = (id) => {
+        if (!id || !pharmacistsMap[id]) return false;
+  
+        const pharmacist = pharmacistsMap[id];
+        const isUnavailable =
+          pharmacist.availabilityStatus === "unavailable" ||
+          pharmacist.availabilityStatus === "on_break";
+        const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
+  
+        const isAvailable = !isUnavailable && !isAtCapacity;
+        console.log(`Pharmacist ${pharmacist.name} availability: ${isAvailable}`);
+  
+        return isAvailable;
+      };
+  
+      // Function to assign a pharmacist
+      const assignPharmacist = (id, type) => {
+        const pharmacist = pharmacistsMap[id];
+        if (!pharmacist) return false;
+  
+        console.log(`Assigning to ${type} pharmacist ${pharmacist.name}`);
+        setAssignedPharmacist({
+          id: id,
+          name: pharmacist.name,
+          type: type,
+          availabilityStatus: pharmacist.availabilityStatus,
+          caseCount: pharmacist.caseCount || 0,
+        });
+        return true;
+      };
+  
+      // SIMPLE PRIORITY LOGIC:
+      // 1. Try primary pharmacist first
+      if (primaryPharmacistId && isPharmacistAvailable(primaryPharmacistId)) {
+        return assignPharmacist(primaryPharmacistId, "primary");
+      }
+  
+      // 2. Try secondary pharmacist
+      if (secondaryPharmacistId && isPharmacistAvailable(secondaryPharmacistId)) {
+        return assignPharmacist(secondaryPharmacistId, "secondary");
+      }
+  
+      // 3. Try tertiary pharmacist
+      if (tertiaryPharmacistId && isPharmacistAvailable(tertiaryPharmacistId)) {
+        return assignPharmacist(tertiaryPharmacistId, "tertiary");
+      }
+  
+      // 4. If assignToAnyPharmacist is enabled, try any other pharmacist
+      if (assignToAnyPharmacist) {
+        const availableFallbackPharmacists = Object.values(pharmacistsMap)
+          .filter((pharmacist) => {
+            // Skip hierarchy pharmacists (already checked)
+            if (
+              pharmacist.id === primaryPharmacistId ||
+              pharmacist.id === secondaryPharmacistId ||
+              pharmacist.id === tertiaryPharmacistId
+            ) {
+              return false;
+            }
+  
+            // Check availability
+            const isUnavailable =
+              pharmacist.availabilityStatus === "unavailable" ||
+              pharmacist.availabilityStatus === "on_break";
+            const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
+  
+            return !isUnavailable && !isAtCapacity;
+          })
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+  
+        console.log("Available fallback pharmacists:", availableFallbackPharmacists);
+  
+        if (availableFallbackPharmacists.length > 0) {
+          const bestPharmacist = availableFallbackPharmacists[0];
+          console.log(`Assigning to fallback pharmacist ${bestPharmacist.name}`);
+          return assignPharmacist(bestPharmacist.id, "available");
+        }
+      }
+  
+      // No available pharmacists
+      console.log("No available pharmacists found");
+    } catch (err) {
+      console.error("Error finding pharmacist:", err);
+    }
+  };
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Clear EMR error when changing EMR number
+    if (name === "emrNumber") {
+      setError("");
+    }
+  };
+
+  const validateContactInfo = () => {
+    if (formData.consultationType === "tele") {
+      return formData.contactInfo.includes("meet.google.com");
+    } else {
+      return /^\d{10}$/.test(formData.contactInfo);
+    }
+  };
+
+  // Check if EMR already exists in the database
+  const checkEmrUniqueness = async (emrNumber) => {
+    try {
+      setValidating(true);
+      const emrQuery = query(
+        collection(firestore, "cases"),
+        where("emrNumber", "==", emrNumber)
+      );
+
+      const querySnapshot = await getDocs(emrQuery);
+      const isUnique = querySnapshot.empty;
+
+      if (!isUnique) {
+        setError(
+          `EMR number ${emrNumber} already exists. Each patient must have a unique EMR number.`
+        );
+        setValidating(false);
+        return false;
+      }
+
+      setValidating(false);
+      return true;
+    } catch (err) {
+      console.error("Error checking EMR uniqueness:", err);
+      setError("Error validating EMR number. Please try again.");
+      setValidating(false);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    // Validate form
+    if (!formData.patientName.trim()) {
+      setError("Patient name is required");
+      return;
+    }
+    if (!formData.emrNumber.trim()) {
+      setError("EMR number is required");
+      return;
+    }
+    if (!formData.chiefComplaint.trim()) {
+      setError("Chief complaint is required");
+      return;
+    }
+    if (!formData.contactInfo.trim()) {
+      setError(
+        formData.consultationType === "tele"
+          ? "Google Meet link is required"
+          : "Phone number is required"
+      );
+      return;
+    }
+    if (!validateContactInfo()) {
+      setError(
+        formData.consultationType === "tele"
+          ? "Please enter a valid Google Meet link (should contain 'meet.google.com')"
+          : "Please enter a valid 10-digit phone number"
+      );
+      return;
+    }
+    if (!assignedDoctor) {
+      setError("No doctor assigned. Please try again or contact support.");
+      return;
+    }
+    if (!assignedPharmacist) {
+      setError("No pharmacist assigned. Please contact support.");
+      return;
+    }
+
+
+
+    setLoading(true);
+
+    try {
+      // Get nurse's data
+      const nurseRef = doc(firestore, "users", currentUser.uid);
+      const nurseSnapshot = await getDoc(nurseRef);
+
+      if (!nurseSnapshot.exists()) {
+        throw new Error("Nurse data not found");
+      }
+
+      const nurseData = nurseSnapshot.data();
+
+      // Create new case
+      const caseId = `case_${Date.now()}`;
+      const caseRef = doc(firestore, "cases", caseId);
+
+      const newCase = {
+        id: caseId,
+        patientName: formData.patientName,
+        emrNumber: formData.emrNumber,
+        chiefComplaint: formData.chiefComplaint,
+        consultationType: formData.consultationType,
+        contactInfo: formData.contactInfo,
+        notes: formData.notes,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        createdBy: currentUser.uid,
+        createdByName: currentUser.displayName || nurseData.name,
+        clinicId: currentUser.uid,
+        clinicName: nurseData.name,
+        assignedDoctors: {
+          primary: assignedDoctor.id,
+          primaryName: assignedDoctor.name,
+          primaryType: assignedDoctor.type,
+          primaryStatus: assignedDoctor.availabilityStatus,
+        },
+        pharmacistId: assignedPharmacist.id,
+        pharmacistName: assignedPharmacist.name,
+        pharmacistType: assignedPharmacist.type || "primary",
+        pharmacistStatus: assignedPharmacist.availabilityStatus,
+        doctorCompleted: false,
+        pharmacistCompleted: false,
+        doctorCompletedAt: null,
+        pharmacistCompletedAt: null,
+        isIncomplete: false, // Add this field to track if doctor marked it as incomplete
+        inPharmacistPendingReview: true, // Add this field to show in pharmacist's pending review initially
+      };
+
+      await setDoc(caseRef, newCase);
+
+      // Automatically update doctor status to busy if this is their 5th active case
+      const docRef = doc(firestore, "users", assignedDoctor.id);
+      const docSnapshot = await getDoc(docRef);
+
+      if (docSnapshot.exists()) {
+        const doctorData = docSnapshot.data();
+        if (
+          doctorData.availabilityStatus === "available" &&
+          assignedDoctor.caseCount + 1 >= 5
+        ) {
+          await updateDoc(docRef, {
+            availabilityStatus: "busy",
+            lastStatusUpdate: serverTimestamp(),
+            autoStatusChange: true,
+          });
+        }
+      }
+
+      // Similarly, update pharmacist status if needed
+      const pharmRef = doc(firestore, "users", assignedPharmacist.id);
+      const pharmSnapshot = await getDoc(pharmRef);
+
+      if (pharmSnapshot.exists()) {
+        const pharmacistData = pharmSnapshot.data();
+        if (
+          pharmacistData.availabilityStatus === "available" &&
+          assignedPharmacist.caseCount + 1 >= 5
+        ) {
+          await updateDoc(pharmRef, {
+            availabilityStatus: "busy",
+            lastStatusUpdate: serverTimestamp(),
+            autoStatusChange: true,
+          });
+        }
+      }
+
+      // Reset form
+      setFormData({
+        patientName: "",
+        emrNumber: "",
+        chiefComplaint: "",
+        consultationType: "tele",
+        contactInfo: "",
+        notes: "",
+      });
+
+      onCreateCase(newCase);
+    } catch (err) {
+      console.error("Error creating case:", err);
+      setError(err.message || "Failed to create case");
+    } finally {
+      setLoading(false);
+    }
+  };
+  // Function to get status icon for a professional
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "available":
+        return <UserCheck className="h-4 w-4 text-green-600" />;
+      case "busy":
+        return <Users className="h-4 w-4 text-red-600" />;
+      case "unavailable":
+        return <UserX className="h-4 w-4 text-gray-600" />;
+      case "on_break":
+        return <Coffee className="h-4 w-4 text-amber-600" />;
+      default:
+        return <UserCheck className="h-4 w-4 text-blue-600" />;
+    }
+  };
+
+  return (
+    <Card className="border border-gray-100 shadow-md">
+      <CardHeader className="bg-gray-50 pb-4">
+        <CardTitle className="text-xl flex items-center">
+          <ClipboardList className="h-5 w-5 text-blue-600 mr-2" />
+          Create New Case
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="pt-6">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-md font-medium flex items-center">
+              <User className="h-4 w-4 mr-2 text-blue-500" />
+              Patient Information
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="patientName" className="text-sm">
+                  Patient Name
+                </Label>
+                <Input
+                  id="patientName"
+                  name="patientName"
+                  value={formData.patientName}
+                  onChange={handleChange}
+                  className="focus:border-blue-300 focus:ring-blue-500"
+                  placeholder="Enter patient's full name"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emrNumber" className="text-sm">
+                  EMR Number (must be unique)
+                </Label>
+                <Input
+                  id="emrNumber"
+                  name="emrNumber"
+                  value={formData.emrNumber}
+                  onChange={handleChange}
+                  className="focus:border-blue-300 focus:ring-blue-500"
+                  placeholder="Enter patient's EMR number"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  EMR numbers must be unique across all patients
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-4">
+            <h3 className="text-md font-medium flex items-center">
+              <ListFilter className="h-4 w-4 mr-2 text-blue-500" />
+              Case Details
+            </h3>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="chiefComplaint" className="text-sm">
+                  Chief Complaint
+                </Label>
+                <Input
+                  id="chiefComplaint"
+                  name="chiefComplaint"
+                  value={formData.chiefComplaint}
+                  onChange={handleChange}
+                  className="focus:border-blue-300 focus:ring-blue-500"
+                  placeholder="Enter patient's chief complaint"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Consultation Type</Label>
+                <RadioGroup
+                  defaultValue="tele"
+                  className="flex flex-col space-y-1 sm:flex-row sm:space-y-0 sm:space-x-6"
+                  value={formData.consultationType}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      consultationType: value,
+                    }))
+                  }
+                >
+                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                    <RadioGroupItem
+                      value="tele"
+                      id="tele"
+                      className="text-blue-600"
+                    />
+                    <Label
+                      htmlFor="tele"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <Video className="h-4 w-4 mr-2 text-blue-500" />
+                      Tele Consultation
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-50">
+                    <RadioGroupItem
+                      value="audio"
+                      id="audio"
+                      className="text-blue-600"
+                    />
+                    <Label
+                      htmlFor="audio"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <Phone className="h-4 w-4 mr-2 text-blue-500" />
+                      Audio Consultation
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="contactInfo"
+                  className="text-sm flex items-center"
+                >
+                  {formData.consultationType === "tele" ? (
+                    <>
+                      <Video className="h-4 w-4 mr-2 text-blue-500" />
+                      Google Meet Link
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="h-4 w-4 mr-2 text-blue-500" />
+                      Patient Phone Number
+                    </>
+                  )}
+                </Label>
+                <Input
+                  id="contactInfo"
+                  name="contactInfo"
+                  type={formData.consultationType === "tele" ? "url" : "tel"}
+                  value={formData.contactInfo}
+                  onChange={handleChange}
+                  className="focus:border-blue-300 focus:ring-blue-500"
+                  required
+                  placeholder={
+                    formData.consultationType === "tele"
+                      ? "https://meet.google.com/..."
+                      : "10-digit phone number"
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {formData.consultationType === "tele"
+                    ? "Must contain 'meet.google.com'"
+                    : "Must be 10 digits"}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes" className="text-sm flex items-center">
+                  <FileText className="h-4 w-4 mr-2 text-blue-500" />
+                  Additional Notes
+                </Label>
+                <textarea
+                  id="notes"
+                  name="notes"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-300 focus:outline-none"
+                  value={formData.notes}
+                  onChange={handleChange}
+                  placeholder="Enter any additional information about the case"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-4">
+            <h3 className="text-md font-medium flex items-center">
+              <Info className="h-4 w-4 mr-2 text-blue-500" />
+              Assigned Healthcare Professionals
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-blue-100 p-2 rounded-full">
+                    <Stethoscope className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      Assigned Doctor
+                    </p>
+                    {assignedDoctor ? (
+                      <div className="space-y-1">
+                        <p className="font-medium text-blue-700">
+                          {assignedDoctor.name}
+                        </p>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                            {assignedDoctor.type}
+                          </span>
+                          {assignedDoctor.availabilityStatus && (
+                            <DoctorStatusIndicator
+                              status={assignedDoctor.availabilityStatus}
+                              caseCount={assignedDoctor.caseCount}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ) : doctorSearchAttempted ? (
+                      <div className="text-amber-600 flex items-center space-x-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>No available doctor found</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Finding available doctor...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {doctorsData.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">
+                      All Doctors
+                    </p>
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                      {doctorsData.map((doctor) => (
+                        <div
+                          key={doctor.id}
+                          className="flex items-center justify-between bg-white p-2 rounded text-sm border border-gray-100"
+                        >
+                          <div className="flex items-center">
+                            {getStatusIcon(doctor.availabilityStatus)}
+                            <span className="ml-2">{doctor.name}</span>
+                            {doctor.isHierarchy && (
+                              <span className="ml-2 text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-full">
+                                {doctor.isHierarchy}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded-full ${
+                              (doctor.caseCount || 0) >= 5
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {doctor.caseCount || 0}/5
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-green-100 p-2 rounded-full">
+                    <Pill className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      Assigned Pharmacist
+                    </p>
+                    {assignedPharmacist ? (
+                      <div className="space-y-1">
+                        <p className="font-medium text-green-700">
+                          {assignedPharmacist.name}
+                        </p>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
+                            {assignedPharmacist.type}
+                          </span>
+                          {assignedPharmacist.availabilityStatus && (
+                            <PharmacistStatusIndicator
+                              status={assignedPharmacist.availabilityStatus}
+                              caseCount={assignedPharmacist.caseCount}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ) : pharmacistSearchAttempted ? (
+                      <div className="text-amber-600 flex items-center space-x-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>No available pharmacist found</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Finding available pharmacist...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {pharmacistsData.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">
+                      All Pharmacists
+                    </p>
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                      {pharmacistsData.map((pharmacist) => (
+                        <div
+                          key={pharmacist.id}
+                          className="flex items-center justify-between bg-white p-2 rounded text-sm border border-gray-100"
+                        >
+                          <div className="flex items-center">
+                            {getStatusIcon(pharmacist.availabilityStatus)}
+                            <span className="ml-2">{pharmacist.name}</span>
+                            {pharmacist.isHierarchy && (
+                              <span className="ml-2 text-xs bg-green-50 text-green-700 px-1.5 py-0.5 rounded-full">
+                                {pharmacist.isHierarchy}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded-full ${
+                              (pharmacist.caseCount || 0) >= 5
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {pharmacist.caseCount || 0}/5
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 flex justify-end">
+            <Button
+              type="submit"
+              disabled={
+                loading || validating || !assignedDoctor || !assignedPharmacist
+              }
+              className="bg-blue-600 hover:bg-blue-700 flex items-center"
+            >
+              {loading || validating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {validating ? "Validating EMR..." : "Creating..."}
+                </>
+              ) : (
+                <>
+                  <ClipboardList className="h-4 w-4 mr-2" />
+                  Create Case
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default NurseCaseForm;
