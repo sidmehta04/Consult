@@ -2,16 +2,33 @@ import React from "react";
 
 const DashboardHeader = ({ 
   viewMode, 
-  setViewMode, 
+  setViewMode,
+  doctorPharmacist,
+  setDoctorPharmacist, 
   refreshInterval, 
   setRefreshInterval, 
   onRefresh 
 }) => {
+  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1)
   return (
     <div className="flex justify-between items-center flex-wrap gap-4">
-      <h2 className="text-2xl font-bold text-gray-800">Doctor Dashboard</h2>
+      <h2 className="text-2xl font-bold text-gray-800">{role} Dashboard</h2>
       
       <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex border rounded overflow-hidden">
+          <button 
+            onClick={() => setDoctorPharmacist("doctor")} 
+            className={`px-3 py-1 text-sm ${doctorPharmacist === "doctor" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+          >
+            Doctors
+          </button>
+          <button 
+            onClick={() => setDoctorPharmacist("pharmacist")} 
+            className={`px-3 py-1 text-sm ${doctorPharmacist === "pharmacist" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+          >
+            Pharmacists
+          </button>
+        </div>
         <div className="flex border rounded overflow-hidden">
           <button 
             onClick={() => setViewMode("table")} 

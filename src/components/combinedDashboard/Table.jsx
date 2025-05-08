@@ -1,13 +1,17 @@
 import React from "react";
 import DoctorTableRow from "./DoctorTable";
 
-const DoctorTable = ({ doctors, onViewDoctorDetails }) => {
+const DoctorTable = ({ doctorPharmacist, doctors, onViewDoctorDetails }) => {
+
+  
+
+  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6 bg-gray-50">
-        <h3 className="text-lg font-medium leading-6 text-gray-900">Doctor Status & Cases</h3>
+        <h3 className="text-lg font-medium leading-6 text-gray-900">{role} Status & Cases</h3>
         <p className="mt-1 max-w-2xl text-sm text-gray-500">
-          Showing {doctors.length} doctors in your hierarchy
+          Showing {doctors.length} {doctorPharmacist}s in your hierarchy
         </p>
       </div>
       
@@ -16,7 +20,7 @@ const DoctorTable = ({ doctors, onViewDoctorDetails }) => {
           <thead className="bg-gray-50">
             <tr>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Doctor
+                {role}
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status

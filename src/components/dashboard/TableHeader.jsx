@@ -276,7 +276,7 @@ const TableHeader = ({
         </div>
       </th>
 
-      
+      <th className="p-3 text-center font-medium">Meeting</th>             
 
       <th className="p-3 text-left font-medium">Actions</th>
     </tr>

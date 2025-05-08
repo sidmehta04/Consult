@@ -1,6 +1,6 @@
 import React from "react";
 
-const DashboardSummary = ({ doctors }) => {
+const DashboardSummary = ({ doctors, doctorPharmacist }) => {
   // Calculate summary metrics
   const availableDoctors = doctors.filter(d => d.availabilityStatus === "available").length;
   const totalCasesToday = doctors.reduce((sum, d) => sum + d.todayCases, 0);
@@ -11,11 +11,12 @@ const DashboardSummary = ({ doctors }) => {
   );
   const onBreakCount = doctors.filter(d => d.availabilityStatus === "on_break").length;
   const unavailableCount = doctors.filter(d => d.availabilityStatus === "unavailable").length;
+  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
   
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <div className="bg-white shadow rounded-lg p-4">
-        <h3 className="text-sm font-medium text-gray-500">Available Doctors</h3>
+        <h3 className="text-sm font-medium text-gray-500">Available {role}s</h3>
         <p className="text-3xl font-bold text-gray-800">
           {availableDoctors}
         </p>

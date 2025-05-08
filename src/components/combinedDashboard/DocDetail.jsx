@@ -13,7 +13,7 @@ import DoctorStatusHistory from "./DoctorStatus";
 import DoctorCasesSummary from "./DocCases";
 import DoctorPerformanceMetrics from "./DocPerformance";
 
-const DoctorDetailView = ({ doctor, onClose }) => {
+const DoctorDetailView = ({ doctorPharmacist, doctor, onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [caseData, setCaseData] = useState({
     totalCases: 0,
@@ -21,6 +21,8 @@ const DoctorDetailView = ({ doctor, onClose }) => {
     pendingCases: 0,
     incompleteCases: 0
   });
+
+  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
   
   useEffect(() => {
     const fetchDoctorCases = async () => {
@@ -35,9 +37,10 @@ const DoctorDetailView = ({ doctor, onClose }) => {
         
         // Query for cases assigned to this doctor created today
         const casesRef = collection(firestore, "cases");
+        const qualifier = doctorPharmacist === "doctor" ? "assignedDoctors.primary" : "pharmacistId";
         const todayCasesQuery = query(
           casesRef,
-          where("assignedDoctors.primary", "==", doctor.id),
+          where(qualifier, "==", doctor.id),
           where("createdAt", ">=", Timestamp.fromDate(today)),
           where("createdAt", "<", Timestamp.fromDate(tomorrow)),
           orderBy("createdAt", "desc"),
@@ -55,12 +58,22 @@ const DoctorDetailView = ({ doctor, onClose }) => {
         querySnapshot.forEach(doc => {
           const caseData = doc.data();
           
-          if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
-            incompleteCases++;
-          } else if (caseData.doctorCompleted) {
-            completedCases++;
-          } else {
-            pendingCases++;
+          if (doctorPharmacist === "doctor") {
+            if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
+              incompleteCases++;
+            } else if (caseData.doctorCompleted) {
+              completedCases++;
+            } else {
+              pendingCases++;
+            }
+          } else if (doctorPharmacist === "pharmacist") {
+            if (caseData.isIncomplete){
+              incompleteCases++;
+            } else if (caseData.status === "doctor_completed") {
+              pendingCases++;
+            } else if (caseData.status === "completed") {
+              completedCases++;
+            }
           }
         });
         
@@ -101,7 +114,7 @@ const DoctorDetailView = ({ doctor, onClose }) => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Doctor Details</h2>
+          <h2 className="text-xl font-semibold">{role} Details</h2>
           <button 
             onClick={onClose}
             className="text-white hover:text-gray-200"

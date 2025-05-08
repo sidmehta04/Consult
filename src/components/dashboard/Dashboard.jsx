@@ -17,7 +17,7 @@ import {
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import {
-  fetchSummaryData,
+  // fetchSummaryData, // Not used directly in this component, but by datafetcher
   fetchTabData,
   fetchUserHierarchy,
   fetchTodaySummaryData,
@@ -52,6 +52,7 @@ const Dashboard = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState(null);
   const [showTable, setShowTable] = useState(false);
   const [userHierarchy, setUserHierarchy] = useState(null);
+  const [refreshInterval, setRefreshInterval] = useState(60000); // 1 minute refresh by default
 
   const [todaySummaryData, setTodaySummaryData] = useState(null);
 
@@ -89,391 +90,182 @@ const Dashboard = ({ currentUser }) => {
       fetchHierarchy();
     }
   }, [currentUser?.uid, userRole]);
+
   const fetchTodayData = useCallback(async (uid, role) => {
+    if (!uid || !role) {
+      //console.log("Skipping fetchTodayData: uid or role is missing");
+      return;
+    }
+    //console.log(`Workspaceing today's data for UID: ${uid}, Role: ${role}`);
     try {
       const todayData = await fetchTodaySummaryData(uid, role);
       setTodaySummaryData(todayData);
+      //console.log("Today's data fetched:", todayData);
     } catch (error) {
       console.error("Error fetching today's data:", error);
     }
-  }, []);
+  }, []); // No dependencies on other useCallback hooks defined here
 
   // Set up realtime listeners for summary data
   const setupRealtimeSummaryListeners = useCallback(async (uid, role) => {
-    // Clean up any existing listeners
+    if (!uid || !role) {
+      //console.log("Skipping setupRealtimeSummaryListeners: uid or role is missing");
+      return;
+    }
+    //console.log(`Setting up realtime listeners for UID: ${uid}, Role: ${role}`);
+    setLoading(true); // Set loading true at the beginning of summary fetch
     if (unsubscribeRef.current) {
       unsubscribeRef.current();
     }
 
-    // Create an object to store all counts
-    const counts = {
-      totalCases: 0,
-      pendingCases: 0,
-      completedCases: 0,
-      doctorPendingCases: 0,
-      pharmacistPendingCases: 0,
-      incompleteCases: 0,
-    };
+    const counts = { /* ... (counts object definition) ... */ };
+      // ... (rest of the setupRealtimeSummaryListeners logic remains the same) ...
+       // Create an object to store all counts
+    counts.totalCases = 0;
+    counts.pendingCases = 0;
+    counts.completedCases = 0;
+    counts.doctorPendingCases = 0;
+    counts.pharmacistPendingCases = 0;
+    counts.incompleteCases = 0;
 
-    // For summary cards, we want to get accurate counts of ALL cases
-    // So we'll use specialized queries for counts
 
-    // First, check if we should use the optimized count approach
     if (["superAdmin", "zonalHead"].includes(role)) {
       try {
-        // For admins with full access, use getCountFromServer for efficiency
         const casesRef = collection(firestore, "cases");
-
-        // Execute counts in parallel
         const [
-          totalCount,
-          completedCount,
-          incompleteCount,
-          docPendingCount,
-          pharmPendingCount,
+          totalCount, completedCount, incompleteCount, docPendingCount, pharmPendingCount,
         ] = await Promise.all([
           getCountFromServer(query(casesRef)),
-          getCountFromServer(
-            query(casesRef, where("pharmacistCompleted", "==", true))
-          ),
-          getCountFromServer(
-            query(casesRef, where("isIncomplete", "==", true))
-          ),
-          getCountFromServer(
-            query(casesRef, where("doctorCompleted", "==", false))
-          ),
-          getCountFromServer(
-            query(
-              casesRef,
-              where("doctorCompleted", "==", true),
-              where("pharmacistCompleted", "==", false),
-              where("isIncomplete", "==", false)
-            )
-          ),
+          getCountFromServer(query(casesRef, where("pharmacistCompleted", "==", true))),
+          getCountFromServer(query(casesRef, where("isIncomplete", "==", true))),
+          getCountFromServer(query(casesRef, where("doctorCompleted", "==", false))),
+          getCountFromServer(query(casesRef, where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
         ]);
-
-        // Update counts with accurate numbers
         counts.totalCases = totalCount.data().count;
         counts.completedCases = completedCount.data().count;
         counts.incompleteCases = incompleteCount.data().count;
         counts.doctorPendingCases = docPendingCount.data().count;
         counts.pharmacistPendingCases = pharmPendingCount.data().count;
-        counts.pendingCases =
-          counts.doctorPendingCases + counts.pharmacistPendingCases;
-
-        // Update summary data state with accurate counts
-        setSummaryData({
-          summaryData: counts,
-          uniquePartners: [],
-          uniqueClinics: [],
-        });
-
+        counts.pendingCases = counts.doctorPendingCases + counts.pharmacistPendingCases;
+        setSummaryData({ summaryData: counts, uniquePartners: [], uniqueClinics: [] });
+        //console.log("Summary data updated for admin/zonalHead (counts):", counts);
         setLoading(false);
         return;
       } catch (error) {
         console.error("Error fetching counts:", error);
-        // Fall back to regular listener if count approach fails
+        setLoading(false); // Ensure loading is false on error
       }
     }
 
-    // Special case for teamLeader, drManager, and RO - use hierarchy
     if (["teamLeader", "drManager", "ro"].includes(role)) {
       try {
-        // First get the hierarchy data based on reporting relationships
-        const hierarchyData = await fetchUserHierarchy(uid, role);
+        const hierarchyData = userHierarchy || await fetchUserHierarchy(uid, role); // Use existing or fetch
+        if (!userHierarchy) setUserHierarchy(hierarchyData); // Set if fetched now
         const userIds = Array.from(hierarchyData.userIds);
-
-        // Store the hierarchy data for later use
-        setUserHierarchy(hierarchyData);
-
-        // We'll use aggregated counts from multiple queries
-        const totalCasesPromises = [];
-        const completedCasesPromises = [];
-        const incompleteCasesPromises = [];
-        const docPendingPromises = [];
-        const pharmPendingPromises = [];
-
-        // Process all users in the hierarchy without limiting
-        for (const userId of userIds) {
-          const casesRef = collection(firestore, "cases");
-
-          // Add promises for each count type
-          totalCasesPromises.push(
-            getCountFromServer(
-              query(casesRef, where("createdBy", "==", userId))
-            )
-          );
-
-          completedCasesPromises.push(
-            getCountFromServer(
-              query(
-                casesRef,
-                where("createdBy", "==", userId),
-                where("pharmacistCompleted", "==", true)
-              )
-            )
-          );
-
-          incompleteCasesPromises.push(
-            getCountFromServer(
-              query(
-                casesRef,
-                where("createdBy", "==", userId),
-                where("isIncomplete", "==", true)
-              )
-            )
-          );
-
-          docPendingPromises.push(
-            getCountFromServer(
-              query(
-                casesRef,
-                where("createdBy", "==", userId),
-                where("doctorCompleted", "==", false),
-                where("isIncomplete", "==", false)
-              )
-            )
-          );
-
-          pharmPendingPromises.push(
-            getCountFromServer(
-              query(
-                casesRef,
-                where("createdBy", "==", userId),
-                where("doctorCompleted", "==", true),
-                where("pharmacistCompleted", "==", false),
-                where("isIncomplete", "==", false)
-              )
-            )
-          );
-        }
-
-        // Execute all count promises in parallel
-        const [
-          totalResults,
-          completedResults,
-          incompleteResults,
-          docPendingResults,
-          pharmPendingResults,
-        ] = await Promise.all([
-          Promise.all(totalCasesPromises),
-          Promise.all(completedCasesPromises),
-          Promise.all(incompleteCasesPromises),
-          Promise.all(docPendingPromises),
-          Promise.all(pharmPendingPromises),
+        const promises = userIds.flatMap(userId => [
+          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId))),
+          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("pharmacistCompleted", "==", true))),
+          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("isIncomplete", "==", true))),
+          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", false), where("isIncomplete", "==", false))),
+          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
         ]);
-
-        // Sum up all the counts
-        counts.totalCases = totalResults.reduce(
-          (sum, result) => sum + result.data().count,
-          0
-        );
-        counts.completedCases = completedResults.reduce(
-          (sum, result) => sum + result.data().count,
-          0
-        );
-        counts.incompleteCases = incompleteResults.reduce(
-          (sum, result) => sum + result.data().count,
-          0
-        );
-        counts.doctorPendingCases = docPendingResults.reduce(
-          (sum, result) => sum + result.data().count,
-          0
-        );
-        counts.pharmacistPendingCases = pharmPendingResults.reduce(
-          (sum, result) => sum + result.data().count,
-          0
-        );
-        counts.pendingCases =
-          counts.doctorPendingCases + counts.pharmacistPendingCases;
-
-        // Update summary data state
-        setSummaryData({
-          summaryData: counts,
-          uniquePartners: [], // These will be populated when loading tab data
-          uniqueClinics: [],
-        });
-
+        const results = await Promise.all(promises);
+        for (let i = 0; i < results.length; i += 5) {
+          counts.totalCases += results[i].data().count;
+          counts.completedCases += results[i + 1].data().count;
+          counts.incompleteCases += results[i + 2].data().count;
+          counts.doctorPendingCases += results[i + 3].data().count;
+          counts.pharmacistPendingCases += results[i + 4].data().count;
+        }
+        counts.pendingCases = counts.doctorPendingCases + counts.pharmacistPendingCases;
+        setSummaryData({ summaryData: counts, uniquePartners: [], uniqueClinics: [] });
+        //console.log("Summary data updated for hierarchy role (counts):", counts);
         setLoading(false);
         return;
       } catch (error) {
         console.error("Error fetching hierarchy counts:", error);
-        // Fall back to regular listener
+         setLoading(false); // Ensure loading is false on error
       }
     }
 
-    // For role-specific views or if previous approaches failed, use listeners with a higher limit
     let baseQuery;
-
-    // Apply role-based restrictions to summary data
     switch (role) {
-      case "superAdmin":
-      case "zonalHead":
-        // Admin can see all cases, use a high limit
-        baseQuery = query(
-          collection(firestore, "cases"),
-          orderBy("createdAt", "desc"),
-          limit(1000) // Keep the higher limit for summary data
-        );
+      case "superAdmin": case "zonalHead":
+        baseQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(1000));
         break;
-
-      case "teamLeader":
-      case "drManager":
-      case "ro":
-        // Fallback to just user's direct cases if hierarchy approach failed
-        baseQuery = query(
-          collection(firestore, "cases"),
-          where("createdBy", "==", uid),
-          limit(1000) // Higher limit for accurate summaries
-        );
+      case "teamLeader": case "drManager": case "ro":
+        baseQuery = query(collection(firestore, "cases"), where("createdBy", "==", uid), orderBy("createdAt", "desc"), limit(1000));
         break;
-
       case "doctor":
-        baseQuery = query(
-          collection(firestore, "cases"),
-          where("assignedDoctors.primary", "==", uid),
-          limit(1000) // Higher limit for accurate summaries
-        );
+        baseQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", uid), orderBy("createdAt", "desc"), limit(1000));
         break;
-
       case "pharmacist":
-        baseQuery = query(
-          collection(firestore, "cases"),
-          where("pharmacistId", "==", uid),
-          limit(1000) // Higher limit for accurate summaries
-        );
+        baseQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", uid), orderBy("createdAt", "desc"), limit(1000));
         break;
-
       default:
-        baseQuery = query(
-          collection(firestore, "cases"),
-          where("createdBy", "==", uid),
-          limit(1000) // Higher limit for accurate summaries
-        );
+        baseQuery = query(collection(firestore, "cases"), where("createdBy", "==", uid), orderBy("createdAt", "desc"), limit(1000));
         break;
     }
 
-    // Set up listener for cases
-    const unsubscribe = onSnapshot(
-      baseQuery,
-      (snapshot) => {
-        const uniquePartners = new Set();
-        const uniqueClinics = new Set();
-
-        // Reset counts
-        counts.totalCases = snapshot.size;
-        counts.pendingCases = 0;
-        counts.completedCases = 0;
-        counts.doctorPendingCases = 0;
-        counts.pharmacistPendingCases = 0;
-        counts.incompleteCases = 0;
-
-        // Process each document
-        snapshot.forEach((doc) => {
-          const caseData = doc.data();
-
-          // Count by status
-          if (
-            caseData.isIncomplete ||
-            caseData.status === "doctor_incomplete"
-          ) {
-            counts.incompleteCases++;
-          } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {
-            counts.completedCases++;
-          } else if (!caseData.doctorCompleted) {
-            counts.doctorPendingCases++;
-            counts.pendingCases++;
-          } else if (!caseData.pharmacistCompleted) {
-            counts.pharmacistPendingCases++;
-            counts.pendingCases++;
-          }
-
-          // Track unique values
-          if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
-          if (caseData.clinicCode || caseData.clinicName) {
-            uniqueClinics.add(caseData.clinicCode || caseData.clinicName);
-          }
-        });
-
-        // Update summary data state
-        setSummaryData({
-          summaryData: counts,
-          uniquePartners: Array.from(uniquePartners),
-          uniqueClinics: Array.from(uniqueClinics),
-        });
-
-        // Exit loading state after first load
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error in realtime listener:", error);
-        setError("Failed to set up realtime updates. Please refresh the page.");
-        setLoading(false);
-      }
-    );
-
-    // Store unsubscribe function
+    const unsubscribe = onSnapshot(baseQuery, (snapshot) => {
+      const uniquePartners = new Set();
+      const uniqueClinics = new Set();
+      counts.totalCases = snapshot.size;
+      counts.pendingCases = 0; counts.completedCases = 0; counts.doctorPendingCases = 0; counts.pharmacistPendingCases = 0; counts.incompleteCases = 0;
+      snapshot.forEach((doc) => {
+        const caseData = doc.data();
+        if (caseData.isIncomplete || caseData.status === "doctor_incomplete") counts.incompleteCases++;
+        else if (caseData.doctorCompleted && caseData.pharmacistCompleted) counts.completedCases++;
+        else if (!caseData.doctorCompleted) { counts.doctorPendingCases++; counts.pendingCases++; }
+        else if (!caseData.pharmacistCompleted) { counts.pharmacistPendingCases++; counts.pendingCases++; }
+        if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
+        if (caseData.clinicCode || caseData.clinicName) uniqueClinics.add(caseData.clinicCode || caseData.clinicName);
+      });
+      setSummaryData({ summaryData: counts, uniquePartners: Array.from(uniquePartners), uniqueClinics: Array.from(uniqueClinics) });
+      //console.log("Summary data updated via onSnapshot:", counts);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error in realtime listener:", error);
+      setError("Failed to set up realtime updates. Please refresh the page.");
+      setLoading(false);
+    });
     unsubscribeRef.current = unsubscribe;
-  }, []);
-
-  // Set up listeners when user role is available
-  useEffect(() => {
-    if (userRole) {
-      setupRealtimeSummaryListeners(currentUser.uid, userRole);
-      fetchTodayData(currentUser.uid, userRole); // Add this line
-    }
-
-    // Clean up listeners on component unmount
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-      }
-    };
-  }, [
-    currentUser.uid,
-    setupRealtimeSummaryListeners,
-    userRole,
-    fetchTodayData,
-  ]);
+  }, [userHierarchy]); // Added userHierarchy here as it's used before potential fetch
 
   // Load specific tab data when requested
   const loadTabData = useCallback(
     async (tabName, filters = {}) => {
-      if (!userRole || fetchingData) return;
-
-      setFetchingData(true);
+      if (!userRole || !currentUser?.uid) { // Removed fetchingData from guard, handled by button state
+          //console.log("Skipping loadTabData: userRole or currentUser.uid missing.");
+          return;
+      }
+      //console.log(`Loading tab data for: ${tabName} with filters:`, filters);
+      setFetchingData(true); // Set fetching true for tab data
       try {
-        // Create a filter object with all active filters
-        // IMPORTANT: Don't set default date filter when first loading a tab
         const activeFilters = {
-          status: statusFilter !== "all" ? statusFilter : null,
-          queue: queueFilter !== "all" ? queueFilter : null,
-          partner: partnerFilter !== "all" ? partnerFilter : null,
-          clinic: clinicFilter !== "all" ? clinicFilter : null,
-          dateFrom: dateRange.from,
-          dateTo: dateRange.to,
-          searchTerm: searchTerm || null,
+          status: filters.status !== undefined ? filters.status : (statusFilter !== "all" ? statusFilter : null),
+          queue: filters.queue !== undefined ? filters.queue : (queueFilter !== "all" ? queueFilter : null),
+          partner: filters.partner !== undefined ? filters.partner : (partnerFilter !== "all" ? partnerFilter : null),
+          clinic: filters.clinic !== undefined ? filters.clinic : (clinicFilter !== "all" ? clinicFilter : null),
+          dateFrom: filters.dateFrom !== undefined ? filters.dateFrom : dateRange.from,
+          dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
+          searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
         };
 
-        // Fetch tab-specific data with role-based access control
         const tabData = await fetchTabData(
           currentUser.uid,
           userRole,
           tabName,
           activeFilters,
-          // Add pagination parameters
-          { page: 1, pageSize: 50 } // Increased page size from 20 to 50
+          { page: 1, pageSize: 50 }
         );
 
-        // Update table data state (separate from summary data)
         setTableData({
           cases: tabData.cases,
           uniquePartners: tabData.uniquePartners,
           uniqueClinics: tabData.uniqueClinics,
           pagination: tabData.pagination,
         });
-
-        // Show table once we have data
         setShowTable(true);
       } catch (err) {
         console.error("Error fetching tab data:", err);
@@ -483,7 +275,7 @@ const Dashboard = ({ currentUser }) => {
       }
     },
     [
-      currentUser.uid,
+      currentUser?.uid,
       userRole,
       statusFilter,
       queueFilter,
@@ -491,27 +283,92 @@ const Dashboard = ({ currentUser }) => {
       clinicFilter,
       dateRange,
       searchTerm,
-      fetchingData,
+      // fetchTabData is an import, not state/prop that changes
     ]
   );
 
+  const handleRefresh = useCallback(async () => {
+    //console.log("Refreshing data...");
+    if (currentUser?.uid && userRole) {
+      // setLoading(true); // Summary loading is handled by setupRealtimeSummaryListeners
+      // setFetchingData(true); // Tab data loading is handled by loadTabData
+      try {
+        await fetchTodayData(currentUser.uid, userRole);
+        await setupRealtimeSummaryListeners(currentUser.uid, userRole); // This will set setLoading(false)
+
+        if (activeTab) {
+          //console.log(`Refreshing active tab: ${activeTab}`);
+          const currentFilters = {
+            status: statusFilter !== "all" ? statusFilter : null,
+            queue: queueFilter !== "all" ? queueFilter : null,
+            partner: partnerFilter !== "all" ? partnerFilter : null,
+            clinic: clinicFilter !== "all" ? clinicFilter : null,
+            dateFrom: dateRange.from,
+            dateTo: dateRange.to,
+            searchTerm: searchTerm || null,
+          };
+          await loadTabData(activeTab, currentFilters); // This will setFetchingData(false)
+        }
+      } catch (e) {
+        console.error("Error during manual refresh:", e);
+        setError("Failed to refresh data. Please try again.");
+        // setLoading(false); // Ensure loading states are reset on error
+        // setFetchingData(false);
+      }
+    } else {
+      //console.log("Cannot refresh: User UID or Role not available.");
+    }
+  }, [
+    currentUser?.uid,
+    userRole,
+    fetchTodayData,
+    setupRealtimeSummaryListeners,
+    activeTab,
+    loadTabData, // Now defined before handleRefresh
+    statusFilter,
+    queueFilter,
+    partnerFilter,
+    clinicFilter,
+    dateRange,
+    searchTerm,
+  ]);
+
+
+  // Set up listeners when user role is available
+  useEffect(() => {
+    if (userRole && currentUser?.uid) {
+      setupRealtimeSummaryListeners(currentUser.uid, userRole);
+      fetchTodayData(currentUser.uid, userRole);
+    }
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [currentUser?.uid, userRole, setupRealtimeSummaryListeners, fetchTodayData]);
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (refreshInterval > 0) { // Ensure interval is positive
+        const intervalId = setInterval(() => {
+            //console.log("Auto-refresh triggered...");
+            handleRefresh();
+        }, refreshInterval);
+        return () => clearInterval(intervalId);
+    }
+  }, [refreshInterval, handleRefresh]);
+
+
   // Handle filter reset
   const handleFilterReset = useCallback(() => {
-    // Set loading state immediately for visual feedback
-    setFetchingData(true);
+    //console.log("Resetting filters...");
+    // setFetchingData(true); // Let loadTabData handle this
 
-    // Reset all filters in memory
     const emptyFilters = {
-      status: null,
-      queue: null,
-      partner: null,
-      clinic: null,
-      dateFrom: null,
-      dateTo: null,
-      searchTerm: null,
+      status: null, queue: null, partner: null, clinic: null,
+      dateFrom: null, dateTo: null, searchTerm: null,
     };
 
-    // Also update the state (for UI purposes)
     setDateRange({ from: null, to: null });
     setSearchTerm("");
     setStatusFilter("all");
@@ -521,215 +378,127 @@ const Dashboard = ({ currentUser }) => {
     setActiveColumnFilter(null);
     setResetTimestamp(Date.now());
 
-    // If a tab is active, reload data with empty filters
     if (activeTab) {
-      // Directly fetch data with empty filters rather than waiting for state to update
-      fetchTabData(currentUser.uid, userRole, activeTab, emptyFilters, {
-        page: 1,
-        pageSize: 50, // Increased from 20 to 50
-      })
-        .then((tabData) => {
-          setTableData({
-            cases: tabData.cases,
-            uniquePartners: tabData.uniquePartners,
-            uniqueClinics: tabData.uniqueClinics,
-            pagination: tabData.pagination,
-          });
-          setFetchingData(false);
-        })
-        .catch((err) => {
-          console.error("Error fetching tab data:", err);
-          setError("Failed to load case data. Please try again.");
-          setFetchingData(false);
-        });
+      // No need to call fetchTabData directly, call loadTabData
+      loadTabData(activeTab, emptyFilters);
     } else {
-      setFetchingData(false);
+      // setFetchingData(false); // Not strictly needed if not set true above
     }
-  }, [activeTab, currentUser.uid, userRole]);
+  }, [activeTab, loadTabData]); // Dependencies: activeTab and loadTabData
 
   // Handle individual filter reset
   const handleSingleFilterReset = useCallback(
     (filterType) => {
-      // Reset specific filter
+      let newFilters = { // Collect changes to pass to loadTabData
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerFilter !== "all" ? partnerFilter : null,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: searchTerm || null,
+      };
+
       switch (filterType) {
-        case "status":
-          setStatusFilter("all");
-          break;
-        case "queue":
-          setQueueFilter("all");
-          break;
-        case "partner":
-          setPartnerFilter("all");
-          break;
-        case "clinic":
-          setClinicFilter("all");
-          break;
-        case "date":
-          setDateRange({ from: null, to: null });
-          break;
-        case "search":
-          setSearchTerm("");
-          break;
-        default:
-          break;
+        case "status": setStatusFilter("all"); newFilters.status = null; break;
+        case "queue": setQueueFilter("all"); newFilters.queue = null; break;
+        case "partner": setPartnerFilter("all"); newFilters.partner = null; break;
+        case "clinic": setClinicFilter("all"); newFilters.clinic = null; break;
+        case "date": setDateRange({ from: null, to: null }); newFilters.dateFrom = null; newFilters.dateTo = null; break;
+        case "search": setSearchTerm(""); newFilters.searchTerm = null; break;
+        default: break;
       }
-
-      // Close the column filter
       setActiveColumnFilter(null);
-
-      // Reload data if tab is active
       if (activeTab) {
-        loadTabData(activeTab);
+        loadTabData(activeTab, newFilters);
       }
     },
-    [activeTab, loadTabData]
+    [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm] // Include all filters it reads before potentially changing
   );
 
   // Handle filter changes
-  const handleFilterApply = (filterType, value) => {
+  const handleFilterApply = useCallback((filterType, value) => {
+    let updatedFilters = { // Prepare the filters object for loadTabData
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerFilter !== "all" ? partnerFilter : null,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: searchTerm || null,
+    };
+
     switch (filterType) {
-      case "status":
-        setStatusFilter(value);
-        break;
-      case "queue":
-        setQueueFilter(value);
-        break;
-      case "partner":
-        setPartnerFilter(value);
-        break;
-      case "clinic":
-        setClinicFilter(value);
-        break;
-      case "date":
-        setDateRange(value);
-        break;
-      default:
-        break;
+      case "status": setStatusFilter(value); updatedFilters.status = value === "all" ? null : value; break;
+      case "queue": setQueueFilter(value); updatedFilters.queue = value === "all" ? null : value; break;
+      case "partner": setPartnerFilter(value); updatedFilters.partner = value === "all" ? null : value; break;
+      case "clinic": setClinicFilter(value); updatedFilters.clinic = value === "all" ? null : value; break;
+      case "date": setDateRange(value); updatedFilters.dateFrom = value.from; updatedFilters.dateTo = value.to; break;
+      default: break;
     }
-
-    // Close the column filter
     setActiveColumnFilter(null);
-
-    // Reload data if tab is active
     if (activeTab) {
-      loadTabData(activeTab);
+      loadTabData(activeTab, updatedFilters);
     }
-  };
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm]);
 
-  // Handle search
-  const handleSearch = (value) => {
+
+  const handleSearchChange = (value) => { // Not a useCallback as it just sets state
     setSearchTerm(value);
-
-    // Reload data if search term changed and tab is active
-    if (activeTab && value !== searchTerm) {
-      loadTabData(activeTab);
-    }
-  };
-
-  // Handle search button click
-  const handleSearchSubmit = (value) => {
-    // Set the search term state
-    setSearchTerm(value);
-
-    // Set loading state to give visual feedback
-    setFetchingData(true);
-
-    // Create a new filter object with the updated search term
-    const updatedFilters = {
-      status: statusFilter !== "all" ? statusFilter : null,
-      queue: queueFilter !== "all" ? queueFilter : null,
-      partner: partnerFilter !== "all" ? partnerFilter : null,
-      clinic: clinicFilter !== "all" ? clinicFilter : null,
-      dateFrom: dateRange.from,
-      dateTo: dateRange.to,
-      searchTerm: value, // Use the new value directly
-    };
-
-    // Always load tab data when search button is clicked, with latest filters
-    if (activeTab) {
-      // Small delay to ensure state is updated
-      setTimeout(() => {
-        // Directly pass the updated filters rather than relying on state
-        fetchTabData(currentUser.uid, userRole, activeTab, updatedFilters, {
-          page: 1,
-          pageSize: 50, // Increased from 20 to 50
-        })
-          .then((tabData) => {
-            setTableData({
-              cases: tabData.cases,
-              uniquePartners: tabData.uniquePartners,
-              uniqueClinics: tabData.uniqueClinics,
-              pagination: tabData.pagination,
-            });
-            setFetchingData(false);
-          })
-          .catch((err) => {
-            console.error("Error fetching tab data:", err);
-            setError("Failed to load case data. Please try again.");
-            setFetchingData(false);
-          });
-      }, 100);
-    }
-  };
-
-  const handleSearchChange = (value) => {
-    setSearchTerm(value);
-
-    // Don't load data on simple changes, wait for button click
-    // If value is empty, we can reload to clear the filter
+    // If value is empty, clear search immediately by reloading tab data with no search term
     if (value === "" && activeTab) {
-      loadTabData(activeTab);
+        const currentFilters = {
+            status: statusFilter !== "all" ? statusFilter : null,
+            queue: queueFilter !== "all" ? queueFilter : null,
+            partner: partnerFilter !== "all" ? partnerFilter : null,
+            clinic: clinicFilter !== "all" ? clinicFilter : null,
+            dateFrom: dateRange.from,
+            dateTo: dateRange.to,
+            searchTerm: "", // explicitly empty
+        };
+        loadTabData(activeTab, currentFilters);
     }
   };
 
-  // Handle tab change - FIXED to work properly for tl, dr manager, ro
-  const handleTabChange = (value) => {
-    // If clicking the same tab, do nothing
-    if (value === activeTab) return;
 
-    setActiveTab(value);
-    setFetchingData(true);
-
-    // Create a filters object with no date filters by default
-    const baseFilters = {
-      status: statusFilter !== "all" ? statusFilter : null,
-      queue: queueFilter !== "all" ? queueFilter : null,
-      partner: partnerFilter !== "all" ? partnerFilter : null,
-      clinic: clinicFilter !== "all" ? clinicFilter : null,
-      searchTerm: searchTerm || null,
-      // Importantly, no dateFrom or dateTo by default
-    };
-
-    // For teamLeader, drManager, and RO, we'll use a custom approach
-    if (["teamLeader", "drManager", "ro"].includes(userRole)) {
-      // Use our custom function directly to avoid date filtering issues
-      fetchTabData(
-        currentUser.uid,
-        userRole,
-        value,
-        baseFilters,
-        { page: 1, pageSize: 100 } // Increased page size for hierarchy roles
-      )
-        .then((tabData) => {
-          setTableData({
-            cases: tabData.cases,
-            uniquePartners: tabData.uniquePartners,
-            uniqueClinics: tabData.uniqueClinics,
-            pagination: tabData.pagination,
-          });
-          setShowTable(true);
-          setFetchingData(false);
-        })
-        .catch((err) => {
-          console.error("Error fetching tab data:", err);
-          setError("Failed to load case data. Please try again.");
-          setFetchingData(false);
-        });
-    } else {
-      // For other roles, use the normal loadTabData function
-      loadTabData(value);
+  const handleSearchSubmit = useCallback((value) => { // value is the new search term
+    setSearchTerm(value); // Update state
+    if (activeTab) {
+      const updatedFilters = {
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerFilter !== "all" ? partnerFilter : null,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: value, // Use the submitted value directly
+      };
+      loadTabData(activeTab, updatedFilters);
     }
-  };
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]); // searchTerm removed as 'value' is used
+
+  const handleTabChange = useCallback((newTabName) => {
+    if (newTabName === activeTab) return;
+
+    setActiveTab(newTabName);
+    // Filters remain as they are, loadTabData will use current filter states
+    // Dates are intentionally not reset here by default when changing tabs,
+    // but if you want to reset dates, you'd update dateRange state here too.
+    const currentFiltersForNewTab = {
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerFilter !== "all" ? partnerFilter : null,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        searchTerm: searchTerm || null,
+        // No dateFrom or dateTo by default to keep existing date filter if any
+        // OR, if you want to clear dates on tab change:
+        // dateFrom: null,
+        // dateTo: null,
+      };
+
+    loadTabData(newTabName, currentFiltersForNewTab);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm]); // Dependencies for reading current filters
+
 
   // Handle excel export
   const handleExcelExport = () => {
@@ -737,13 +506,9 @@ const Dashboard = ({ currentUser }) => {
       alert("No data available to export.");
       return;
     }
-
-    // Create a filename with date stamp
     const now = new Date();
     const dateStr = now.toISOString().split("T")[0];
     const fileName = `cases_export_${dateStr}.xlsx`;
-
-    // Call the export function
     try {
       exportCasesToExcel(tableData.cases, fileName);
     } catch (err) {
@@ -753,72 +518,71 @@ const Dashboard = ({ currentUser }) => {
   };
 
   // Create clinic options from table data
-  const clinicOptions =
-    tableData?.uniqueClinics?.map((clinic) => ({
-      value: clinic,
-      label: clinic,
-    })) || [];
+  const clinicOptions = tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [];
+  const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
 
-  // Create partner options from table data
-  const partnerOptions =
-    tableData?.uniquePartners?.map((partner) => ({
-      value: partner,
-      label: partner,
-    })) || [];
 
-  // Show loading state
-  if (loading || userLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-      </div>
-    );
+  // --- RENDER LOGIC ---
+  if (userLoading) {
+    return <div className="flex justify-center items-center h-64"><div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div>;
   }
-
-  // Show error state
-  if (error || userError) {
-    return (
-      <Alert variant="destructive" className="mb-6">
-        <AlertCircle className="h-4 w-4 mr-2" />
-        <AlertDescription>{error || userError}</AlertDescription>
-      </Alert>
-    );
+  if (userError) {
+    return <Alert variant="destructive" className="mb-6"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>{userError}</AlertDescription></Alert>;
+  }
+  // Show initial loading for summary if not yet loaded and no other error
+  if (loading && !summaryData && !error) {
+    return <div className="flex justify-center items-center h-64"><div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div>;
+  }
+  if (error) { // General error for other operations
+     return <Alert variant="destructive" className="mb-6"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
   return (
     <div className="space-y-4">
-      {/* Header with role info and export button */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          {/* Role-based access indicator */}
           <div className="text-xs text-gray-500 flex items-center">
             <ShieldAlert className="h-3 w-3 mr-1 text-blue-500" />
             Showing cases based on your role access
           </div>
-
-          {/* Excel Export - Only for SuperAdmin and ZonalHead */}
           {["superAdmin", "zonalHead"].includes(userRole) && (
-            <Button variant="outline" size="sm" onClick={handleExcelExport}>
+            <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={!tableData?.cases || tableData.cases.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export Excel
             </Button>
           )}
           <Badge variant="outline" className="text-sm px-3 py-1">
-            {userRole
-              ? userRole.charAt(0).toUpperCase() + userRole.slice(1)
-              : ""}
+            {userRole ? userRole.charAt(0).toUpperCase() + userRole.slice(1) : ""}
           </Badge>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-500"> Auto-refresh:</span>
+            <select
+              className="border rounded p-1 text-sm"
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(Number(e.target.value))}
+            >
+              <option value={0}>Off</option> {/* Added Off option */}
+              <option value={30000}>30 seconds</option>
+              <option value={60000}>1 minute</option>
+              <option value={300000}>5 minutes</option>
+            </select>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={fetchingData || loading}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm disabled:opacity-50"
+          >
+            Refresh Now
+          </button>
         </div>
       </div>
 
-      {/* Summary Cards - Always show real-time data regardless of table filters */}
       <DashboardSummaryCards
         data={summaryData}
         todayData={todaySummaryData}
-        loading={loading}
+        loading={loading && !summaryData}
       />
-      {/* Tab Navigation */}
       <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
 
       {activeTab && (
@@ -827,26 +591,19 @@ const Dashboard = ({ currentUser }) => {
           onSearchChange={handleSearchChange}
           onSearchSubmit={handleSearchSubmit}
           onFilterReset={handleFilterReset}
+          key={resetTimestamp} // Force re-render of FilterBar on reset
         />
       )}
 
-      {/* Content Area: No Tab Selected, Loading, or Data Table */}
       {!activeTab ? (
         <EmptyStateMessage />
       ) : fetchingData ? (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-            </div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-6"><div className="flex justify-center py-8"><div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div></CardContent></Card>
       ) : (
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
-                {/* Table Header with Filters */}
                 <thead>
                   <TableHeader
                     activeColumnFilter={activeColumnFilter}
@@ -867,7 +624,7 @@ const Dashboard = ({ currentUser }) => {
                       loading={false}
                       userRole={userRole}
                       currentUser={currentUser}
-                      showHeader={false} // Hide duplicate header
+                      showHeader={false}
                       pagination={tableData.pagination}
                     />
                   ) : (
@@ -880,7 +637,6 @@ const Dashboard = ({ currentUser }) => {
         </Card>
       )}
 
-      {/* Role-based access message */}
       {userRole !== "superAdmin" && userRole !== "zonalHead" && (
         <RoleBasedAccessMessage userRole={userRole} />
       )}

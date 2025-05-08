@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/dialog";
 import CaseDetailView from "./CaseDetail";
 
+const isAllDigits = (str) => {
+  return /^\d+$/.test(str);
+}
+
 const CasesTable = ({ 
   data, 
   loading, 
@@ -302,6 +306,37 @@ const CasesTable = ({
               )}
             </td>
             <td className="p-3">{formatDate(caseItem.createdAt)}</td>
+            <td className="p-0">
+              <div className="flex items-center justify-center h-full">
+                {isAllDigits(caseItem.contactInfo) ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open("tel:"+caseItem.contactInfo, '_blank'); //open as telephone link
+                    }}
+                    title={caseItem.contactInfo}
+                    className="h-8 w-8 flex items-center justify-center"
+                  >
+                    <PhoneCall className="!h-5 !w-5 text-blue-500"/>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(caseItem.contactInfo, '_blank');
+                    }}
+                    title="Open Google Meet"
+                    className="h-8 w-8 flex items-center justify-center"
+                  >
+                    <Video className="!h-5 !w-5 text-blue-500"/>
+                  </Button>
+                )}
+              </div>
+            </td>
             <td className="p-3" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center space-x-1">
                 {caseItem.meetLink && (

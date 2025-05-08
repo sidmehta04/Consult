@@ -2,6 +2,8 @@ import React, { memo, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Clock, CheckCircle, AlertTriangle, Users, Calendar } from "lucide-react";
 
+//TODO: Add auto refresh here and refresh now button
+
 // Using memo to prevent unnecessary re-renders
 const DashboardSummaryCards = memo(({ data, loading, todayData }) => {
   // State to store the extracted data

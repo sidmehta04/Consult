@@ -15,8 +15,8 @@ import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
 import CaseManagementModule from "./components/CaseManagement";
 import DashboardTab from "./components/dashboard/Dashboard"; // Import the Dashboard Tab
-import DoctorDashboard from "./components/docDashboard/DocDashboard"; // Import the Doctor Dashboard
-import { ClipboardList, UserPlus, Home, LogOut, Activity } from "lucide-react";
+import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle} from "lucide-react";
 import { fixCaseCompletionStatus } from "./utils/createadmin";
 
 // Protected route wrapper
@@ -160,6 +160,10 @@ function AppContent() {
       { name: "Dashboard", href: "/", icon: <Home className="h-5 w-5" /> }
     ];
 
+    // ---Divyansh's code---
+    
+    // Replacing following with common dashboard:
+    /*
     // Doctor Dashboard for management roles
     if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
       items.push({
@@ -168,6 +172,26 @@ function AppContent() {
         icon: <Activity className="h-5 w-5" />
       });
     }
+
+    // Pharmacist Dashboard (not sure if RO is needed)
+    if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
+      items.push({
+        name: "Pharmacist Status",
+        href: "/pharmacist-dashboard",
+        icon: <PillBottle className="h-5 w-5" />
+      });
+    }
+    */
+
+    // combined dashboard
+    if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
+      items.push({
+        name: "Doctor/Pharmacist Status",
+        href: "/medical-dashboard",
+        icon: <Activity className="h-5 w-5" />
+      });
+    }
+    // --- End of Divyansh's code ---
 
     // User management for administrative roles
     if (["superAdmin", "zonalHead", "teamLeader", "drManager", "ro", "pharmacist"].includes(userRole)) {
@@ -256,6 +280,7 @@ function AppContent() {
               />
 
               {/* Doctor Dashboard route */}
+              {/*}
               <Route
                 path="/doctor-dashboard"
                 element={
@@ -264,6 +289,30 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />
+              */}
+              {/* --- Divyansh's code --- */} 
+              {/* Pharmacist Dashboard route */}
+              {/*
+              <Route
+                path="/pharmacist-dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead"]}>
+                    <PharmacistDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />
+              */}
+
+              <Route
+                path="/medical-dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead"]}>
+                    <CombinedDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />  
+
+              {/* --- End of Divyansh's code --- */}
 
               {/* User management route */}
               <Route
