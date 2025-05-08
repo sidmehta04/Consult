@@ -2,6 +2,8 @@ import React from "react";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Building2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoIcon } from "lucide-react";
 
 const ClinicInfoForm = ({ formData, setFormData }) => {
   return (
@@ -78,6 +80,15 @@ const ClinicInfoForm = ({ formData, setFormData }) => {
             }
             placeholder="10-digit mobile number"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <Alert className="bg-blue-50 border-blue-200">
+            <InfoIcon className="h-4 w-4 text-blue-500 mr-2" />
+            <AlertDescription className="text-blue-800">
+              After creating this clinic, you can manage its assignments and hierarchy using the Clinic Management tab.
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     </div>

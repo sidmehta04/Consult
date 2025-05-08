@@ -11,6 +11,7 @@ import {
   TabsList, 
   TabsTrigger 
 } from "@/components/ui/tabs";
+import ClinicHierarchyManagement from './creation/HierarchyManage';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { UserPlus, Users, Stethoscope, Pill } from 'lucide-react';
 
@@ -125,6 +126,13 @@ const UserCreationTab = () => {
               Pharmacist Hierarchy
             </TabsTrigger>
           )}
+           {/* Show pharmacist hierarchy management tab for pharmacists */}
+           {userRole === 'pharmacist' && (
+            <TabsTrigger value="clinicHierarchy">
+              <Pill className="h-4 w-4 mr-2" />
+              Clinic Hierarchy
+            </TabsTrigger>
+          )}
         </TabsList>
         
         <TabsContent value="create" className="pt-4">
@@ -145,6 +153,13 @@ const UserCreationTab = () => {
         {userRole === 'pharmacist' && (
           <TabsContent value="pharmacistHierarchy" className="pt-4">
             <PharmacistHierarchyManagement 
+              currentUser={currentUser} 
+            />
+          </TabsContent>
+        )}
+        {userRole === 'pharmacist' && (
+          <TabsContent value="clinicHierarchy" className="pt-4">
+            <ClinicHierarchyManagement 
               currentUser={currentUser} 
             />
           </TabsContent>
