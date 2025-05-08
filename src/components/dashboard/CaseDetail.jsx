@@ -292,9 +292,9 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-500">
-                  EMR Number
+                  EMR Number(s)
                 </label>
-                <p className="font-medium">{caseData.emrNumber || "N/A"}</p>
+                <p className="font-medium">{caseData.emrNumber || (caseData.emrNumbers.join(", ") || "N/A")}</p>
               </div>
 
               <div>
@@ -313,16 +313,16 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
 
               <div>
                 <label className="text-sm font-medium text-gray-500">
-                  Patient Name
+                  Patient Name(s)
                 </label>
-                <p>{caseData.patientName || "N/A"}</p>
+                <p>{caseData.patientName || (caseData.patientNames.join(", ") || "N/A")}</p>
               </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-500">
-                  Chief Complaint
+                  Chief Complaint(s)
                 </label>
-                <p>{caseData.chiefComplaint || "N/A"}</p>
+                <p>{caseData.chiefComplaint || (caseData.chiefComplaints.join(", ") || "N/A")}</p>
               </div>
             </div>
 

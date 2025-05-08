@@ -1,9 +1,35 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import DoctorTableRow from "./DoctorTable";
+import { Button } from "@/components/ui/button";
+import { 
+  ChevronLeft, 
+  ChevronRight,
+} from "lucide-react";
 
 const DoctorTable = ({ doctorPharmacist, doctors, onViewDoctorDetails }) => {
 
-  
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(8);
+  const [selectedCase, setSelectedCase] = useState(null);
+
+  const totalPages = Math.ceil(doctors.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedDoctors = doctors.slice(startIndex, endIndex);
+  const handleViewDetails = (doctor) => {
+    setSelectedCase(doctor);
+    onViewDoctorDetails(doctor);
+  };
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };    
 
   const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
   return (
@@ -56,7 +82,7 @@ const DoctorTable = ({ doctorPharmacist, doctors, onViewDoctorDetails }) => {
                 </td>
               </tr>
             ) : (
-              doctors.map((doctor) => (
+              doctors.slice(startIndex, endIndex).map((doctor) => (
                 <DoctorTableRow 
                   key={doctor.id} 
                   doctor={doctor} 
@@ -66,6 +92,33 @@ const DoctorTable = ({ doctorPharmacist, doctors, onViewDoctorDetails }) => {
             )}
           </tbody>
         </table>
+
+        <div className="flex justify-between items-center px-6 py-4 border-t">
+          <div className="text-sm text-gray-500">
+            Showing {itemsPerPage * (currentPage - 1) + 1} to {Math.min(itemsPerPage * currentPage, doctors.length)} of {doctors.length} {doctorPharmacist}s
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={prevPage}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={nextPage}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -731,6 +731,8 @@ const shouldIncludeCase = (caseData, filters) => {
   }
 
   // EMR number search - improved handling
+
+  // TODO: over here handle array
   if (filters.searchTerm && filters.searchTerm.trim() !== "") {
     const searchTerm = filters.searchTerm.toLowerCase().trim();
 
@@ -738,6 +740,7 @@ const shouldIncludeCase = (caseData, filters) => {
       // Check all possible EMR-related fields
       const possibleEmrFields = [
         "emrNumber",
+        "emrNumbers",
         "EMRNumber",
         "emr_number",
         "caseNumber",
@@ -757,6 +760,18 @@ const shouldIncludeCase = (caseData, filters) => {
         // Handle number fields
         if (typeof caseData[fieldName] === "number") {
           return caseData[fieldName].toString() === searchTerm;
+        }
+
+        // Handle array fields
+        if (Array.isArray(caseData[fieldName])) {
+          caseData[fieldName].some((item) => {
+            if (typeof item === "string") {
+              return item.toLowerCase() === searchTerm;
+            } else if (typeof item === "number") {
+              return item.toString() === searchTerm;
+            }
+            return false; // Skip non-string/number items
+          })
         }
 
         return false;
