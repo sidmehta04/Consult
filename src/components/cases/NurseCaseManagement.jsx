@@ -44,7 +44,7 @@ import {
   onSnapshot,
   updateDoc,
   serverTimestamp,
-  getDoc
+  getDoc,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import NurseCaseForm from "./NurseCaseForm";
@@ -160,13 +160,43 @@ const NurseCaseManagement = ({ currentUser }) => {
     setLoading(true);
 
     try {
-      const formData = {
-        patientName: e.target.patientName.value,
-        emrNumber: e.target.emrNumber.value,
-        chiefComplaint: e.target.chiefComplaint.value,
-        contactInfo: e.target.contactInfo.value,
-        notes: e.target.notes.value,
-      };
+      // Check if we're dealing with a multi-patient case or legacy single patient
+      const isMultiPatient = Array.isArray(editCase.caseData.patientNames);
+
+      let formData;
+
+      if (isMultiPatient) {
+        // Handle multi-patient case
+        const patientCount = editCase.caseData.patientNames.length;
+        const patientNames = [];
+        const emrNumbers = [];
+        const chiefComplaints = [];
+
+        // Gather patient data from form
+        for (let i = 0; i < patientCount; i++) {
+          patientNames.push(e.target[`patientNames[${i}]`].value);
+          emrNumbers.push(e.target[`emrNumbers[${i}]`].value);
+          chiefComplaints.push(e.target[`chiefComplaints[${i}]`].value);
+        }
+
+        formData = {
+          patientNames,
+          emrNumbers,
+          chiefComplaints,
+          patientCount,
+          contactInfo: e.target.contactInfo.value,
+          notes: e.target.notes.value,
+        };
+      } else {
+        // Handle legacy single patient case
+        formData = {
+          patientName: e.target.patientName.value,
+          emrNumber: e.target.emrNumber.value,
+          chiefComplaint: e.target.chiefComplaint.value,
+          contactInfo: e.target.contactInfo.value,
+          notes: e.target.notes.value,
+        };
+      }
 
       const caseRef = doc(firestore, "cases", editCase.caseData.id);
       await updateDoc(caseRef, {
@@ -440,9 +470,9 @@ const NurseCaseManagement = ({ currentUser }) => {
               <Table>
                 <TableHeader className="bg-gray-50">
                   <TableRow>
-                    <TableHead className="font-semibold">Patient</TableHead>
-                    <TableHead className="font-semibold">EMR</TableHead>
-                    <TableHead className="font-semibold">Complaint</TableHead>
+                    <TableHead className="font-semibold">Patients</TableHead>
+                    <TableHead className="font-semibold">EMRs</TableHead>
+                    <TableHead className="font-semibold">Complaints</TableHead>
                     <TableHead className="font-semibold">Assigned To</TableHead>
                     <TableHead className="font-semibold">Type</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
@@ -454,14 +484,68 @@ const NurseCaseManagement = ({ currentUser }) => {
                   {cases.map((caseItem) => (
                     <TableRow key={caseItem.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 text-gray-400 mr-2" />
-                          {caseItem.patientName}
+                        <div className="flex flex-col space-y-1">
+                          {Array.isArray(caseItem.patientNames) ? (
+                            caseItem.patientNames
+                              .map((name, idx) => (
+                                <div key={idx} className="flex items-center">
+                                  <User className="h-4 w-4 text-gray-400 mr-2" />
+                                  {name}{" "}
+                                  {idx === 0 && caseItem.patientCount > 1 && (
+                                    <Badge
+                                      variant="outline"
+                                      className="ml-2 text-xs"
+                                    >
+                                      +{caseItem.patientCount - 1} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))
+                              .slice(0, 1) // Only show the first patient in the table with a badge
+                          ) : (
+                            // Fallback for legacy cases with single patient
+                            <div className="flex items-center">
+                              <User className="h-4 w-4 text-gray-400 mr-2" />
+                              {caseItem.patientName}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>{caseItem.emrNumber}</TableCell>
+                      <TableCell>
+                        {Array.isArray(caseItem.emrNumbers) ? (
+                          <div className="flex flex-col space-y-1">
+                            {caseItem.emrNumbers.slice(0, 1).map((emr, idx) => (
+                              <div key={idx}>{emr}</div>
+                            ))}
+                            {caseItem.emrNumbers.length > 1 && (
+                              <span className="text-xs text-gray-500">
+                                +{caseItem.emrNumbers.length - 1} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          caseItem.emrNumber
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-[150px] truncate">
-                        {caseItem.chiefComplaint}
+                        {Array.isArray(caseItem.chiefComplaints) ? (
+                          <div className="flex flex-col space-y-1">
+                            {caseItem.chiefComplaints
+                              .slice(0, 1)
+                              .map((complaint, idx) => (
+                                <div key={idx} className="truncate">
+                                  {complaint}
+                                </div>
+                              ))}
+                            {caseItem.chiefComplaints.length > 1 && (
+                              <span className="text-xs text-gray-500">
+                                +{caseItem.chiefComplaints.length - 1} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          caseItem.chiefComplaint
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -727,27 +811,63 @@ const NurseCaseManagement = ({ currentUser }) => {
 
           {confirmComplete.caseData && (
             <div className="space-y-3 py-3 border-y border-gray-100">
-              <div className="flex items-center">
-                <User className="h-4 w-4 text-gray-400 mr-2" />
-                <span className="font-medium">Patient:</span>{" "}
-                <span className="ml-2">
-                  {confirmComplete.caseData.patientName}
-                </span>
-              </div>
-              <div className="flex items-center">
-                <ClipboardList className="h-4 w-4 text-gray-400 mr-2" />
-                <span className="font-medium">EMR:</span>{" "}
-                <span className="ml-2">
-                  {confirmComplete.caseData.emrNumber}
-                </span>
-              </div>
-              <div className="flex items-start">
-                <AlertCircle className="h-4 w-4 text-gray-400 mr-2 mt-0.5" />
-                <span className="font-medium">Complaint:</span>{" "}
-                <span className="ml-2">
-                  {confirmComplete.caseData.chiefComplaint}
-                </span>
-              </div>
+              {/* Patient information */}
+              {Array.isArray(confirmComplete.caseData?.patientNames) ? (
+                <div className="space-y-2">
+                  <div className="font-medium flex items-center">
+                    <User className="h-4 w-4 text-gray-400 mr-2" />
+                    Patients ({confirmComplete.caseData.patientCount}):
+                  </div>
+                  <div className="ml-6 space-y-2 max-h-32 overflow-y-auto">
+                    {confirmComplete.caseData.patientNames.map((name, idx) => (
+                      <div
+                        key={idx}
+                        className="flex flex-col text-sm border-l-2 border-gray-200 pl-2"
+                      >
+                        <div>
+                          <span className="font-medium">
+                            Patient #{idx + 1}:
+                          </span>{" "}
+                          {name}
+                        </div>
+                        <div>
+                          <span className="font-medium">EMR:</span>{" "}
+                          {confirmComplete.caseData.emrNumbers[idx]}
+                        </div>
+                        <div>
+                          <span className="font-medium">Complaint:</span>{" "}
+                          {confirmComplete.caseData.chiefComplaints[idx]}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                // Legacy single patient display
+                <>
+                  <div className="flex items-center">
+                    <User className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="font-medium">Patient:</span>{" "}
+                    <span className="ml-2">
+                      {confirmComplete.caseData.patientName}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <ClipboardList className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="font-medium">EMR:</span>{" "}
+                    <span className="ml-2">
+                      {confirmComplete.caseData.emrNumber}
+                    </span>
+                  </div>
+                  <div className="flex items-start">
+                    <AlertCircle className="h-4 w-4 text-gray-400 mr-2 mt-0.5" />
+                    <span className="font-medium">Complaint:</span>{" "}
+                    <span className="ml-2">
+                      {confirmComplete.caseData.chiefComplaint}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex items-center">
                 <Clock className="h-4 w-4 text-gray-400 mr-2" />
                 <span className="font-medium">Created At:</span>{" "}
@@ -875,37 +995,95 @@ const NurseCaseManagement = ({ currentUser }) => {
 
           {editCase.caseData && (
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="editPatientName">Patient Name</Label>
-                    <Input
-                      id="editPatientName"
-                      name="patientName"
-                      defaultValue={editCase.caseData.patientName}
-                      className="focus:border-blue-300 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editEmrNumber">EMR Number</Label>
-                    <Input
-                      id="editEmrNumber"
-                      name="emrNumber"
-                      defaultValue={editCase.caseData.emrNumber}
-                      className="focus:border-blue-300 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
+              <div className="space-y-4">
+                {Array.isArray(editCase.caseData.patientNames) ? (
+                  // Multiple patients case
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">
+                      Multiple Patients ({editCase.caseData.patientNames.length}
+                      )
+                    </h3>
 
-                <div className="space-y-2">
-                  <Label htmlFor="editChiefComplaint">Chief Complaint</Label>
-                  <Input
-                    id="editChiefComplaint"
-                    name="chiefComplaint"
-                    defaultValue={editCase.caseData.chiefComplaint}
-                    className="focus:border-blue-300 focus:ring-blue-500"
-                  />
-                </div>
+                    {editCase.caseData.patientNames.map((name, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 border border-gray-200 rounded-md"
+                      >
+                        <h4 className="font-medium mb-3">Patient #{idx + 1}</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                          <div className="space-y-2">
+                            <Label htmlFor={`editPatientName-${idx}`}>
+                              Patient Name
+                            </Label>
+                            <Input
+                              id={`editPatientName-${idx}`}
+                              name={`patientNames[${idx}]`}
+                              defaultValue={editCase.caseData.patientNames[idx]}
+                              className="focus:border-blue-300 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`editEmrNumber-${idx}`}>
+                              EMR Number
+                            </Label>
+                            <Input
+                              id={`editEmrNumber-${idx}`}
+                              name={`emrNumbers[${idx}]`}
+                              defaultValue={editCase.caseData.emrNumbers[idx]}
+                              className="focus:border-blue-300 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`editChiefComplaint-${idx}`}>
+                            Chief Complaint
+                          </Label>
+                          <Input
+                            id={`editChiefComplaint-${idx}`}
+                            name={`chiefComplaints[${idx}]`}
+                            defaultValue={
+                              editCase.caseData.chiefComplaints[idx]
+                            }
+                            className="focus:border-blue-300 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  // Legacy single patient case
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="editPatientName">Patient Name</Label>
+                      <Input
+                        id="editPatientName"
+                        name="patientName"
+                        defaultValue={editCase.caseData.patientName}
+                        className="focus:border-blue-300 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editEmrNumber">EMR Number</Label>
+                      <Input
+                        id="editEmrNumber"
+                        name="emrNumber"
+                        defaultValue={editCase.caseData.emrNumber}
+                        className="focus:border-blue-300 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editChiefComplaint">
+                        Chief Complaint
+                      </Label>
+                      <Input
+                        id="editChiefComplaint"
+                        name="chiefComplaint"
+                        defaultValue={editCase.caseData.chiefComplaint}
+                        className="focus:border-blue-300 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="editContactInfo">

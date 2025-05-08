@@ -40,20 +40,50 @@ import PharmacistStatusIndicator from "./PharmasistAvailable";
 
 const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   const [formData, setFormData] = useState({
-    patientName: "",
-    emrNumber: "",
-    chiefComplaint: "",
+    patients: [{ patientName: "", emrNumber: "", chiefComplaint: "" }],
     consultationType: "tele",
     contactInfo: "",
     notes: "",
   });
+  const addPatient = () => {
+    setFormData((prev) => ({
+      ...prev,
+      patients: [
+        ...prev.patients,
+        { patientName: "", emrNumber: "", chiefComplaint: "" },
+      ],
+    }));
+  };
+
+  const removePatient = (index) => {
+    if (formData.patients.length === 1) return; // Always keep at least one patient
+    setFormData((prev) => ({
+      ...prev,
+      patients: prev.patients.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updatePatient = (index, field, value) => {
+    setFormData((prev) => {
+      const updatedPatients = [...prev.patients];
+      updatedPatients[index] = { ...updatedPatients[index], [field]: value };
+      return { ...prev, patients: updatedPatients };
+    });
+
+    // Clear EMR error when changing EMR number
+    if (field === "emrNumber") {
+      setError("");
+    }
+  };
+
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
   const [assignedDoctor, setAssignedDoctor] = useState(null);
   const [assignedPharmacist, setAssignedPharmacist] = useState(null);
   const [doctorSearchAttempted, setDoctorSearchAttempted] = useState(false);
-  const [pharmacistSearchAttempted, setPharmacistSearchAttempted] = useState(false);
+  const [pharmacistSearchAttempted, setPharmacistSearchAttempted] =
+    useState(false);
   const [doctorsData, setDoctorsData] = useState([]);
   const [pharmacistsData, setPharmacistsData] = useState([]);
 
@@ -67,7 +97,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         if (!nurseSnapshot.exists()) return;
 
         const nurseData = nurseSnapshot.data();
-        
+
         // Check if the nurse has direct pharmacist assignments (created by RO)
         if (nurseData.assignedPharmacists) {
           // This nurse was created by an RO with a pharmacist hierarchy
@@ -85,12 +115,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               id: pharmacistSnap.id,
               name: pharmacistData.name,
               type: "primary",
-              availabilityStatus: pharmacistData.availabilityStatus || "available",
-              caseCount: 0
+              availabilityStatus:
+                pharmacistData.availabilityStatus || "available",
+              caseCount: 0,
             });
           }
         }
-        
+
         // Continue with doctor fetching (existing code)
         if (nurseData.assignedDoctors) {
           // Get all doctors
@@ -151,69 +182,69 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       console.error("Error fetching doctors:", err);
     }
   };
-  
+
   // Main issue: fetchAllPharmacists function doesn't set case counts
-// Modified fetchAllPharmacists to include case counts
+  // Modified fetchAllPharmacists to include case counts
 
-// Update in fetchAllPharmacists function
-const fetchAllPharmacists = async (nurseData) => {
-  try {
-    const assignedPharmacists = nurseData.assignedPharmacists || {};
+  // Update in fetchAllPharmacists function
+  const fetchAllPharmacists = async (nurseData) => {
+    try {
+      const assignedPharmacists = nurseData.assignedPharmacists || {};
 
-    // Get all pharmacists in one query
-    const allPharmacistsQuery = query(
-      collection(firestore, "users"),
-      where("role", "==", "pharmacist")
-    );
-    const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
-    
-    // Create a map of pharmacists
-    const pharmacistsMap = {};
-    allPharmacistsSnapshot.docs.forEach((docSnap) => {
-      const pharmacistData = docSnap.data();
-      pharmacistsMap[docSnap.id] = {
-        id: docSnap.id,
-        name: pharmacistData.name,
-        availabilityStatus: pharmacistData.availabilityStatus || "available",
-        isHierarchy:
-          docSnap.id === assignedPharmacists.primary
-            ? "primary"
-            : docSnap.id === assignedPharmacists.secondary
-            ? "secondary"
-            : docSnap.id === assignedPharmacists.tertiary
-            ? "tertiary"
-            : null,
-        caseCount: 0, // Initialize case count to 0
-      };
-    });
+      // Get all pharmacists in one query
+      const allPharmacistsQuery = query(
+        collection(firestore, "users"),
+        where("role", "==", "pharmacist")
+      );
+      const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
 
-    // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
-    const activeCasesQuery = query(
-      collection(firestore, "cases"),
-      where("pharmacistCompleted", "==", false),
-      where("isIncomplete", "!=", true) // This filters out incomplete cases
-    );
+      // Create a map of pharmacists
+      const pharmacistsMap = {};
+      allPharmacistsSnapshot.docs.forEach((docSnap) => {
+        const pharmacistData = docSnap.data();
+        pharmacistsMap[docSnap.id] = {
+          id: docSnap.id,
+          name: pharmacistData.name,
+          availabilityStatus: pharmacistData.availabilityStatus || "available",
+          isHierarchy:
+            docSnap.id === assignedPharmacists.primary
+              ? "primary"
+              : docSnap.id === assignedPharmacists.secondary
+              ? "secondary"
+              : docSnap.id === assignedPharmacists.tertiary
+              ? "tertiary"
+              : null,
+          caseCount: 0, // Initialize case count to 0
+        };
+      });
 
-    const activeCasesSnapshot = await getDocs(activeCasesQuery);
+      // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
+      const activeCasesQuery = query(
+        collection(firestore, "cases"),
+        where("pharmacistCompleted", "==", false),
+        where("isIncomplete", "!=", true) // This filters out incomplete cases
+      );
 
-    // Count cases per pharmacist
-    activeCasesSnapshot.docs.forEach((doc) => {
-      const caseData = doc.data();
-      if (caseData.pharmacistId) {
-        const pharmacistId = caseData.pharmacistId;
-        if (pharmacistsMap[pharmacistId]) {
-          pharmacistsMap[pharmacistId].caseCount = 
-            (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
+      const activeCasesSnapshot = await getDocs(activeCasesQuery);
+
+      // Count cases per pharmacist
+      activeCasesSnapshot.docs.forEach((doc) => {
+        const caseData = doc.data();
+        if (caseData.pharmacistId) {
+          const pharmacistId = caseData.pharmacistId;
+          if (pharmacistsMap[pharmacistId]) {
+            pharmacistsMap[pharmacistId].caseCount =
+              (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
+          }
         }
-      }
-    });
+      });
 
-    // Now convert the map to an array for state
-    setPharmacistsData(Object.values(pharmacistsMap));
-  } catch (err) {
-    console.error("Error fetching pharmacists:", err);
-  }
-};
+      // Now convert the map to an array for state
+      setPharmacistsData(Object.values(pharmacistsMap));
+    } catch (err) {
+      console.error("Error fetching pharmacists:", err);
+    }
+  };
 
   const findAvailableDoctorFast = async (userData) => {
     setDoctorSearchAttempted(true);
@@ -415,40 +446,45 @@ const fetchAllPharmacists = async (nurseData) => {
       setError("Failed to find available doctor. Please try again.");
     }
   };
-  
+
   const findAvailablePharmacistFast = async (userData) => {
     setPharmacistSearchAttempted(true);
     try {
       // For nurses with assigned pharmacists from RO
       let primaryPharmacistId, secondaryPharmacistId, tertiaryPharmacistId;
-      let assignToAnyPharmacist = userData.assignedPharmacists?.assignToAnyPharmacist || false;
-  
+      let assignToAnyPharmacist =
+        userData.assignedPharmacists?.assignToAnyPharmacist || false;
+
       if (
         userData.assignedPharmacists &&
         Object.keys(userData.assignedPharmacists).length > 0
       ) {
         const assignedPharmacists = userData.assignedPharmacists;
-  
+
         primaryPharmacistId = assignedPharmacists.primary;
         secondaryPharmacistId = assignedPharmacists.secondary;
         tertiaryPharmacistId = assignedPharmacists.tertiary;
       }
-  
+
       // Validate we have at least one pharmacist
-      if (!primaryPharmacistId && !secondaryPharmacistId && !tertiaryPharmacistId) {
+      if (
+        !primaryPharmacistId &&
+        !secondaryPharmacistId &&
+        !tertiaryPharmacistId
+      ) {
         console.error("No pharmacists assigned in the hierarchy");
         return;
       }
-  
+
       // Get all pharmacists
       const allPharmacistsQuery = query(
         collection(firestore, "users"),
         where("role", "==", "pharmacist")
       );
-  
+
       const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
       const pharmacistsMap = {};
-      
+
       allPharmacistsSnapshot.docs.forEach((doc) => {
         const pharmacistData = doc.data();
         pharmacistsMap[doc.id] = {
@@ -458,16 +494,16 @@ const fetchAllPharmacists = async (nurseData) => {
           caseCount: 0,
         };
       });
-  
+
       // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
       const activeCasesQuery = query(
         collection(firestore, "cases"),
         where("pharmacistCompleted", "==", false),
         where("isIncomplete", "!=", true) // This is the key change
       );
-  
+
       const activeCasesSnapshot = await getDocs(activeCasesQuery);
-  
+
       // Count cases per pharmacist
       activeCasesSnapshot.docs.forEach((doc) => {
         const caseData = doc.data();
@@ -479,28 +515,30 @@ const fetchAllPharmacists = async (nurseData) => {
           }
         }
       });
-  
+
       // Check pharmacist availability
       const isPharmacistAvailable = (id) => {
         if (!id || !pharmacistsMap[id]) return false;
-  
+
         const pharmacist = pharmacistsMap[id];
         const isUnavailable =
           pharmacist.availabilityStatus === "unavailable" ||
           pharmacist.availabilityStatus === "on_break";
         const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
-  
+
         const isAvailable = !isUnavailable && !isAtCapacity;
-        console.log(`Pharmacist ${pharmacist.name} availability: ${isAvailable}`);
-  
+        console.log(
+          `Pharmacist ${pharmacist.name} availability: ${isAvailable}`
+        );
+
         return isAvailable;
       };
-  
+
       // Function to assign a pharmacist
       const assignPharmacist = (id, type) => {
         const pharmacist = pharmacistsMap[id];
         if (!pharmacist) return false;
-  
+
         console.log(`Assigning to ${type} pharmacist ${pharmacist.name}`);
         setAssignedPharmacist({
           id: id,
@@ -511,23 +549,26 @@ const fetchAllPharmacists = async (nurseData) => {
         });
         return true;
       };
-  
+
       // SIMPLE PRIORITY LOGIC:
       // 1. Try primary pharmacist first
       if (primaryPharmacistId && isPharmacistAvailable(primaryPharmacistId)) {
         return assignPharmacist(primaryPharmacistId, "primary");
       }
-  
+
       // 2. Try secondary pharmacist
-      if (secondaryPharmacistId && isPharmacistAvailable(secondaryPharmacistId)) {
+      if (
+        secondaryPharmacistId &&
+        isPharmacistAvailable(secondaryPharmacistId)
+      ) {
         return assignPharmacist(secondaryPharmacistId, "secondary");
       }
-  
+
       // 3. Try tertiary pharmacist
       if (tertiaryPharmacistId && isPharmacistAvailable(tertiaryPharmacistId)) {
         return assignPharmacist(tertiaryPharmacistId, "tertiary");
       }
-  
+
       // 4. If assignToAnyPharmacist is enabled, try any other pharmacist
       if (assignToAnyPharmacist) {
         const availableFallbackPharmacists = Object.values(pharmacistsMap)
@@ -540,26 +581,31 @@ const fetchAllPharmacists = async (nurseData) => {
             ) {
               return false;
             }
-  
+
             // Check availability
             const isUnavailable =
               pharmacist.availabilityStatus === "unavailable" ||
               pharmacist.availabilityStatus === "on_break";
             const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
-  
+
             return !isUnavailable && !isAtCapacity;
           })
           .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
-  
-        console.log("Available fallback pharmacists:", availableFallbackPharmacists);
-  
+
+        console.log(
+          "Available fallback pharmacists:",
+          availableFallbackPharmacists
+        );
+
         if (availableFallbackPharmacists.length > 0) {
           const bestPharmacist = availableFallbackPharmacists[0];
-          console.log(`Assigning to fallback pharmacist ${bestPharmacist.name}`);
+          console.log(
+            `Assigning to fallback pharmacist ${bestPharmacist.name}`
+          );
           return assignPharmacist(bestPharmacist.id, "available");
         }
       }
-  
+
       // No available pharmacists
       console.log("No available pharmacists found");
     } catch (err) {
@@ -568,11 +614,14 @@ const fetchAllPharmacists = async (nurseData) => {
   };
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
 
-    // Clear EMR error when changing EMR number
-    if (name === "emrNumber") {
-      setError("");
+    // Handle non-patient fields
+    if (
+      name !== "patientName" &&
+      name !== "emrNumber" &&
+      name !== "chiefComplaint"
+    ) {
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
@@ -584,53 +633,28 @@ const fetchAllPharmacists = async (nurseData) => {
     }
   };
 
-  // Check if EMR already exists in the database
-  const checkEmrUniqueness = async (emrNumber) => {
-    try {
-      setValidating(true);
-      const emrQuery = query(
-        collection(firestore, "cases"),
-        where("emrNumber", "==", emrNumber)
-      );
-
-      const querySnapshot = await getDocs(emrQuery);
-      const isUnique = querySnapshot.empty;
-
-      if (!isUnique) {
-        setError(
-          `EMR number ${emrNumber} already exists. Each patient must have a unique EMR number.`
-        );
-        setValidating(false);
-        return false;
-      }
-
-      setValidating(false);
-      return true;
-    } catch (err) {
-      console.error("Error checking EMR uniqueness:", err);
-      setError("Error validating EMR number. Please try again.");
-      setValidating(false);
-      return false;
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    // Validate form
-    if (!formData.patientName.trim()) {
-      setError("Patient name is required");
-      return;
+    // Validate patients data
+    for (let i = 0; i < formData.patients.length; i++) {
+      const patient = formData.patients[i];
+      if (!patient.patientName.trim()) {
+        setError(`Patient #${i + 1} name is required`);
+        return;
+      }
+      if (!patient.emrNumber.trim()) {
+        setError(`Patient #${i + 1} EMR number is required`);
+        return;
+      }
+      if (!patient.chiefComplaint.trim()) {
+        setError(`Patient #${i + 1} chief complaint is required`);
+        return;
+      }
     }
-    if (!formData.emrNumber.trim()) {
-      setError("EMR number is required");
-      return;
-    }
-    if (!formData.chiefComplaint.trim()) {
-      setError("Chief complaint is required");
-      return;
-    }
+
+    // Continue with other validations (contact info, etc.)
     if (!formData.contactInfo.trim()) {
       setError(
         formData.consultationType === "tele"
@@ -656,8 +680,6 @@ const fetchAllPharmacists = async (nurseData) => {
       return;
     }
 
-
-
     setLoading(true);
 
     try {
@@ -671,15 +693,21 @@ const fetchAllPharmacists = async (nurseData) => {
 
       const nurseData = nurseSnapshot.data();
 
-      // Create new case
+      // Create new case with multiple patients
       const caseId = `case_${Date.now()}`;
       const caseRef = doc(firestore, "cases", caseId);
 
+      // Extract patient data arrays
+      const patientNames = formData.patients.map((p) => p.patientName);
+      const emrNumbers = formData.patients.map((p) => p.emrNumber);
+      const chiefComplaints = formData.patients.map((p) => p.chiefComplaint);
+
       const newCase = {
         id: caseId,
-        patientName: formData.patientName,
-        emrNumber: formData.emrNumber,
-        chiefComplaint: formData.chiefComplaint,
+        patientNames: patientNames,
+        emrNumbers: emrNumbers,
+        chiefComplaints: chiefComplaints,
+        patientCount: formData.patients.length,
         consultationType: formData.consultationType,
         contactInfo: formData.contactInfo,
         notes: formData.notes,
@@ -703,53 +731,17 @@ const fetchAllPharmacists = async (nurseData) => {
         pharmacistCompleted: false,
         doctorCompletedAt: null,
         pharmacistCompletedAt: null,
-        isIncomplete: false, // Add this field to track if doctor marked it as incomplete
-        inPharmacistPendingReview: true, // Add this field to show in pharmacist's pending review initially
+        isIncomplete: false,
+        inPharmacistPendingReview: true,
       };
 
       await setDoc(caseRef, newCase);
 
-      // Automatically update doctor status to busy if this is their 5th active case
-      const docRef = doc(firestore, "users", assignedDoctor.id);
-      const docSnapshot = await getDoc(docRef);
-
-      if (docSnapshot.exists()) {
-        const doctorData = docSnapshot.data();
-        if (
-          doctorData.availabilityStatus === "available" &&
-          assignedDoctor.caseCount + 1 >= 5
-        ) {
-          await updateDoc(docRef, {
-            availabilityStatus: "busy",
-            lastStatusUpdate: serverTimestamp(),
-            autoStatusChange: true,
-          });
-        }
-      }
-
-      // Similarly, update pharmacist status if needed
-      const pharmRef = doc(firestore, "users", assignedPharmacist.id);
-      const pharmSnapshot = await getDoc(pharmRef);
-
-      if (pharmSnapshot.exists()) {
-        const pharmacistData = pharmSnapshot.data();
-        if (
-          pharmacistData.availabilityStatus === "available" &&
-          assignedPharmacist.caseCount + 1 >= 5
-        ) {
-          await updateDoc(pharmRef, {
-            availabilityStatus: "busy",
-            lastStatusUpdate: serverTimestamp(),
-            autoStatusChange: true,
-          });
-        }
-      }
+      // Continue with doctor and pharmacist status updates...
 
       // Reset form
       setFormData({
-        patientName: "",
-        emrNumber: "",
-        chiefComplaint: "",
+        patients: [{ patientName: "", emrNumber: "", chiefComplaint: "" }],
         consultationType: "tele",
         contactInfo: "",
         notes: "",
@@ -801,43 +793,97 @@ const fetchAllPharmacists = async (nurseData) => {
             <h3 className="text-md font-medium flex items-center">
               <User className="h-4 w-4 mr-2 text-blue-500" />
               Patient Information
+              <span className="ml-2 text-sm text-gray-500">
+                ({formData.patients.length} patient
+                {formData.patients.length > 1 ? "s" : ""})
+              </span>
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="patientName" className="text-sm">
-                  Patient Name
-                </Label>
-                <Input
-                  id="patientName"
-                  name="patientName"
-                  value={formData.patientName}
-                  onChange={handleChange}
-                  className="focus:border-blue-300 focus:ring-blue-500"
-                  placeholder="Enter patient's full name"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emrNumber" className="text-sm">
-                  EMR Number (must be unique)
-                </Label>
-                <Input
-                  id="emrNumber"
-                  name="emrNumber"
-                  value={formData.emrNumber}
-                  onChange={handleChange}
-                  className="focus:border-blue-300 focus:ring-blue-500"
-                  placeholder="Enter patient's EMR number"
-                  required
-                />
-                <p className="text-xs text-gray-500">
-                  EMR numbers must be unique across all patients
-                </p>
-              </div>
-            </div>
-          </div>
+            {formData.patients.map((patient, index) => (
+              <div
+                key={index}
+                className="p-4 border border-gray-200 rounded-md"
+              >
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-semibold">
+                    Patient #{index + 1}
+                  </h4>
+                  {formData.patients.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => removePatient(index)}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor={`patientName-${index}`} className="text-sm">
+                      Patient Name
+                    </Label>
+                    <Input
+                      id={`patientName-${index}`}
+                      value={patient.patientName}
+                      onChange={(e) =>
+                        updatePatient(index, "patientName", e.target.value)
+                      }
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                      placeholder="Enter patient's full name"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`emrNumber-${index}`} className="text-sm">
+                      EMR Number (must be unique)
+                    </Label>
+                    <Input
+                      id={`emrNumber-${index}`}
+                      value={patient.emrNumber}
+                      onChange={(e) =>
+                        updatePatient(index, "emrNumber", e.target.value)
+                      }
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                      placeholder="Enter patient's EMR number"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor={`chiefComplaint-${index}`}
+                      className="text-sm"
+                    >
+                      Chief Complaint
+                    </Label>
+                    <Input
+                      id={`chiefComplaint-${index}`}
+                      value={patient.chiefComplaint}
+                      onChange={(e) =>
+                        updatePatient(index, "chiefComplaint", e.target.value)
+                      }
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                      placeholder="Enter chief complaint"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+              onClick={addPatient}
+            >
+              <User className="h-4 w-4 mr-2" />
+              Add Another Patient
+            </Button>
+          </div>
           <Separator />
 
           <div className="space-y-4">

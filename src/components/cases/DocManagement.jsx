@@ -530,10 +530,27 @@ const DoctorCaseManagement = ({ currentUser }) => {
             <div>
               <CardTitle className="flex items-center text-xl">
                 <User className="h-5 w-5 text-blue-600 mr-2" />
-                {currentCase.patientName}
+                {Array.isArray(currentCase.patientNames) ? (
+                  <>
+                    {currentCase.patientNames[0]}
+                    {currentCase.patientCount > 1 && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 text-xs bg-blue-50 text-blue-600"
+                      >
+                        +{currentCase.patientCount - 1} more
+                      </Badge>
+                    )}
+                  </>
+                ) : (
+                  currentCase.patientName
+                )}
               </CardTitle>
               <p className="text-sm text-gray-500 mt-1">
-                EMR: {currentCase.emrNumber}
+                Total Patients:{" "}
+                {Array.isArray(currentCase.patientNames)
+                  ? currentCase.patientCount
+                  : 1}
               </p>
             </div>
             <Badge className="text-sm bg-blue-100 text-blue-800 border-blue-200">
@@ -552,14 +569,54 @@ const DoctorCaseManagement = ({ currentUser }) => {
                 </h3>
 
                 <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                  <div className="flex items-start">
-                    <span className="font-medium text-gray-600 w-28">
-                      Chief Complaint:
-                    </span>
-                    <span className="text-gray-800">
-                      {currentCase.chiefComplaint}
-                    </span>
-                  </div>
+                  {Array.isArray(currentCase.patientNames) ? (
+                    <div className="mb-4 border-b pb-3 border-gray-200">
+                      <h4 className="font-medium text-blue-700 mb-2">
+                        Patient Information ({currentCase.patientCount})
+                      </h4>
+                      <div className="max-h-60 overflow-y-auto space-y-3">
+                        {currentCase.patientNames.map((name, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-white p-3 rounded border border-gray-100"
+                          >
+                            <div className="flex items-start">
+                              <span className="font-medium text-gray-600 w-28">
+                                Patient #{idx + 1}:
+                              </span>
+                              <span className="text-gray-800">{name}</span>
+                            </div>
+                            <div className="flex items-start">
+                              <span className="font-medium text-gray-600 w-28">
+                                EMR:
+                              </span>
+                              <span className="text-gray-800">
+                                {currentCase.emrNumbers[idx]}
+                              </span>
+                            </div>
+                            <div className="flex items-start">
+                              <span className="font-medium text-gray-600 w-28">
+                                Complaint:
+                              </span>
+                              <span className="text-gray-800">
+                                {currentCase.chiefComplaints[idx]}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start">
+                      <span className="font-medium text-gray-600 w-28">
+                        Chief Complaint:
+                      </span>
+                      <span className="text-gray-800">
+                        {currentCase.chiefComplaint}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-start">
                     <span className="font-medium text-gray-600 w-28">
                       Clinic:
@@ -834,11 +891,11 @@ const DoctorCaseManagement = ({ currentUser }) => {
                       <TableHeader className="bg-gray-50">
                         <TableRow>
                           <TableHead className="font-semibold">
-                            Patient
+                            Patients
                           </TableHead>
-                          <TableHead className="font-semibold">EMR</TableHead>
+                          <TableHead className="font-semibold">EMRs</TableHead>
                           <TableHead className="font-semibold">
-                            Complaint
+                            Complaints
                           </TableHead>
                           <TableHead className="font-semibold">
                             Clinic
@@ -859,14 +916,60 @@ const DoctorCaseManagement = ({ currentUser }) => {
                             className="hover:bg-gray-50"
                           >
                             <TableCell className="font-medium">
-                              <div className="flex items-center">
-                                <User className="h-4 w-4 text-gray-400 mr-2" />
-                                {caseItem.patientName}
+                              <div className="flex flex-col space-y-1">
+                                {Array.isArray(caseItem.patientNames) ? (
+                                  <>
+                                    <div className="flex items-center">
+                                      <User className="h-4 w-4 text-gray-400 mr-2" />
+                                      {caseItem.patientNames[0]}
+                                      {caseItem.patientCount > 1 && (
+                                        <Badge
+                                          variant="outline"
+                                          className="ml-2 text-xs"
+                                        >
+                                          +{caseItem.patientCount - 1} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center">
+                                    <User className="h-4 w-4 text-gray-400 mr-2" />
+                                    {caseItem.patientName}
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
-                            <TableCell>{caseItem.emrNumber}</TableCell>
+                            <TableCell>
+                              {Array.isArray(caseItem.emrNumbers) ? (
+                                <div className="flex flex-col space-y-1">
+                                  <div>{caseItem.emrNumbers[0]}</div>
+                                  {caseItem.emrNumbers.length > 1 && (
+                                    <span className="text-xs text-gray-500">
+                                      +{caseItem.emrNumbers.length - 1} more
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                caseItem.emrNumber
+                              )}
+                            </TableCell>{" "}
                             <TableCell className="max-w-[150px] truncate">
-                              {caseItem.chiefComplaint}
+                              {Array.isArray(caseItem.chiefComplaints) ? (
+                                <div className="flex flex-col space-y-1">
+                                  <div className="truncate">
+                                    {caseItem.chiefComplaints[0]}
+                                  </div>
+                                  {caseItem.chiefComplaints.length > 1 && (
+                                    <span className="text-xs text-gray-500">
+                                      +{caseItem.chiefComplaints.length - 1}{" "}
+                                      more
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                caseItem.chiefComplaint
+                              )}
                             </TableCell>
                             <TableCell>{caseItem.clinicName}</TableCell>
                             <TableCell>
@@ -978,23 +1081,18 @@ const DoctorCaseManagement = ({ currentUser }) => {
                       <TableHeader className="bg-gray-50">
                         <TableRow>
                           <TableHead className="font-semibold">
-                            Patient
+                            Patients
                           </TableHead>
-                          <TableHead className="font-semibold">EMR</TableHead>
+                          <TableHead className="font-semibold">EMRs</TableHead>
                           <TableHead className="font-semibold">
-                            Complaint
-                          </TableHead>
-                          <TableHead className="font-semibold">
-                            Contact Info
+                            Complaints
                           </TableHead>
                           <TableHead className="font-semibold">
                             Clinic
                           </TableHead>
+                          <TableHead className="font-semibold">Type</TableHead>
                           <TableHead className="font-semibold">
-                            Doctor
-                          </TableHead>
-                          <TableHead className="font-semibold">
-                            Status
+                            Created
                           </TableHead>
                           <TableHead className="font-semibold">
                             Actions
@@ -1008,15 +1106,64 @@ const DoctorCaseManagement = ({ currentUser }) => {
                             className="hover:bg-gray-50"
                           >
                             <TableCell className="font-medium">
-                              <div className="flex items-center">
-                                <User className="h-4 w-4 text-gray-400 mr-2" />
-                                {caseItem.patientName}
+                              <div className="flex flex-col space-y-1">
+                                {Array.isArray(caseItem.patientNames) ? (
+                                  <>
+                                    <div className="flex items-center">
+                                      <User className="h-4 w-4 text-gray-400 mr-2" />
+                                      {caseItem.patientNames[0]}
+                                      {caseItem.patientCount > 1 && (
+                                        <Badge
+                                          variant="outline"
+                                          className="ml-2 text-xs"
+                                        >
+                                          +{caseItem.patientCount - 1} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center">
+                                    <User className="h-4 w-4 text-gray-400 mr-2" />
+                                    {caseItem.patientName}
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
-                            <TableCell>{caseItem.emrNumber}</TableCell>
-                            <TableCell className="max-w-[150px] truncate">
-                              {caseItem.chiefComplaint}
+
+                            <TableCell>
+                              {Array.isArray(caseItem.emrNumbers) ? (
+                                <div className="flex flex-col space-y-1">
+                                  <div>{caseItem.emrNumbers[0]}</div>
+                                  {caseItem.emrNumbers.length > 1 && (
+                                    <span className="text-xs text-gray-500">
+                                      +{caseItem.emrNumbers.length - 1} more
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                caseItem.emrNumber
+                              )}
                             </TableCell>
+
+                            <TableCell className="max-w-[150px] truncate">
+                              {Array.isArray(caseItem.chiefComplaints) ? (
+                                <div className="flex flex-col space-y-1">
+                                  <div className="truncate">
+                                    {caseItem.chiefComplaints[0]}
+                                  </div>
+                                  {caseItem.chiefComplaints.length > 1 && (
+                                    <span className="text-xs text-gray-500">
+                                      +{caseItem.chiefComplaints.length - 1}{" "}
+                                      more
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                caseItem.chiefComplaint
+                              )}
+                            </TableCell>
+
                             <TableCell>{caseItem.contactInfo}</TableCell>
                             <TableCell>{caseItem.clinicName}</TableCell>
                             <TableCell>
