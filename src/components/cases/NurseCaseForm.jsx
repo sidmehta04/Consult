@@ -33,6 +33,7 @@ import {
   where,
   getDocs,
   updateDoc,
+  runTransaction,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import DoctorStatusIndicator from "./DocStatus";
@@ -249,7 +250,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   const findAvailableDoctorFast = async (userData) => {
     setDoctorSearchAttempted(true);
     try {
-      console.log("User data:", userData);
 
       // CRITICAL FIX: The function is receiving pharmacist data, not nurse data
       // For pharmacists, the doctor assignments are in doctorHierarchy array, not assignedDoctors object
@@ -262,7 +262,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         userData.assignedDoctors &&
         Object.keys(userData.assignedDoctors).length > 0
       ) {
-        console.log("Processing NURSE data with assignedDoctors object");
         const assignedDoctors = userData.assignedDoctors;
 
         primaryDoctorId = assignedDoctors.primary;
@@ -277,7 +276,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         userData.doctorHierarchy &&
         Array.isArray(userData.doctorHierarchy)
       ) {
-        console.log("Processing PHARMACIST data with doctorHierarchy array");
         // Extract doctors from the doctorHierarchy array
         primaryDoctorId = userData.doctorHierarchy[0];
         secondaryDoctorId = userData.doctorHierarchy[1];
@@ -288,13 +286,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return;
       }
 
-      console.log("Doctor IDs:", {
-        primaryDoctorId,
-        secondaryDoctorId,
-        tertiaryDoctorId,
-        assignToAnyDoctor,
-      });
-
+      
       // Validate we have at least one doctor
       if (!primaryDoctorId && !secondaryDoctorId && !tertiaryDoctorId) {
         console.error("No doctors assigned in the hierarchy");
@@ -311,7 +303,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       );
 
       const allDoctorsSnapshot = await getDocs(allDoctorsQuery);
-      console.log(`Found ${allDoctorsSnapshot.docs.length} doctors`);
 
       // Build doctors map
       const doctorsMap = {};
@@ -346,12 +337,27 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       });
 
       // Log doctor status
-      console.log("Available doctors:");
       Object.values(doctorsMap).forEach((doctor) => {
         console.log(
           `${doctor.name}: status=${doctor.availabilityStatus}, cases=${doctor.caseCount}`
         );
       });
+
+      // Ensure there's at least one available doctor
+      const anyAvailable = Object.values(doctorsMap).some(
+        (doctor) =>
+          doctor.availabilityStatus !== "unavailable" &&
+          doctor.availabilityStatus !== "on_break" &&
+          (doctor.caseCount || 0) < 5
+      );
+
+      if (!anyAvailable) {
+        console.error("No available doctors found in the system");
+        setError(
+          "All doctors are currently unavailable or at capacity. Please try again later."
+        );
+        return;
+      }
 
       // Store doctors data for UI
       setDoctorsData(Object.values(doctorsMap));
@@ -367,8 +373,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const isAtCapacity = (doctor.caseCount || 0) >= 5;
 
         const isAvailable = !isUnavailable && !isAtCapacity;
-        console.log(`Doctor ${doctor.name} availability: ${isAvailable}`);
 
+        
         return isAvailable;
       };
 
@@ -377,7 +383,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const doctor = doctorsMap[id];
         if (!doctor) return false;
 
-        console.log(`Assigning to ${type} doctor ${doctor.name}`);
         setAssignedDoctor({
           id: id,
           name: doctor.name,
@@ -427,7 +432,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           })
           .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
 
-        console.log("Available fallback doctors:", availableFallbackDoctors);
 
         if (availableFallbackDoctors.length > 0) {
           const bestDoctor = availableFallbackDoctors[0];
@@ -516,6 +520,32 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       });
 
+      // Log pharmacist status
+      Object.values(pharmacistsMap).forEach((pharmacist) => {
+        console.log(
+          `${pharmacist.name}: status=${pharmacist.availabilityStatus}, cases=${pharmacist.caseCount}`
+        );
+      });
+
+      // Ensure there's at least one available pharmacist
+      const anyAvailable = Object.values(pharmacistsMap).some(
+        (pharmacist) =>
+          pharmacist.availabilityStatus !== "unavailable" &&
+          pharmacist.availabilityStatus !== "on_break" &&
+          (pharmacist.caseCount || 0) < 5
+      );
+
+      if (!anyAvailable) {
+        console.error("No available pharmacists found in the system");
+        setError(
+          "All pharmacists are currently unavailable or at capacity. Please try again later."
+        );
+        return;
+      }
+
+      // Set pharmasist data for UI
+      setPharmacistsData(Object.values(pharmacistsMap));
+
       // Check pharmacist availability
       const isPharmacistAvailable = (id) => {
         if (!id || !pharmacistsMap[id]) return false;
@@ -527,9 +557,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
 
         const isAvailable = !isUnavailable && !isAtCapacity;
-        console.log(
-          `Pharmacist ${pharmacist.name} availability: ${isAvailable}`
-        );
+       
 
         return isAvailable;
       };
@@ -539,7 +567,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const pharmacist = pharmacistsMap[id];
         if (!pharmacist) return false;
 
-        console.log(`Assigning to ${type} pharmacist ${pharmacist.name}`);
         setAssignedPharmacist({
           id: id,
           name: pharmacist.name,
@@ -608,8 +635,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // No available pharmacists
       console.log("No available pharmacists found");
+      setError(
+        "No available pharmacists found. All pharmacists are unavailable or at capacity."
+      );
     } catch (err) {
       console.error("Error finding pharmacist:", err);
+      setError("Failed to find available pharmacist. Please try again.");
     }
   };
   const handleChange = (e) => {
@@ -654,7 +685,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       }
     }
 
-    // Continue with other validations (contact info, etc.)
+    // Continue with other validations
     if (!formData.contactInfo.trim()) {
       setError(
         formData.consultationType === "tele"
@@ -680,6 +711,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       return;
     }
 
+
     setLoading(true);
 
     try {
@@ -693,53 +725,149 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       const nurseData = nurseSnapshot.data();
 
-      // Create new case with multiple patients
+      // Create new case ID
       const caseId = `case_${Date.now()}`;
-      const caseRef = doc(firestore, "cases", caseId);
 
       // Extract patient data arrays
       const patientNames = formData.patients.map((p) => p.patientName);
       const emrNumbers = formData.patients.map((p) => p.emrNumber);
       const chiefComplaints = formData.patients.map((p) => p.chiefComplaint);
 
-      const newCase = {
-        id: caseId,
-        patientNames: patientNames,
-        emrNumbers: emrNumbers,
-        chiefComplaints: chiefComplaints,
-        patientCount: formData.patients.length,
-        consultationType: formData.consultationType,
-        contactInfo: formData.contactInfo,
-        notes: formData.notes,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        createdBy: currentUser.uid,
-        createdByName: currentUser.displayName || nurseData.name,
-        clinicId: currentUser.uid,
-        clinicName: nurseData.name,
-        assignedDoctors: {
-          primary: assignedDoctor.id,
-          primaryName: assignedDoctor.name,
-          primaryType: assignedDoctor.type,
-          primaryStatus: assignedDoctor.availabilityStatus,
-        },
-        pharmacistId: assignedPharmacist.id,
-        pharmacistName: assignedPharmacist.name,
-        pharmacistType: assignedPharmacist.type || "primary",
-        pharmacistStatus: assignedPharmacist.availabilityStatus,
-        doctorCompleted: false,
-        pharmacistCompleted: false,
-        doctorCompletedAt: null,
-        pharmacistCompletedAt: null,
-        isIncomplete: false,
-        inPharmacistPendingReview: true,
-      };
+      // Use a transaction to prevent race conditions with doctor assignments
+      await runTransaction(firestore, async (transaction) => {
+        // 1. Check doctor's current case count within the transaction
+        const doctorRef = doc(firestore, "users", assignedDoctor.id);
+        const doctorSnapshot = await transaction.get(doctorRef);
 
-      await setDoc(caseRef, newCase);
+        if (!doctorSnapshot.exists()) {
+          throw new Error("Doctor not found");
+        }
 
-      // Continue with doctor and pharmacist status updates...
+        const doctorData = doctorSnapshot.data();
 
-      // Reset form
+        // Query for active cases to get exact count
+        const activeCasesQuery = query(
+          collection(firestore, "cases"),
+          where("assignedDoctors.primary", "==", assignedDoctor.id),
+          where("doctorCompleted", "==", false)
+        );
+        const activeCasesSnapshot = await getDocs(activeCasesQuery);
+        const activeCount = activeCasesSnapshot.size;
+
+        // Check if doctor is actually at capacity or unavailable
+        const isAtCapacity = activeCount >= 5;
+        const isUnavailable =
+          doctorData.availabilityStatus === "unavailable" ||
+          doctorData.availabilityStatus === "on_break";
+
+        if (isAtCapacity || isUnavailable) {
+          // The doctor is at capacity, try fallback logic
+          // This would ideally try secondary, tertiary, or any available doctor
+          // For simplicity, we'll just throw an error for now
+          throw new Error(
+            `Doctor ${assignedDoctor.name} is ${
+              isAtCapacity ? "at full capacity" : "unavailable"
+            }. Please try again or select a different doctor.`
+          );
+        }
+
+        // 2. Check pharmacist capacity within the same transaction
+        const pharmRef = doc(firestore, "users", assignedPharmacist.id);
+        const pharmSnapshot = await transaction.get(pharmRef);
+
+        if (!pharmSnapshot.exists()) {
+          throw new Error("Pharmacist not found");
+        }
+
+        const pharmacistData = pharmSnapshot.data();
+
+        // Query for active pharmacist cases
+        const activePharmaQuery = query(
+          collection(firestore, "cases"),
+          where("pharmacistId", "==", assignedPharmacist.id),
+          where("pharmacistCompleted", "==", false),
+          where("isIncomplete", "!=", true)
+        );
+        const activePharmaSnapshot = await getDocs(activePharmaQuery);
+        const pharmActiveCount = activePharmaSnapshot.size;
+
+        // Check if pharmacist is at capacity
+        const isPharmAtCapacity = pharmActiveCount >= 5;
+        const isPharmUnavailable =
+          pharmacistData.availabilityStatus === "unavailable" ||
+          pharmacistData.availabilityStatus === "on_break";
+
+        if (isPharmAtCapacity || isPharmUnavailable) {
+          throw new Error(
+            `Pharmacist ${assignedPharmacist.name} is ${
+              isPharmAtCapacity ? "at full capacity" : "unavailable"
+            }. Please try again or select a different pharmacist.`
+          );
+        }
+
+        // 3. Create the case within the transaction
+        const newCase = {
+          id: caseId,
+          patientNames: patientNames,
+          emrNumbers: emrNumbers,
+          chiefComplaints: chiefComplaints,
+          patientCount: formData.patients.length,
+          consultationType: formData.consultationType,
+          contactInfo: formData.contactInfo,
+          notes: formData.notes,
+          status: "pending",
+          createdAt: serverTimestamp(),
+          createdBy: currentUser.uid,
+          createdByName: currentUser.displayName || nurseData.name,
+          clinicId: currentUser.uid,
+          clinicName: nurseData.name,
+          assignedDoctors: {
+            primary: assignedDoctor.id,
+            primaryName: assignedDoctor.name,
+            primaryType: assignedDoctor.type,
+            primaryStatus: assignedDoctor.availabilityStatus,
+          },
+          pharmacistId: assignedPharmacist.id,
+          pharmacistName: assignedPharmacist.name,
+          pharmacistType: assignedPharmacist.type || "primary",
+          pharmacistStatus: assignedPharmacist.availabilityStatus,
+          doctorCompleted: false,
+          pharmacistCompleted: false,
+          doctorCompletedAt: null,
+          pharmacistCompletedAt: null,
+          isIncomplete: false,
+          inPharmacistPendingReview: true,
+        };
+
+        const caseRef = doc(firestore, "cases", caseId);
+        transaction.set(caseRef, newCase);
+
+        // 4. Update doctor status if they'll be at capacity after this case
+        if (
+          activeCount + 1 >= 5 &&
+          doctorData.availabilityStatus === "available"
+        ) {
+          transaction.update(doctorRef, {
+            availabilityStatus: "busy",
+            lastStatusUpdate: serverTimestamp(),
+            autoStatusChange: true,
+          });
+        }
+
+        // 5. Update pharmacist status if they'll be at capacity
+        if (
+          pharmActiveCount + 1 >= 5 &&
+          pharmacistData.availabilityStatus === "available"
+        ) {
+          transaction.update(pharmRef, {
+            availabilityStatus: "busy",
+            lastStatusUpdate: serverTimestamp(),
+            autoStatusChange: true,
+          });
+        }
+      });
+
+      // Reset form after successful creation
       setFormData({
         patients: [{ patientName: "", emrNumber: "", chiefComplaint: "" }],
         consultationType: "tele",
@@ -747,7 +875,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         notes: "",
       });
 
-      onCreateCase(newCase);
+      onCreateCase({ id: caseId });
     } catch (err) {
       console.error("Error creating case:", err);
       setError(err.message || "Failed to create case");
