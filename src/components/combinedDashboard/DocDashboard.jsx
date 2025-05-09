@@ -27,13 +27,17 @@ const CombinedDashboard = ({ currentUser }) => {
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [viewMode, setViewMode] = useState("table"); // table or cards
   const [doctorPharmacist, setDoctorPharmacist] = useState("doctor");
+  const [partnerNames, setPartnerNames] = useState([]);
+  const [selectedPartner, setSelectedPartner] = useState(null);
 
   const loadDoctorData = async (doctorPharmacist) => {
     try {
       setIsLoading(true);
       ////console.log(`Loading doctor data for ${currentUser.role} with ID ${currentUser.uid}`);
       
-      const displayData = await fetchData(currentUser.uid, doctorPharmacist);
+      const fetchedData = await fetchData(currentUser.uid, doctorPharmacist);
+      const displayData = fetchedData.docList;
+      setPartnerNames(fetchedData.partnerNames);
       ////console.log("Fetched data from Firestore:", displayData);
       
       if (displayData.length === 0) {
@@ -127,9 +131,18 @@ const CombinedDashboard = ({ currentUser }) => {
     return () => clearInterval(interval);
   }, [doctors, currentUser, refreshInterval]);
 
+  useEffect(() => {
+
+  }, [selectedPartner]);
+
+
   // View a doctor's detailed information
   const viewDoctorDetails = (doctor) => {
     setSelectedDoctor(doctor);
+  };
+
+  const handlePartnerChange = (partner) => {
+    setSelectedPartner(partner);
   };
 
   if (isLoading) {
@@ -185,7 +198,8 @@ const CombinedDashboard = ({ currentUser }) => {
           <DoctorTable
             doctorPharmacist={doctorPharmacist} 
             doctors={doctorPharmacist === "doctor" ? doctors : pharmacists} 
-            onViewDoctorDetails={viewDoctorDetails} 
+            onViewDoctorDetails={viewDoctorDetails}
+            partnerNames={partnerNames}
           />
         ) : (
           <DoctorCardsGrid 

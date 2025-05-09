@@ -17,6 +17,7 @@ const DEFAULT_HOURLY_TARGET = 12; // Default hourly target for all roles
   export const fetchData = async (userId, doctorPharmacist) => {
     try {
       const returnList = [];
+      const partnerNames = new Set(); //getting unique partner names from here
       
       // new logic is to return all doctors, assuming no double reporting?
       const doctorQuery = query(
@@ -54,9 +55,17 @@ const DEFAULT_HOURLY_TARGET = 12; // Default hourly target for all roles
           hourlyTarget: DEFAULT_HOURLY_TARGET,
           dailyTarget: DEFAULT_HOURLY_TARGET * 8 
         });
+
+        // Add unique partner names
+        if (doctorData.partnerName) {
+          partnerNames.add(doctorData.partnerName);
+        }
       });
       
-      return returnList;
+      return {
+        docList: returnList,
+        partnerNames: Array.from(partnerNames),
+      }
 
     } catch (error) {
       console.error("Error fetching user hierarchy:", error);

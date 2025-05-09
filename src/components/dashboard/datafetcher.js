@@ -407,14 +407,26 @@ export const fetchTodaySummaryData = async (userId, userRole) => {
     
     // Count by status
     todayCases.forEach(caseData => {
-      if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
-        summaryData.incompleteCases++;
-      } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {
-        summaryData.completedCases++;
-      } else if (!caseData.doctorCompleted) {
-        summaryData.doctorPendingCases++;
-      } else if (!caseData.pharmacistCompleted) {
-        summaryData.pharmacistPendingCases++;
+      if(caseData.emrNumbers && caseData.emrNumbers.length > 0){
+        if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
+          summaryData.incompleteCases+= caseData.emrNumbers.length;
+        } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {
+          summaryData.completedCases+= caseData.emrNumbers.length;
+        } else if (!caseData.doctorCompleted) {
+          summaryData.doctorPendingCases+= caseData.emrNumbers.length;
+        } else if (!caseData.pharmacistCompleted) {
+          summaryData.pharmacistPendingCases+= caseData.emrNumbers.length;
+        }
+      } else {
+        if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
+          summaryData.incompleteCases++;
+        } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {
+          summaryData.completedCases++;
+        } else if (!caseData.doctorCompleted) {
+          summaryData.doctorPendingCases++;
+        } else if (!caseData.pharmacistCompleted) {
+          summaryData.pharmacistPendingCases++;
+        }
       }
     });
     
@@ -764,8 +776,10 @@ const shouldIncludeCase = (caseData, filters) => {
 
         // Handle array fields
         if (Array.isArray(caseData[fieldName])) {
-          caseData[fieldName].some((item) => {
+          //console.log("searching in array", caseData[fieldName]);
+          return caseData[fieldName].some((item) => {
             if (typeof item === "string") {
+              //console.log("item", item, searchTerm, typeof(searchTerm));
               return item.toLowerCase() === searchTerm;
             } else if (typeof item === "number") {
               return item.toString() === searchTerm;

@@ -173,9 +173,17 @@ const promises = doctorsList.map(async (doctor) => {
         
         // Count by status
         if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
-            doctorMetrics.incompleteCases++;
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                doctorMetrics.incompleteCases += caseData.emrNumbers.length;
+            } else {
+                doctorMetrics.incompleteCases++;
+            }
         } else if (caseData.doctorCompleted) {
-            doctorMetrics.completedCases++;
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                doctorMetrics.completedCases += caseData.emrNumbers.length;
+            } else {
+                doctorMetrics.completedCases++;
+            }
             
             // Calculate TAT if possible (time from creation to doctor completion)
             if (caseData.createdAt && caseData.doctorCompletedAt) {
@@ -189,6 +197,11 @@ const promises = doctorsList.map(async (doctor) => {
                 }
             }
         } else {
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                doctorMetrics.pendingCases += caseData.emrNumbers.length;
+            } else {
+                doctorMetrics.pendingCases++;
+            }
             doctorMetrics.pendingCases++;
         }
     });
@@ -266,11 +279,23 @@ export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
         const caseData = caseDoc.data();
 
         if (caseData.isIncomplete){
-            pharmacistMetrics.incompleteCases++;
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                pharmacistMetrics.incompleteCases += caseData.emrNumbers.length;
+            } else {
+                pharmacistMetrics.incompleteCases++;
+            }
           } else if (caseData.status === "doctor_completed") {
-            pharmacistMetrics.pendingCases++;
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                pharmacistMetrics.pendingCases += caseData.emrNumbers.length;
+            } else {
+                pharmacistMetrics.pendingCases++;
+            }
           } else if (caseData.status === "completed") {
-            pharmacistMetrics.completedCases++;
+            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+                pharmacistMetrics.completedCases += caseData.emrNumbers.length;
+            } else {
+                pharmacistMetrics.completedCases++;
+            }
             // Calculate TAT if possible (time from creation to pharmacist completion)
             if (caseData.createdAt && caseData.pharmacistCompletedAt) {
                 const startTime = caseData.createdAt.toDate();
