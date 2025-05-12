@@ -7,10 +7,25 @@ import {
   getDoc,
   orderBy,
   limit,
-  getCountFromServer,
-
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
+
+export const fetchCounts = async (query) => {
+  const snapshot = await getDocs(query);
+  var count = 0;
+  snapshot.forEach((doc) => {
+    if (doc.data().emrNumbers && doc.data().emrNumbers.length > 0) {
+      count += doc.data().emrNumbers.length;
+    } else {
+      count += 1;
+    }
+  });
+  return {count: count};
+}
+
+export const getCount = () => {
+  
+}
 
 // Fetch user hierarchy based on reporting relationships
 export const fetchUserHierarchy = async (userId, userRole) => {
@@ -183,35 +198,35 @@ export const fetchSummaryData = async (userId, userRole) => {
         limit(100) // Reduced from 1000 to 100 for faster response
       );
 
-      queries.push(getCountFromServer(doctorCasesQuery));
+      queries.push(fetchCounts(doctorCasesQuery));
     } else {
       // For other roles, use parallel queries with smaller limits
       queries.push(
-        getCountFromServer(
+        fetchCounts(
           query(casesRef, orderBy("createdAt", "desc"), limit(100))
         )
       );
 
       queries.push(
-        getCountFromServer(
+        fetchCounts(
           query(casesRef, where("pharmacistCompleted", "==", true), limit(100))
         )
       );
 
       queries.push(
-        getCountFromServer(
+        fetchCounts(
           query(casesRef, where("isIncomplete", "==", true), limit(100))
         )
       );
 
       queries.push(
-        getCountFromServer(
+        fetchCounts(
           query(casesRef, where("doctorCompleted", "==", false), limit(100))
         )
       );
 
       queries.push(
-        getCountFromServer(
+        fetchCounts(
           query(
             casesRef,
             where("doctorCompleted", "==", true),
@@ -227,7 +242,7 @@ export const fetchSummaryData = async (userId, userRole) => {
 
     if (userRole === "doctor") {
       // For doctors, estimate from the single query result
-      summaryData.totalCases = results[0].data().count;
+      summaryData.totalCases = results[0].count;
 
       // Use better estimation factors based on your actual data patterns
       summaryData.pendingCases = Math.round(summaryData.totalCases * 0.3);
@@ -241,11 +256,11 @@ export const fetchSummaryData = async (userId, userRole) => {
       summaryData.incompleteCases = Math.round(summaryData.totalCases * 0.1);
     } else {
       // For other roles, use the actual parallel query results
-      summaryData.totalCases = results[0].data().count;
-      summaryData.completedCases = results[1].data().count;
-      summaryData.incompleteCases = results[2].data().count;
-      summaryData.doctorPendingCases = results[3].data().count;
-      summaryData.pharmacistPendingCases = results[4].data().count;
+      summaryData.totalCases = results[0].count;
+      summaryData.completedCases = results[1].count;
+      summaryData.incompleteCases = results[2].count;
+      summaryData.doctorPendingCases = results[3].count;
+      summaryData.pharmacistPendingCases = results[4].count;
       summaryData.pendingCases =
         summaryData.doctorPendingCases + summaryData.pharmacistPendingCases;
     }
@@ -408,6 +423,7 @@ export const fetchTodaySummaryData = async (userId, userRole) => {
     // Count by status
     todayCases.forEach(caseData => {
       if(caseData.emrNumbers && caseData.emrNumbers.length > 0){
+        //console.log("caseData.emrNumbers", caseData.emrNumbers, caseData.emrNumbers.length);
         if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
           summaryData.incompleteCases+= caseData.emrNumbers.length;
         } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {

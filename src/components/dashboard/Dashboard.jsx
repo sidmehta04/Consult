@@ -13,7 +13,6 @@ import {
   where,
   limit,
   orderBy,
-  getCountFromServer,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import {
@@ -21,6 +20,7 @@ import {
   fetchTabData,
   fetchUserHierarchy,
   fetchTodaySummaryData,
+  fetchCounts,
 } from "./datafetcher";
 import { exportCasesToExcel } from "./ExcelExport";
 import CasesTable from "./CaseTable";
@@ -135,17 +135,18 @@ const Dashboard = ({ currentUser }) => {
         const [
           totalCount, completedCount, incompleteCount, docPendingCount, pharmPendingCount,
         ] = await Promise.all([
-          getCountFromServer(query(casesRef)),
-          getCountFromServer(query(casesRef, where("pharmacistCompleted", "==", true))),
-          getCountFromServer(query(casesRef, where("isIncomplete", "==", true))),
-          getCountFromServer(query(casesRef, where("doctorCompleted", "==", false))),
-          getCountFromServer(query(casesRef, where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
+          fetchCounts(query(casesRef)),
+          fetchCounts(query(casesRef, where("pharmacistCompleted", "==", true))),
+          fetchCounts(query(casesRef, where("isIncomplete", "==", true))),
+          fetchCounts(query(casesRef, where("doctorCompleted", "==", false))),
+          fetchCounts(query(casesRef, where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
         ]);
-        counts.totalCases = totalCount.data().count;
-        counts.completedCases = completedCount.data().count;
-        counts.incompleteCases = incompleteCount.data().count;
-        counts.doctorPendingCases = docPendingCount.data().count;
-        counts.pharmacistPendingCases = pharmPendingCount.data().count;
+        
+        counts.totalCases = totalCount.count;
+        counts.completedCases = completedCount.count;
+        counts.incompleteCases = incompleteCount.count;
+        counts.doctorPendingCases = docPendingCount.count;
+        counts.pharmacistPendingCases = pharmPendingCount.count;
         counts.pendingCases = counts.doctorPendingCases + counts.pharmacistPendingCases;
         setSummaryData({ summaryData: counts, uniquePartners: [], uniqueClinics: [] });
         //console.log("Summary data updated for admin/zonalHead (counts):", counts);
@@ -163,19 +164,19 @@ const Dashboard = ({ currentUser }) => {
         if (!userHierarchy) setUserHierarchy(hierarchyData); // Set if fetched now
         const userIds = Array.from(hierarchyData.userIds);
         const promises = userIds.flatMap(userId => [
-          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId))),
-          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("pharmacistCompleted", "==", true))),
-          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("isIncomplete", "==", true))),
-          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", false), where("isIncomplete", "==", false))),
-          getCountFromServer(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
+          fetchCounts(query(collection(firestore, "cases"), where("createdBy", "==", userId))),
+          fetchCounts(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("pharmacistCompleted", "==", true))),
+          fetchCounts(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("isIncomplete", "==", true))),
+          fetchCounts(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", false), where("isIncomplete", "==", false))),
+          fetchCounts(query(collection(firestore, "cases"), where("createdBy", "==", userId), where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
         ]);
         const results = await Promise.all(promises);
         for (let i = 0; i < results.length; i += 5) {
-          counts.totalCases += results[i].data().count;
-          counts.completedCases += results[i + 1].data().count;
-          counts.incompleteCases += results[i + 2].data().count;
-          counts.doctorPendingCases += results[i + 3].data().count;
-          counts.pharmacistPendingCases += results[i + 4].data().count;
+          counts.totalCases += results[i].count;
+          counts.completedCases += results[i + 1].count;
+          counts.incompleteCases += results[i + 2].count;
+          counts.doctorPendingCases += results[i + 3].count;
+          counts.pharmacistPendingCases += results[i + 4].count;
         }
         counts.pendingCases = counts.doctorPendingCases + counts.pharmacistPendingCases;
         setSummaryData({ summaryData: counts, uniquePartners: [], uniqueClinics: [] });
@@ -214,10 +215,18 @@ const Dashboard = ({ currentUser }) => {
       counts.pendingCases = 0; counts.completedCases = 0; counts.doctorPendingCases = 0; counts.pharmacistPendingCases = 0; counts.incompleteCases = 0;
       snapshot.forEach((doc) => {
         const caseData = doc.data();
-        if (caseData.isIncomplete || caseData.status === "doctor_incomplete") counts.incompleteCases++;
-        else if (caseData.doctorCompleted && caseData.pharmacistCompleted) counts.completedCases++;
-        else if (!caseData.doctorCompleted) { counts.doctorPendingCases++; counts.pendingCases++; }
-        else if (!caseData.pharmacistCompleted) { counts.pharmacistPendingCases++; counts.pendingCases++; }
+        if (caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+          if (caseData.isIncomplete || caseData.status === "doctor_incomplete") counts.incompleteCases+=caseData.emrNumbers.length;
+          else if (caseData.doctorCompleted && caseData.pharmacistCompleted) counts.completedCases+=caseData.emrNumbers.length;
+          else if (!caseData.doctorCompleted) { counts.doctorPendingCases+=caseData.emrNumbers.length; counts.pendingCases+=caseData.emrNumbers.length; } 
+          else if (!caseData.pharmacistCompleted) { counts.pharmacistPendingCases+=caseData.emrNumbers.length; counts.pendingCases+=caseData.emrNumbers.length; }
+        } else {
+          if (caseData.isIncomplete || caseData.status === "doctor_incomplete") counts.incompleteCases++;
+          else if (caseData.doctorCompleted && caseData.pharmacistCompleted) counts.completedCases++;
+          else if (!caseData.doctorCompleted) {counts.doctorPendingCases++; counts.pendingCases++; }
+          else if (!caseData.pharmacistCompleted) {counts.pharmacistPendingCases++; counts.pendingCases++; }
+        }
+        
         if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
         if (caseData.clinicCode || caseData.clinicName) uniqueClinics.add(caseData.clinicCode || caseData.clinicName);
       });
