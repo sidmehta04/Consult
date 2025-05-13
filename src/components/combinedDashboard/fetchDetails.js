@@ -160,7 +160,7 @@ const promises = doctorsList.map(async (doctor) => {
     
     // Initialize metrics
     const doctorMetrics = {
-        todayCases: casesSnapshot.size,
+        todayCases: 0,
         pendingCases: 0,
         completedCases: 0,
         incompleteCases: 0,
@@ -170,11 +170,18 @@ const promises = doctorsList.map(async (doctor) => {
     
     casesSnapshot.forEach((caseDoc) => {
         const caseData = caseDoc.data();
-        
+
+        if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+            doctorMetrics.todayCases += caseData.emrNumbers.length;
+        } else {
+            doctorMetrics.todayCases++;
+        }
+
         // Count by status
         if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
             if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
                 doctorMetrics.incompleteCases += caseData.emrNumbers.length;
+                console.log(caseData.emrNumbers, caseData.emrNumbers.length)
             } else {
                 doctorMetrics.incompleteCases++;
             }
@@ -202,7 +209,7 @@ const promises = doctorsList.map(async (doctor) => {
             } else {
                 doctorMetrics.pendingCases++;
             }
-            doctorMetrics.pendingCases++;
+            //doctorMetrics.pendingCases++;
         }
     });
     
@@ -267,7 +274,7 @@ export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
     
     // Initialize metrics
     const pharmacistMetrics = {
-        todayCases: casesSnapshot.size,
+        todayCases: 0,
         pendingCases: 0,
         completedCases: 0,
         incompleteCases: 0,
@@ -277,6 +284,12 @@ export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
     
     casesSnapshot.forEach((caseDoc) => {
         const caseData = caseDoc.data();
+
+        if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
+            pharmacistMetrics.todayCases += caseData.emrNumbers.length;
+        } else {
+            pharmacistMetrics.todayCases++;
+        }
 
         if (caseData.isIncomplete){
             if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
@@ -307,8 +320,10 @@ export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
                 pharmacistMetrics.validTatCases++;
             }
           }
-        }
+        } 
     });
+
+    
     
     // Calculate average TAT (in minutes)
     const averageTAT = pharmacistMetrics.validTatCases > 0 
