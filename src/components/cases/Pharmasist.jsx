@@ -7,7 +7,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +42,9 @@ import {
   Users,
   X,
   ShieldAlert,
+  LinkIcon,
+  Info,
+  
 } from "lucide-react";
 import {
   doc,
@@ -60,6 +72,13 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     status: "available",
     lastUpdate: null,
     history: [],
+  });
+  // Add these state variables after the existing ones
+  const [linkedCases, setLinkedCases] = useState({});
+  const [viewLinkedCases, setViewLinkedCases] = useState({
+    open: false,
+    cases: [],
+    batchTimestamp: null,
   });
   const [pendingReviewCases, setPendingReviewCases] = useState([]);
   const retryOperation = async (operation, maxRetries = 3) => {
@@ -120,8 +139,31 @@ const PharmacistCaseManagement = ({ currentUser }) => {
           allActiveCasesQuery,
           (querySnapshot) => {
             const casesData = [];
+            const linkedCasesMap = {};
+
             querySnapshot.forEach((doc) => {
               const caseData = doc.data();
+
+              // Process batch-created cases for linking
+              if (caseData.batchCreated && caseData.batchTimestamp) {
+                const batchKey = caseData.batchTimestamp.toString();
+
+                if (!linkedCasesMap[batchKey]) {
+                  linkedCasesMap[batchKey] = [];
+                }
+
+                linkedCasesMap[batchKey].push({
+                  id: doc.id,
+                  ...caseData,
+                  createdAtFormatted: caseData.createdAt
+                    ? format(caseData.createdAt.toDate(), "PPpp")
+                    : "",
+                  doctorCompletedAtFormatted: caseData.doctorCompletedAt
+                    ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
+                    : "",
+                });
+              }
+
               casesData.push({
                 id: doc.id,
                 ...caseData,
@@ -135,28 +177,11 @@ const PharmacistCaseManagement = ({ currentUser }) => {
             });
 
             setActiveCases(casesData);
+            setLinkedCases(linkedCasesMap);
 
-            // Automatically update status based on case count
-            if (
-              casesData.length >= 5 &&
-              pharmacistStatus.status === "available"
-            ) {
-              updatePharmacistStatus(
-                "busy",
-                "Automatically marked as busy due to high case load"
-              );
-            } else if (
-              casesData.length < 5 &&
-              pharmacistStatus.status === "busy"
-            ) {
-              updatePharmacistStatus(
-                "available",
-                "Automatically marked as available due to reduced case load"
-              );
-            }
+            // Automatically update status based on case count...
           }
         );
-
         const pendingReviewQuery = query(
           collection(firestore, "cases"),
           where("pharmacistId", "==", currentUser.uid),
@@ -506,6 +531,36 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       </div>
     );
   }
+  // Add these functions after handleCompleteCase
+
+  // Handle opening the linked cases dialog
+  const openLinkedCasesDialog = (batchTimestamp) => {
+    if (linkedCases[batchTimestamp]) {
+      setViewLinkedCases({
+        open: true,
+        cases: linkedCases[batchTimestamp],
+        batchTimestamp,
+      });
+    }
+  };
+
+  // Function to determine if a case has linked cases in the same batch
+  const hasLinkedCases = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] && linkedCases[batchKey].length > 1;
+    }
+    return false;
+  };
+
+  // Function to get number of linked cases
+  const getLinkedCasesCount = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] ? linkedCases[batchKey].length : 0;
+    }
+    return 0;
+  };
 
   return (
     <div className="space-y-6">
@@ -972,6 +1027,26 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                                   <div className="flex items-center">
                                     <User className="h-4 w-4 text-gray-400 mr-2" />
                                     {caseItem.patientName}
+                                    {hasLinkedCases(caseItem) && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 text-xs cursor-pointer hover:bg-green-50"
+                                        onClick={() =>
+                                          openLinkedCasesDialog(
+                                            caseItem.batchTimestamp.toString()
+                                          )
+                                        }
+                                      >
+                                        <LinkIcon className="h-3 w-3 mr-1" />
+                                        Batch ({getLinkedCasesCount(caseItem)})
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+                                {caseItem.batchCreated && (
+                                  <div className="text-xs text-gray-500">
+                                    Patient {caseItem.batchIndex + 1} of{" "}
+                                    {caseItem.batchSize}
                                   </div>
                                 )}
                               </div>
@@ -1048,6 +1123,133 @@ const PharmacistCaseManagement = ({ currentUser }) => {
           </TabsContent>
         </Tabs>
       )}
+      {/* Add this dialog right before the final closing div tag */}
+      <Dialog
+        open={viewLinkedCases.open}
+        onOpenChange={(open) =>
+          setViewLinkedCases({ ...viewLinkedCases, open })
+        }
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <LinkIcon className="h-5 w-5 text-green-500 mr-2" />
+              Batch Cases
+            </DialogTitle>
+            <DialogDescription>
+              All patients created in the same batch
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 border-t border-b border-gray-100 py-4">
+            <div className="flex items-center mb-4 space-x-2">
+              <Info className="h-4 w-4 text-green-500" />
+              <p className="text-sm text-gray-600">
+                These cases were created together in the same batch and share
+                the same contact information.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto max-h-[400px]">
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="font-semibold">Patient</TableHead>
+                    <TableHead className="font-semibold">EMR</TableHead>
+                    <TableHead className="font-semibold">Complaint</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewLinkedCases.cases.map((caseItem) => (
+                    <TableRow key={caseItem.id} className="hover:bg-gray-50">
+                      <TableCell className="font-medium">
+                        <div className="flex items-center">
+                          <User className="h-4 w-4 text-gray-400 mr-2" />
+                          {caseItem.patientName}
+                        </div>
+                      </TableCell>
+                      <TableCell>{caseItem.emrNumber}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {caseItem.chiefComplaint}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            caseItem.status === "completed"
+                              ? "bg-green-100 text-green-800"
+                              : caseItem.status === "doctor_completed"
+                              ? "bg-amber-100 text-amber-800"
+                              : caseItem.status === "doctor_incomplete"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {getStatusBadge(caseItem.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => {
+                              setViewLinkedCases({
+                                open: false,
+                                cases: [],
+                                batchTimestamp: null,
+                              });
+                              handleStartReview(caseItem);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-1" /> View
+                          </Button>
+                          {caseItem.doctorCompleted &&
+                            !caseItem.pharmacistCompleted &&
+                            !caseItem.isIncomplete && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                                onClick={() => {
+                                  setViewLinkedCases({
+                                    open: false,
+                                    cases: [],
+                                    batchTimestamp: null,
+                                  });
+                                  handleCompleteCase(caseItem.id);
+                                }}
+                              >
+                                <CheckIcon className="h-4 w-4 mr-1" /> Complete
+                              </Button>
+                            )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setViewLinkedCases({
+                  open: false,
+                  cases: [],
+                  batchTimestamp: null,
+                })
+              }
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

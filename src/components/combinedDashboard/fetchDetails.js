@@ -181,7 +181,6 @@ const promises = doctorsList.map(async (doctor) => {
         if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
             if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
                 doctorMetrics.incompleteCases += caseData.emrNumbers.length;
-                console.log(caseData.emrNumbers, caseData.emrNumbers.length)
             } else {
                 doctorMetrics.incompleteCases++;
             }

@@ -31,11 +31,11 @@ import {
   Clock,
   X,
   Edit,
+  LinkIcon,
+  Info,
   UserPen
 } from "lucide-react";
-// Add this import at the top of your NurseCaseManagement.jsx file
 import { Label } from "@/components/ui/label";
-// Add this import at the top of your NurseCaseManagement.jsx file
 import { Input } from "@/components/ui/input";
 import {
   doc,
@@ -46,6 +46,7 @@ import {
   updateDoc,
   serverTimestamp,
   getDoc,
+  getDocs,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import NurseCaseForm from "./NurseCaseForm";
@@ -56,8 +57,7 @@ const NurseCaseManagement = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [incompleteReason, setIncompleteReason] = useState("");
-  const [selectedCase, setSelectedCase] = useState("");
+  const [linkedCases, setLinkedCases] = useState({});
 
   const [confirmComplete, setConfirmComplete] = useState({
     open: false,
@@ -65,18 +65,27 @@ const NurseCaseManagement = ({ currentUser }) => {
     type: null,
     caseData: null,
     isIncomplete: false,
-    reason: "", // Add this line
+    reason: "",
   });
+
   const [editCase, setEditCase] = useState({
     open: false,
     caseData: null,
   });
+
+  const [viewLinkedCases, setViewLinkedCases] = useState({
+    open: false,
+    cases: [],
+    batchTimestamp: null
+  });
+
   const openEditDialog = (caseData) => {
     setEditCase({
       open: true,
       caseData: caseData,
     });
   };
+
   const retryOperation = async (operation, maxRetries = 3) => {
     let lastError;
 
@@ -110,8 +119,42 @@ const NurseCaseManagement = ({ currentUser }) => {
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
           const casesData = [];
+          const linkedCasesMap = {};
+          
           querySnapshot.forEach((doc) => {
             const caseData = doc.data();
+            
+            // Process batch-created cases for linking
+            if (caseData.batchCreated && caseData.batchTimestamp) {
+              const batchKey = caseData.batchTimestamp.toString();
+              
+              if (!linkedCasesMap[batchKey]) {
+                linkedCasesMap[batchKey] = [];
+              }
+              
+              linkedCasesMap[batchKey].push({
+                id: doc.id,
+                ...caseData,
+                createdAtFormatted:
+                  caseData.createdAt &&
+                  typeof caseData.createdAt.toDate === "function"
+                    ? format(caseData.createdAt.toDate(), "PPpp")
+                    : "Not available",
+                createdAtDate: caseData.createdAt
+                  ? format(caseData.createdAt.toDate(), "PP")
+                  : "",
+                createdAtTime: caseData.createdAt
+                  ? format(caseData.createdAt.toDate(), "p")
+                  : "",
+                doctorCompletedAtFormatted: caseData.doctorCompletedAt
+                  ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
+                  : null,
+                pharmacistCompletedAtFormatted: caseData.pharmacistCompletedAt
+                  ? format(caseData.pharmacistCompletedAt.toDate(), "PPpp")
+                  : null,
+              });
+            }
+            
             casesData.push({
               id: doc.id,
               ...caseData,
@@ -139,7 +182,10 @@ const NurseCaseManagement = ({ currentUser }) => {
           casesData.sort(
             (a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()
           );
+          
+          // Update state with all cases and the linked cases map
           setCases(casesData);
+          setLinkedCases(linkedCasesMap);
           setLoading(false);
         });
 
@@ -157,50 +203,23 @@ const NurseCaseManagement = ({ currentUser }) => {
 
     fetchCases();
   }, [currentUser.uid]);
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Check if we're dealing with a multi-patient case or legacy single patient
-      const isMultiPatient = Array.isArray(editCase.caseData.patientNames);
+      const caseData = editCase.caseData;
+      
+      const formData = {
+        patientName: e.target.patientName.value,
+        emrNumber: e.target.emrNumber.value,
+        chiefComplaint: e.target.chiefComplaint.value,
+        contactInfo: e.target.contactInfo.value,
+        notes: e.target.notes.value,
+      };
 
-      let formData;
-
-      if (isMultiPatient) {
-        // Handle multi-patient case
-        const patientCount = editCase.caseData.patientNames.length;
-        const patientNames = [];
-        const emrNumbers = [];
-        const chiefComplaints = [];
-
-        // Gather patient data from form
-        for (let i = 0; i < patientCount; i++) {
-          patientNames.push(e.target[`patientNames[${i}]`].value);
-          emrNumbers.push(e.target[`emrNumbers[${i}]`].value);
-          chiefComplaints.push(e.target[`chiefComplaints[${i}]`].value);
-        }
-
-        formData = {
-          patientNames,
-          emrNumbers,
-          chiefComplaints,
-          patientCount,
-          contactInfo: e.target.contactInfo.value,
-          notes: e.target.notes.value,
-        };
-      } else {
-        // Handle legacy single patient case
-        formData = {
-          patientName: e.target.patientName.value,
-          emrNumber: e.target.emrNumber.value,
-          chiefComplaint: e.target.chiefComplaint.value,
-          contactInfo: e.target.contactInfo.value,
-          notes: e.target.notes.value,
-        };
-      }
-
-      const caseRef = doc(firestore, "cases", editCase.caseData.id);
+      const caseRef = doc(firestore, "cases", caseData.id);
       await updateDoc(caseRef, {
         ...formData,
         lastEdited: serverTimestamp(),
@@ -383,7 +402,20 @@ const NurseCaseManagement = ({ currentUser }) => {
       caseId,
       type,
       caseData,
+      isIncomplete: false,
+      reason: "",
     });
+  };
+
+  // Handle opening the linked cases dialog
+  const openLinkedCasesDialog = (batchTimestamp) => {
+    if (linkedCases[batchTimestamp]) {
+      setViewLinkedCases({
+        open: true,
+        cases: linkedCases[batchTimestamp],
+        batchTimestamp
+      });
+    }
   };
 
   const getStatusBadgeVariant = (status) => {
@@ -413,6 +445,24 @@ const NurseCaseManagement = ({ currentUser }) => {
       default:
         return "Pending";
     }
+  };
+
+  // Function to determine if a case has linked cases in the same batch
+  const hasLinkedCases = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] && linkedCases[batchKey].length > 1;
+    }
+    return false;
+  };
+
+  // Function to get number of linked cases
+  const getLinkedCasesCount = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] ? linkedCases[batchKey].length : 0;
+    }
+    return 0;
   };
 
   if (loading) {
@@ -472,9 +522,9 @@ const NurseCaseManagement = ({ currentUser }) => {
               <Table>
                 <TableHeader className="bg-gray-50">
                   <TableRow>
-                    <TableHead className="font-semibold">Patients</TableHead>
-                    <TableHead className="font-semibold">EMRs</TableHead>
-                    <TableHead className="font-semibold">Complaints</TableHead>
+                    <TableHead className="font-semibold">Patient</TableHead>
+                    <TableHead className="font-semibold">EMR</TableHead>
+                    <TableHead className="font-semibold">Complaint</TableHead>
                     <TableHead className="font-semibold">Assigned To</TableHead>
                     <TableHead className="font-semibold">Type</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
@@ -487,67 +537,30 @@ const NurseCaseManagement = ({ currentUser }) => {
                     <TableRow key={caseItem.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">
                         <div className="flex flex-col space-y-1">
-                          {Array.isArray(caseItem.patientNames) ? (
-                            caseItem.patientNames
-                              .map((name, idx) => (
-                                <div key={idx} className="flex items-center">
-                                  <User className="h-4 w-4 text-gray-400 mr-2" />
-                                  {name}{" "}
-                                  {idx === 0 && caseItem.patientCount > 1 && (
-                                    <Badge
-                                      variant="outline"
-                                      className="ml-2 text-xs"
-                                    >
-                                      +{caseItem.patientCount - 1} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              ))
-                              .slice(0, 1) // Only show the first patient in the table with a badge
-                          ) : (
-                            // Fallback for legacy cases with single patient
-                            <div className="flex items-center">
-                              <User className="h-4 w-4 text-gray-400 mr-2" />
-                              {caseItem.patientName}
+                          <div className="flex items-center">
+                            <User className="h-4 w-4 text-gray-400 mr-2" />
+                            {caseItem.patientName}
+                            {hasLinkedCases(caseItem) && (
+                              <Badge
+                                variant="outline"
+                                className="ml-2 text-xs cursor-pointer hover:bg-blue-50"
+                                onClick={() => openLinkedCasesDialog(caseItem.batchTimestamp.toString())}
+                              >
+                                <LinkIcon className="h-3 w-3 mr-1" />
+                                Batch ({getLinkedCasesCount(caseItem)})
+                              </Badge>
+                            )}
+                          </div>
+                          {caseItem.batchCreated && (
+                            <div className="text-xs text-gray-500">
+                              Patient {caseItem.batchIndex + 1} of {caseItem.batchSize}
                             </div>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {Array.isArray(caseItem.emrNumbers) ? (
-                          <div className="flex flex-col space-y-1">
-                            {caseItem.emrNumbers.slice(0, 1).map((emr, idx) => (
-                              <div key={idx}>{emr}</div>
-                            ))}
-                            {caseItem.emrNumbers.length > 1 && (
-                              <span className="text-xs text-gray-500">
-                                +{caseItem.emrNumbers.length - 1} more
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          caseItem.emrNumber
-                        )}
-                      </TableCell>
+                      <TableCell>{caseItem.emrNumber}</TableCell>
                       <TableCell className="max-w-[150px] truncate">
-                        {Array.isArray(caseItem.chiefComplaints) ? (
-                          <div className="flex flex-col space-y-1">
-                            {caseItem.chiefComplaints
-                              .slice(0, 1)
-                              .map((complaint, idx) => (
-                                <div key={idx} className="truncate">
-                                  {complaint}
-                                </div>
-                              ))}
-                            {caseItem.chiefComplaints.length > 1 && (
-                              <span className="text-xs text-gray-500">
-                                +{caseItem.chiefComplaints.length - 1} more
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          caseItem.chiefComplaint
-                        )}
+                        {caseItem.chiefComplaint}
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -828,62 +841,28 @@ const NurseCaseManagement = ({ currentUser }) => {
           {confirmComplete.caseData && (
             <div className="space-y-3 py-3 border-y border-gray-100">
               {/* Patient information */}
-              {Array.isArray(confirmComplete.caseData?.patientNames) ? (
-                <div className="space-y-2">
-                  <div className="font-medium flex items-center">
-                    <User className="h-4 w-4 text-gray-400 mr-2" />
-                    Patients ({confirmComplete.caseData.patientCount}):
-                  </div>
-                  <div className="ml-6 space-y-2 max-h-32 overflow-y-auto">
-                    {confirmComplete.caseData.patientNames.map((name, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-col text-sm border-l-2 border-gray-200 pl-2"
-                      >
-                        <div>
-                          <span className="font-medium">
-                            Patient #{idx + 1}:
-                          </span>{" "}
-                          {name}
-                        </div>
-                        <div>
-                          <span className="font-medium">EMR:</span>{" "}
-                          {confirmComplete.caseData.emrNumbers[idx]}
-                        </div>
-                        <div>
-                          <span className="font-medium">Complaint:</span>{" "}
-                          {confirmComplete.caseData.chiefComplaints[idx]}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                // Legacy single patient display
-                <>
-                  <div className="flex items-center">
-                    <User className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="font-medium">Patient:</span>{" "}
-                    <span className="ml-2">
-                      {confirmComplete.caseData.patientName}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <ClipboardList className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="font-medium">EMR:</span>{" "}
-                    <span className="ml-2">
-                      {confirmComplete.caseData.emrNumber}
-                    </span>
-                  </div>
-                  <div className="flex items-start">
-                    <AlertCircle className="h-4 w-4 text-gray-400 mr-2 mt-0.5" />
-                    <span className="font-medium">Complaint:</span>{" "}
-                    <span className="ml-2">
-                      {confirmComplete.caseData.chiefComplaint}
-                    </span>
-                  </div>
-                </>
-              )}
+              <div className="flex items-center">
+                <User className="h-4 w-4 text-gray-400 mr-2" />
+                <span className="font-medium">Patient:</span>{" "}
+                <span className="ml-2">
+                  {confirmComplete.caseData.patientName}
+                </span>
+              </div>
+              <div className="flex items-center">
+                <ClipboardList className="h-4 w-4 text-gray-400 mr-2" />
+                <span className="font-medium">EMR:</span>{" "}
+                <span className="ml-2">
+                  {confirmComplete.caseData.emrNumber}
+                </span>
+              </div>
+              <div className="flex items-start">
+                <AlertCircle className="h-4 w-4 text-gray-400 mr-2 mt-0.5" />
+                <span className="font-medium">Complaint:</span>{" "}
+                <span className="ml-2">
+                  {confirmComplete.caseData.chiefComplaint}
+                </span>
+              </div>
+              
               <div className="flex items-center">
                 <Clock className="h-4 w-4 text-gray-400 mr-2" />
                 <span className="font-medium">Created At:</span>{" "}
@@ -965,6 +944,8 @@ const NurseCaseManagement = ({ currentUser }) => {
                   caseId: null,
                   type: null,
                   caseData: null,
+                  isIncomplete: false,
+                  reason: "",
                 })
               }
             >
@@ -972,9 +953,10 @@ const NurseCaseManagement = ({ currentUser }) => {
             </Button>
             <Button
               onClick={handleComplete}
+              disabled={confirmComplete.isIncomplete && !confirmComplete.reason.trim()}
               className={
                 confirmComplete.isIncomplete
-                  ? "bg-red-600 hover:bg-red-700"
+                  ? "bg-red-600 hover:bg-red-700 disabled:opacity-50"
                   : "bg-green-600 hover:bg-green-700"
               }
             >
@@ -993,6 +975,7 @@ const NurseCaseManagement = ({ currentUser }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Edit Case Dialog */}
       <Dialog
         open={editCase.open}
@@ -1012,94 +995,37 @@ const NurseCaseManagement = ({ currentUser }) => {
           {editCase.caseData && (
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div className="space-y-4">
-                {Array.isArray(editCase.caseData.patientNames) ? (
-                  // Multiple patients case
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium">
-                      Multiple Patients ({editCase.caseData.patientNames.length}
-                      )
-                    </h3>
-
-                    {editCase.caseData.patientNames.map((name, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 border border-gray-200 rounded-md"
-                      >
-                        <h4 className="font-medium mb-3">Patient #{idx + 1}</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                          <div className="space-y-2">
-                            <Label htmlFor={`editPatientName-${idx}`}>
-                              Patient Name
-                            </Label>
-                            <Input
-                              id={`editPatientName-${idx}`}
-                              name={`patientNames[${idx}]`}
-                              defaultValue={editCase.caseData.patientNames[idx]}
-                              className="focus:border-blue-300 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`editEmrNumber-${idx}`}>
-                              EMR Number
-                            </Label>
-                            <Input
-                              id={`editEmrNumber-${idx}`}
-                              name={`emrNumbers[${idx}]`}
-                              defaultValue={editCase.caseData.emrNumbers[idx]}
-                              className="focus:border-blue-300 focus:ring-blue-500"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`editChiefComplaint-${idx}`}>
-                            Chief Complaint
-                          </Label>
-                          <Input
-                            id={`editChiefComplaint-${idx}`}
-                            name={`chiefComplaints[${idx}]`}
-                            defaultValue={
-                              editCase.caseData.chiefComplaints[idx]
-                            }
-                            className="focus:border-blue-300 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                    ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editPatientName">Patient Name</Label>
+                    <Input
+                      id="editPatientName"
+                      name="patientName"
+                      defaultValue={editCase.caseData.patientName}
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                    />
                   </div>
-                ) : (
-                  // Legacy single patient case
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="editPatientName">Patient Name</Label>
-                      <Input
-                        id="editPatientName"
-                        name="patientName"
-                        defaultValue={editCase.caseData.patientName}
-                        className="focus:border-blue-300 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="editEmrNumber">EMR Number</Label>
-                      <Input
-                        id="editEmrNumber"
-                        name="emrNumber"
-                        defaultValue={editCase.caseData.emrNumber}
-                        className="focus:border-blue-300 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="editChiefComplaint">
-                        Chief Complaint
-                      </Label>
-                      <Input
-                        id="editChiefComplaint"
-                        name="chiefComplaint"
-                        defaultValue={editCase.caseData.chiefComplaint}
-                        className="focus:border-blue-300 focus:ring-blue-500"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editEmrNumber">EMR Number</Label>
+                    <Input
+                      id="editEmrNumber"
+                      name="emrNumber"
+                      defaultValue={editCase.caseData.emrNumber}
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                    />
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="editChiefComplaint">
+                      Chief Complaint
+                    </Label>
+                    <Input
+                      id="editChiefComplaint"
+                      name="chiefComplaint"
+                      defaultValue={editCase.caseData.chiefComplaint}
+                      className="focus:border-blue-300 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="editContactInfo">
@@ -1140,6 +1066,130 @@ const NurseCaseManagement = ({ currentUser }) => {
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Linked Cases Dialog */}
+      <Dialog
+        open={viewLinkedCases.open}
+        onOpenChange={(open) => 
+          setViewLinkedCases({ ...viewLinkedCases, open })
+        }
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <LinkIcon className="h-5 w-5 text-blue-500 mr-2" />
+              Batch Cases
+            </DialogTitle>
+            <DialogDescription>
+              All patients created in the same batch
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 border-t border-b border-gray-100 py-4">
+            <div className="flex items-center mb-4 space-x-2">
+              <Info className="h-4 w-4 text-blue-500" />
+              <p className="text-sm text-gray-600">
+                These cases were created together in the same batch and share the same contact information.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto max-h-[400px]">
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="font-semibold">Patient</TableHead>
+                    <TableHead className="font-semibold">EMR</TableHead>
+                    <TableHead className="font-semibold">Complaint</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewLinkedCases.cases.map((caseItem) => (
+                    <TableRow key={caseItem.id} className="hover:bg-gray-50">
+                      <TableCell className="font-medium">
+                        <div className="flex items-center">
+                          <User className="h-4 w-4 text-gray-400 mr-2" />
+                          {caseItem.patientName}
+                        </div>
+                      </TableCell>
+                      <TableCell>{caseItem.emrNumber}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {caseItem.chiefComplaint}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            caseItem.status === "completed"
+                              ? "bg-green-100 text-green-800"
+                              : caseItem.status === "doctor_completed"
+                              ? "bg-blue-100 text-blue-800"
+                              : caseItem.status === "doctor_incomplete"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {getStatusLabel(caseItem.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center text-gray-600 border-gray-200 hover:bg-gray-50"
+                            onClick={() => {
+                              setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
+                              openEditDialog(caseItem);
+                            }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" /> Edit
+                          </Button>
+                          {!caseItem.doctorCompleted && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
+                              onClick={() => {
+                                setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
+                                openConfirmDialog(caseItem.id, "doctor", caseItem);
+                              }}
+                            >
+                              <Check className="h-4 w-4 mr-1" /> Dr Done
+                            </Button>
+                          )}
+                          {caseItem.doctorCompleted && !caseItem.pharmacistCompleted && !caseItem.isIncomplete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                              onClick={() => {
+                                setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
+                                openConfirmDialog(caseItem.id, "pharmacist", caseItem);
+                              }}
+                            >
+                              <Check className="h-4 w-4 mr-1" /> Pharm Done
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setViewLinkedCases({ open: false, cases: [], batchTimestamp: null })}
+            >
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
