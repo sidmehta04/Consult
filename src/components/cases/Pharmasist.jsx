@@ -579,12 +579,12 @@ const PharmacistCaseManagement = ({ currentUser }) => {
               </span>
               <Badge
                 className={
-                  activeCases.length >= 5
+                  activeCases.length >= 10
                     ? "bg-red-100 text-red-800"
                     : "bg-green-100 text-green-800"
                 }
               >
-                {activeCases.length}/5
+                {activeCases.length}/10
               </Badge>
             </div>
           </div>

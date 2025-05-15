@@ -61,22 +61,22 @@ const PharmacistStatusIndicator = ({ status, caseCount }) => {
   const getCaseLoadBadge = () => {
     if (caseCount === undefined || caseCount === null) return null;
     
-    if (caseCount >= 5) {
+    if (caseCount >= 10) {
       return (
         <Badge className="text-xs bg-red-100 text-red-800 border-red-200 ml-1">
-          {caseCount}/5
+          {caseCount}/10
         </Badge>
       );
-    } else if (caseCount >= 3) {
+    } else if (caseCount >= 6) {
       return (
         <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-200 ml-1">
-          {caseCount}/5
+          {caseCount}/10
         </Badge>
       );
     } else {
       return (
         <Badge className="text-xs bg-green-100 text-green-800 border-green-200 ml-1">
-          {caseCount}/5
+          {caseCount}/10
         </Badge>
       );
     }

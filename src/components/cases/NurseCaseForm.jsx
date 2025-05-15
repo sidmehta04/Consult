@@ -367,7 +367,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         (doctor) =>
           doctor.availabilityStatus !== "unavailable" &&
           doctor.availabilityStatus !== "on_break" &&
-          (doctor.caseCount || 0) < 5
+          (doctor.caseCount || 0) < 10
       );
 
       if (!anyAvailable) {
@@ -389,7 +389,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const isUnavailable =
           doctor.availabilityStatus === "unavailable" ||
           doctor.availabilityStatus === "on_break";
-        const isAtCapacity = (doctor.caseCount || 0) >= 5;
+        const isAtCapacity = (doctor.caseCount || 0) >= 10;
 
         return !isUnavailable && !isAtCapacity;
       };
@@ -433,7 +433,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             const isUnavailable =
               doctor.availabilityStatus === "unavailable" ||
               doctor.availabilityStatus === "on_break";
-            const isAtCapacity = (doctor.caseCount || 0) >= 5;
+            const isAtCapacity = (doctor.caseCount || 0) >= 10;
 
             return !isUnavailable && !isAtCapacity;
           })
@@ -587,7 +587,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         (pharmacist) =>
           pharmacist.availabilityStatus !== "unavailable" &&
           pharmacist.availabilityStatus !== "on_break" &&
-          (pharmacist.caseCount || 0) < 5
+          (pharmacist.caseCount || 0) < 10
       );
 
       if (!anyAvailable) {
@@ -609,7 +609,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         const isUnavailable =
           pharmacist.availabilityStatus === "unavailable" ||
           pharmacist.availabilityStatus === "on_break";
-        const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
+        const isAtCapacity = (pharmacist.caseCount || 0) >= 10;
 
         return !isUnavailable && !isAtCapacity;
       };
@@ -653,7 +653,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             const isUnavailable =
               pharmacist.availabilityStatus === "unavailable" ||
               pharmacist.availabilityStatus === "on_break";
-            const isAtCapacity = (pharmacist.caseCount || 0) >= 5;
+            const isAtCapacity = (pharmacist.caseCount || 0) >= 10;
 
             return !isUnavailable && !isAtCapacity;
           })
@@ -833,7 +833,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           const currentCaseCount = doctorData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
           
-          if (newCaseCount >= 5 && doctorData.availabilityStatus === "available") {
+          if (newCaseCount >= 10 && doctorData.availabilityStatus === "available") {
             batch.update(doctorRef, {
               availabilityStatus: "busy",
               lastStatusUpdate: timestamp,
@@ -853,7 +853,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           const currentCaseCount = pharmacistData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
           
-          if (newCaseCount >= 5 && pharmacistData.availabilityStatus === "available") {
+          if (newCaseCount >= 10 && pharmacistData.availabilityStatus === "available") {
             batch.update(pharmRef, {
               availabilityStatus: "busy",
               lastStatusUpdate: timestamp,
@@ -1191,12 +1191,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                           </div>
                           <span
                             className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              (doctor.caseCount || 0) >= 5
+                              (doctor.caseCount || 0) >= 10
                                 ? "bg-red-100 text-red-800"
                                 : "bg-green-100 text-green-800"
                             }`}
                           >
-                            {doctor.caseCount || 0}/5
+                            {doctor.caseCount || 0}/10
                           </span>
                         </div>
                       ))}
@@ -1267,12 +1267,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                           </div>
                           <span
                             className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              (pharmacist.caseCount || 0) >= 5
+                              (pharmacist.caseCount || 0) >= 10
                                 ? "bg-red-100 text-red-800"
                                 : "bg-green-100 text-green-800"
                             }`}
                           >
-                            {pharmacist.caseCount || 0}/5
+                            {pharmacist.caseCount || 0}/10
                           </span>
                         </div>
                       ))}

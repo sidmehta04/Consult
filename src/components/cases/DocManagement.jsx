@@ -331,10 +331,10 @@ const DoctorCaseManagement = ({ currentUser }) => {
             const activeCount = activeCasesSnapshot.size;
 
             const pharmacistData = pharmSnapshot.data();
-            // If pharmacist is busy but now has fewer than 5 active cases, update status
+            // If pharmacist is busy but now has fewer than 10 active cases, update status
             if (
               pharmacistData.availabilityStatus === "busy" &&
-              activeCount < 5
+              activeCount < 10
             ) {
               await updateDoc(pharmacistRef, {
                 availabilityStatus: "available",
@@ -385,7 +385,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
       setIncompleteReason(""); // Reset reason
 
       // Update doctor status if case count decreases
-      if (activeCases.length <= 5 && doctorStatus.status === "busy") {
+      if (activeCases.length <= 10 && doctorStatus.status === "busy") {
         updateDoctorStatus(
           "available",
           "Automatically marked as available due to reduced case load"
@@ -554,12 +554,12 @@ const DoctorCaseManagement = ({ currentUser }) => {
               </span>
               <Badge
                 className={
-                  activeCases.length >= 5
+                  activeCases.length >= 10
                     ? "bg-red-100 text-red-800"
                     : "bg-green-100 text-green-800"
                 }
               >
-                {activeCases.length}/5
+                {activeCases.length}/10
               </Badge>
             </div>
           </div>

@@ -60,6 +60,7 @@ import {
 import { firestore } from "../../firebase";
 
 import PharmacistHierarchyCard from "./PharmacistHierarchyCard";
+import { fetchUserHierarchy } from "./helperfuncs";
 
 
 
@@ -82,6 +83,8 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
+
+        const userHierarchyUids = fetchUserHierarchy(currentUser.uid, userRole);
 
         // Fetch pharmacist's data to see already assigned clinics
         const pharmacistRef = doc(firestore, "users", currentUser.uid);
@@ -121,7 +124,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             };
 
             // Add a flag for clinics created by this pharmacist
-            if(userRole){
+            if(userRole == 'pharmacist'){
               clinicData.isOwnClinic = clinicData.createdBy === currentUser.uid;
             } else {
               clinicData.isOwnClinic = true;
@@ -130,9 +133,14 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             if(!clinicData.deactivated){
               clinicsList.push(clinicData);
               // Check if this clinic is assigned to the pharmacist
-              const isAssigned =
-                pharmacistData.assignedClinics &&
-                pharmacistData.assignedClinics[doc.id] === true;
+              let isAssigned;
+              if(userRole === 'pharmacist'){
+                isAssigned =
+                  pharmacistData.assignedClinics &&
+                  pharmacistData.assignedClinics[doc.id] === true;
+              } else {
+                isAssigned = true;
+              }
 
               if (isAssigned) {
                 assignedClinicsList.push(clinicData);
@@ -786,7 +794,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                 <h4 className="text-sm font-medium text-gray-500">
                   Total Assigned: {assignedClinics.length}
                 </h4>
-                {assignedClinics.length > 0 && (
+                {(assignedClinics.length > 0 && userRole === 'pharmacist')&& (
                   <Badge
                     variant="outline"
                     className="bg-grey-50 text-grey-700 border-grey-200"
