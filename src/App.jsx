@@ -14,7 +14,8 @@ import { firestore } from "./firebase";
 import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
 import CaseManagementModule from "./components/CaseManagement";
-import DashboardTab from "./components/dashboard/Dashboard"; // Import the Dashboard Tab
+import DashboardTab from "./components/dashboard_old/Dashboard"; // Import the Dashboard Tab
+import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle} from "lucide-react";
 import { fixCaseCompletionStatus } from "./utils/createadmin";
@@ -275,6 +276,15 @@ function AppContent() {
                 element={
                   <ProtectedRoute>
                     <DashboardTab currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardNew currentUser={{...currentUser, role: userRole, ...userData}} />
                   </ProtectedRoute>
                 }
               />

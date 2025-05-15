@@ -33,5 +33,5 @@ export const useUserData = (userId) => {
     fetchUserData();
   }, [userId]);
 
-  return { userData, userRole, loading, error };
+  return { /*userData,*/ userRole, loading, error };
 };

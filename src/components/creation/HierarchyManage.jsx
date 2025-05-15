@@ -63,7 +63,7 @@ import PharmacistHierarchyCard from "./PharmacistHierarchyCard";
 
 
 
-const ClinicHierarchyManagement = ({ currentUser }) => {
+const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -121,7 +121,11 @@ const ClinicHierarchyManagement = ({ currentUser }) => {
             };
 
             // Add a flag for clinics created by this pharmacist
-            clinicData.isOwnClinic = clinicData.createdBy === currentUser.uid;
+            if(userRole){
+              clinicData.isOwnClinic = clinicData.createdBy === currentUser.uid;
+            } else {
+              clinicData.isOwnClinic = true;
+            }
 
             if(!clinicData.deactivated){
               clinicsList.push(clinicData);

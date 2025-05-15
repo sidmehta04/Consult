@@ -31,6 +31,7 @@ import {
   Clock,
   X,
   Edit,
+  UserPen
 } from "lucide-react";
 // Add this import at the top of your NurseCaseManagement.jsx file
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,7 @@ const NurseCaseManagement = ({ currentUser }) => {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [incompleteReason, setIncompleteReason] = useState("");
+  const [selectedCase, setSelectedCase] = useState("");
 
   const [confirmComplete, setConfirmComplete] = useState({
     open: false,
@@ -558,11 +560,25 @@ const NurseCaseManagement = ({ currentUser }) => {
                                 ({caseItem.assignedDoctors.primaryType})
                               </span>
                             )}
+                            <Button
+                              variant="ghost"
+                              onClick={() => {}}
+                              type="button"
+                            >
+                              <UserPen className="!h-3.5 !w-3.5" />
+                            </Button>
                           </div>
                           <div className="flex items-center text-sm">
                             <Pill className="h-3.5 w-3.5 text-green-500 mr-1.5" />
                             {caseItem.pharmacistName ||
                               "No pharmacist assigned"}
+                            <Button
+                              variant="ghost"
+                              onClick={() => {}}
+                              type="button"
+                            >
+                              <UserPen className="!h-3.5 !w-3.5" />
+                            </Button>
                           </div>
                         </div>
                       </TableCell>
@@ -767,8 +783,8 @@ const NurseCaseManagement = ({ currentUser }) => {
 
                           {caseItem.isIncomplete && (
                             <div className="mt-1 text-xs text-red-600 flex items-center">
-                              <X className="h-3 w-3 mr-1" />
-                              Marked incomplete - no further action needed
+                              <X className="h-3.5 w-3.5 mr-1" />
+                              Marked incomplete - <br/> No further action needed
                             </div>
                           )}
                         </div>
