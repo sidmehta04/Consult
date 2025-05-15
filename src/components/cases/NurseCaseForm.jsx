@@ -22,6 +22,7 @@ import {
   UserX,
   Users,
   Coffee,
+  CalendarIcon,
 } from "lucide-react";
 import {
   doc,
@@ -34,6 +35,7 @@ import {
   getDocs,
   updateDoc,
   runTransaction,
+  writeBatch,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import DoctorStatusIndicator from "./DocStatus";
@@ -184,10 +186,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
 
-  // Main issue: fetchAllPharmacists function doesn't set case counts
   // Modified fetchAllPharmacists to include case counts
-
-  // Update in fetchAllPharmacists function
   const fetchAllPharmacists = async (nurseData) => {
     try {
       const assignedPharmacists = nurseData.assignedPharmacists || {};
@@ -361,11 +360,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               (doctorsMap[doctorId].caseCount || 0) + 1;
           }
         }
-      });
-
-      // Log doctor status
-      Object.values(doctorsMap).forEach((doctor) => {
-       
       });
 
       // Ensure there's at least one available doctor
@@ -588,11 +582,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       });
 
-      // Log pharmacist status
-      Object.values(pharmacistsMap).forEach((pharmacist) => {
-        
-      });
-
       // Ensure there's at least one available pharmacist
       const anyAvailable = Object.values(pharmacistsMap).some(
         (pharmacist) =>
@@ -773,98 +762,36 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       const nurseData = nurseSnapshot.data();
 
-      // Create new case ID
-      const caseId = `case_${Date.now()}`;
-
-      // Extract patient data arrays
-      const patientNames = formData.patients.map((p) => p.patientName);
-      const emrNumbers = formData.patients.map((p) => p.emrNumber);
-      const chiefComplaints = formData.patients.map((p) => p.chiefComplaint);
-
-      // Use a transaction to prevent race conditions with doctor assignments
-      await runTransaction(firestore, async (transaction) => {
-        // 1. Check doctor's current case count within the transaction
-        const doctorRef = doc(firestore, "users", assignedDoctor.id);
-        const doctorSnapshot = await transaction.get(doctorRef);
-
-        if (!doctorSnapshot.exists()) {
-          throw new Error("Doctor not found");
-        }
-
-        const doctorData = doctorSnapshot.data();
-
-        // Query for active cases to get exact count
-        const activeCasesQuery = query(
-          collection(firestore, "cases"),
-          where("assignedDoctors.primary", "==", assignedDoctor.id),
-          where("doctorCompleted", "==", false)
-        );
-        const activeCasesSnapshot = await getDocs(activeCasesQuery);
-        const activeCount = activeCasesSnapshot.size;
-
-        // Check if doctor is actually at capacity or unavailable
-        const isAtCapacity = activeCount >= 5;
-        const isUnavailable =
-          doctorData.availabilityStatus === "unavailable" ||
-          doctorData.availabilityStatus === "on_break";
-
-        if (isAtCapacity || isUnavailable) {
-          // The doctor is at capacity, try fallback logic
-          // This would ideally try secondary, tertiary, or any available doctor
-          // For simplicity, we'll just throw an error for now
-          throw new Error(
-            `Doctor ${assignedDoctor.name} is ${
-              isAtCapacity ? "at full capacity" : "unavailable"
-            }. Please try again or select a different doctor.`
-          );
-        }
-
-        // 2. Check pharmacist capacity within the same transaction
-        const pharmRef = doc(firestore, "users", assignedPharmacist.id);
-        const pharmSnapshot = await transaction.get(pharmRef);
-
-        if (!pharmSnapshot.exists()) {
-          throw new Error("Pharmacist not found");
-        }
-
-        const pharmacistData = pharmSnapshot.data();
-
-        // Query for active pharmacist cases
-        const activePharmaQuery = query(
-          collection(firestore, "cases"),
-          where("pharmacistId", "==", assignedPharmacist.id),
-          where("pharmacistCompleted", "==", false),
-          where("isIncomplete", "!=", true)
-        );
-        const activePharmaSnapshot = await getDocs(activePharmaQuery);
-        const pharmActiveCount = activePharmaSnapshot.size;
-
-        // Check if pharmacist is at capacity
-        const isPharmAtCapacity = pharmActiveCount >= 5;
-        const isPharmUnavailable =
-          pharmacistData.availabilityStatus === "unavailable" ||
-          pharmacistData.availabilityStatus === "on_break";
-
-        if (isPharmAtCapacity || isPharmUnavailable) {
-          throw new Error(
-            `Pharmacist ${assignedPharmacist.name} is ${
-              isPharmAtCapacity ? "at full capacity" : "unavailable"
-            }. Please try again or select a different pharmacist.`
-          );
-        }
-
-        // 3. Create the case within the transaction
+      // Get timestamp for all cases
+      const timestamp = serverTimestamp();
+      
+      // Create a batch for writing multiple cases
+      const batch = writeBatch(firestore);
+      
+      // Create separate case for each patient
+      const createdCaseIds = [];
+      
+      for (let i = 0; i < formData.patients.length; i++) {
+        const patient = formData.patients[i];
+        
+        // Create new case ID with timestamp and patient index
+        const caseId = `case_${Date.now()}_${i}`;
+        createdCaseIds.push(caseId);
+        
+        // Create case document
+        const caseRef = doc(firestore, "cases", caseId);
+        
+        // Create case data object
         const newCase = {
           id: caseId,
-          patientNames: patientNames,
-          emrNumbers: emrNumbers,
-          chiefComplaints: chiefComplaints,
-          patientCount: formData.patients.length,
+          patientName: patient.patientName,
+          emrNumber: patient.emrNumber,
+          chiefComplaint: patient.chiefComplaint,
           consultationType: formData.consultationType,
           contactInfo: formData.contactInfo,
           notes: formData.notes,
           status: "pending",
-          createdAt: serverTimestamp(),
+          createdAt: timestamp,
           createdBy: currentUser.uid,
           createdByName: currentUser.displayName || nurseData.name,
           clinicId: currentUser.uid,
@@ -884,36 +811,60 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           doctorCompletedAt: null,
           pharmacistCompletedAt: null,
           isIncomplete: false,
-          inPharmacistPendingReview: true,
+          inPharmacistPendingReview: false,
+          // Track that this case is part of a group (for reference)
+          batchCreated: true,
+          batchTimestamp: timestamp,
+          batchSize: formData.patients.length,
+          batchIndex: i
         };
-
-        const caseRef = doc(firestore, "cases", caseId);
-        transaction.set(caseRef, newCase);
-
-        // 4. Update doctor status if they'll be at capacity after this case
-        if (
-          activeCount + 1 >= 5 &&
-          doctorData.availabilityStatus === "available"
-        ) {
-          transaction.update(doctorRef, {
-            availabilityStatus: "busy",
-            lastStatusUpdate: serverTimestamp(),
-            autoStatusChange: true,
-          });
+        
+        // Add to batch
+        batch.set(caseRef, newCase);
+      }
+      
+      // Update doctor status if they'll be at capacity
+      if (assignedDoctor) {
+        const doctorRef = doc(firestore, "users", assignedDoctor.id);
+        const doctorSnapshot = await getDoc(doctorRef);
+        
+        if (doctorSnapshot.exists()) {
+          const doctorData = doctorSnapshot.data();
+          const currentCaseCount = doctorData.caseCount || 0;
+          const newCaseCount = currentCaseCount + formData.patients.length;
+          
+          if (newCaseCount >= 5 && doctorData.availabilityStatus === "available") {
+            batch.update(doctorRef, {
+              availabilityStatus: "busy",
+              lastStatusUpdate: timestamp,
+              autoStatusChange: true,
+            });
+          }
         }
+      }
 
-        // 5. Update pharmacist status if they'll be at capacity
-        if (
-          pharmActiveCount + 1 >= 5 &&
-          pharmacistData.availabilityStatus === "available"
-        ) {
-          transaction.update(pharmRef, {
-            availabilityStatus: "busy",
-            lastStatusUpdate: serverTimestamp(),
-            autoStatusChange: true,
-          });
+      // Update pharmacist status if they'll be at capacity
+      if (assignedPharmacist) {
+        const pharmRef = doc(firestore, "users", assignedPharmacist.id);
+        const pharmSnapshot = await getDoc(pharmRef);
+        
+        if (pharmSnapshot.exists()) {
+          const pharmacistData = pharmSnapshot.data();
+          const currentCaseCount = pharmacistData.caseCount || 0;
+          const newCaseCount = currentCaseCount + formData.patients.length;
+          
+          if (newCaseCount >= 5 && pharmacistData.availabilityStatus === "available") {
+            batch.update(pharmRef, {
+              availabilityStatus: "busy",
+              lastStatusUpdate: timestamp,
+              autoStatusChange: true,
+            });
+          }
         }
-      });
+      }
+      
+      // Commit the batch
+      await batch.commit();
 
       // Reset form after successful creation
       setFormData({
@@ -923,10 +874,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         notes: "",
       });
 
-      onCreateCase({ id: caseId });
+      // Return the first case ID (or we could return all IDs if needed)
+      onCreateCase({ id: createdCaseIds[0], allIds: createdCaseIds });
     } catch (err) {
-      console.error("Error creating case:", err);
-      setError(err.message || "Failed to create case");
+      console.error("Error creating cases:", err);
+      setError(err.message || "Failed to create cases");
     } finally {
       setLoading(false);
     }
@@ -1069,21 +1021,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             </h3>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="chiefComplaint" className="text-sm">
-                  Chief Complaint
-                </Label>
-                <Input
-                  id="chiefComplaint"
-                  name="chiefComplaint"
-                  value={formData.chiefComplaint}
-                  onChange={handleChange}
-                  className="focus:border-blue-300 focus:ring-blue-500"
-                  placeholder="Enter patient's chief complaint"
-                  required
-                />
-              </div>
-
               <div className="space-y-2">
                 <Label className="text-sm">Consultation Type</Label>
                 <RadioGroup
@@ -1362,7 +1299,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               ) : (
                 <>
                   <ClipboardList className="h-4 w-4 mr-2" />
-                  Create Case
+                  Create {formData.patients.length > 1 ? `${formData.patients.length} Cases` : "Case"}
                 </>
               )}
             </Button>

@@ -41,6 +41,8 @@ import {
   Users,
   X,
   ShieldAlert,
+  LinkIcon,
+  Info,
 } from "lucide-react";
 import {
   doc,
@@ -68,6 +70,13 @@ const DoctorCaseManagement = ({ currentUser }) => {
     status: "available",
     lastUpdate: null,
     history: [],
+  });
+  // Add these state variables after the existing ones
+  const [linkedCases, setLinkedCases] = useState({});
+  const [viewLinkedCases, setViewLinkedCases] = useState({
+    open: false,
+    cases: [],
+    batchTimestamp: null,
   });
   const [isMarkingIncomplete, setIsMarkingIncomplete] = useState(false);
   const [pendingReviewCases, setPendingReviewCases] = useState([]);
@@ -135,10 +144,36 @@ const DoctorCaseManagement = ({ currentUser }) => {
           where("status", "==", "doctor_completed") // Only show properly completed cases
         );
 
+        // In the activeQuery onSnapshot handler, replace the existing code with:
         const unsubscribeActive = onSnapshot(activeQuery, (querySnapshot) => {
           const casesData = [];
+          const linkedCasesMap = {};
+
           querySnapshot.forEach((doc) => {
             const caseData = doc.data();
+
+            // Process batch-created cases for linking
+            if (caseData.batchCreated && caseData.batchTimestamp) {
+              const batchKey = caseData.batchTimestamp.toString();
+
+              if (!linkedCasesMap[batchKey]) {
+                linkedCasesMap[batchKey] = [];
+              }
+
+              linkedCasesMap[batchKey].push({
+                id: doc.id,
+                ...caseData,
+                createdAtFormatted:
+                  caseData.createdAt &&
+                  typeof caseData.createdAt.toDate === "function"
+                    ? format(caseData.createdAt.toDate(), "PPpp")
+                    : "Not available",
+                doctorCompletedAtFormatted: caseData.doctorCompletedAt
+                  ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
+                  : null,
+              });
+            }
+
             casesData.push({
               id: doc.id,
               ...caseData,
@@ -154,16 +189,13 @@ const DoctorCaseManagement = ({ currentUser }) => {
           casesData.sort(
             (a, b) => a.createdAt?.toDate() - b.createdAt?.toDate()
           );
-          setActiveCases(casesData);
 
-          // Automatically update status to busy if case load is high
-          if (casesData.length >= 5 && doctorStatus.status === "available") {
-            updateDoctorStatus(
-              "busy",
-              "Automatically marked as busy due to high case load"
-            );
-          }
+          setActiveCases(casesData);
+          setLinkedCases(linkedCasesMap);
+
+          // Automatically update status to busy if case load is high...
         });
+        // Add these functions before the return statement
 
         const unsubscribeCompleted = onSnapshot(
           completedQuery,
@@ -476,6 +508,34 @@ const DoctorCaseManagement = ({ currentUser }) => {
       </div>
     );
   }
+  // Handle opening the linked cases dialog
+  const openLinkedCasesDialog = (batchTimestamp) => {
+    if (linkedCases[batchTimestamp]) {
+      setViewLinkedCases({
+        open: true,
+        cases: linkedCases[batchTimestamp],
+        batchTimestamp,
+      });
+    }
+  };
+
+  // Function to determine if a case has linked cases in the same batch
+  const hasLinkedCases = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] && linkedCases[batchKey].length > 1;
+    }
+    return false;
+  };
+
+  // Function to get number of linked cases
+  const getLinkedCasesCount = (caseItem) => {
+    if (caseItem.batchCreated && caseItem.batchTimestamp) {
+      const batchKey = caseItem.batchTimestamp.toString();
+      return linkedCases[batchKey] ? linkedCases[batchKey].length : 0;
+    }
+    return 0;
+  };
 
   return (
     <div className="space-y-6">
@@ -815,7 +875,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                         className="w-full bg-red-600 hover:bg-red-700 flex items-center justify-center"
                       >
                         <X className="h-4 w-4 mr-2" /> Mark as Incomplete
-                      </Button>{" "}
+                      </Button>
                     </>
                   )}
                 </div>
@@ -936,6 +996,26 @@ const DoctorCaseManagement = ({ currentUser }) => {
                                   <div className="flex items-center">
                                     <User className="h-4 w-4 text-gray-400 mr-2" />
                                     {caseItem.patientName}
+                                    {hasLinkedCases(caseItem) && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 text-xs cursor-pointer hover:bg-blue-50"
+                                        onClick={() =>
+                                          openLinkedCasesDialog(
+                                            caseItem.batchTimestamp.toString()
+                                          )
+                                        }
+                                      >
+                                        <LinkIcon className="h-3 w-3 mr-1" />
+                                        Batch ({getLinkedCasesCount(caseItem)})
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+                                {caseItem.batchCreated && (
+                                  <div className="text-xs text-gray-500">
+                                    Patient {caseItem.batchIndex + 1} of{" "}
+                                    {caseItem.batchSize}
                                   </div>
                                 )}
                               </div>
@@ -953,7 +1033,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                               ) : (
                                 caseItem.emrNumber
                               )}
-                            </TableCell>{" "}
+                            </TableCell>
                             <TableCell className="max-w-[150px] truncate">
                               {Array.isArray(caseItem.chiefComplaints) ? (
                                 <div className="flex flex-col space-y-1">
@@ -1203,7 +1283,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>{" "}
+                    </Table>
                   </div>
                 )}
               </CardContent>
@@ -1269,6 +1349,131 @@ const DoctorCaseManagement = ({ currentUser }) => {
           </DialogContent>
         </Dialog>
       )}
+      {/* Add this dialog at the end, right before the final closing div tag */}
+      <Dialog
+        open={viewLinkedCases.open}
+        onOpenChange={(open) =>
+          setViewLinkedCases({ ...viewLinkedCases, open })
+        }
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <LinkIcon className="h-5 w-5 text-blue-500 mr-2" />
+              Batch Cases
+            </DialogTitle>
+            <DialogDescription>
+              All patients created in the same batch
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 border-t border-b border-gray-100 py-4">
+            <div className="flex items-center mb-4 space-x-2">
+              <Info className="h-4 w-4 text-blue-500" />
+              <p className="text-sm text-gray-600">
+                These cases were created together in the same batch and share
+                the same contact information.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto max-h-[400px]">
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="font-semibold">Patient</TableHead>
+                    <TableHead className="font-semibold">EMR</TableHead>
+                    <TableHead className="font-semibold">Complaint</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewLinkedCases.cases.map((caseItem) => (
+                    <TableRow key={caseItem.id} className="hover:bg-gray-50">
+                      <TableCell className="font-medium">
+                        <div className="flex items-center">
+                          <User className="h-4 w-4 text-gray-400 mr-2" />
+                          {caseItem.patientName}
+                        </div>
+                      </TableCell>
+                      <TableCell>{caseItem.emrNumber}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {caseItem.chiefComplaint}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            caseItem.status === "completed"
+                              ? "bg-green-100 text-green-800"
+                              : caseItem.status === "doctor_completed"
+                              ? "bg-blue-100 text-blue-800"
+                              : caseItem.status === "doctor_incomplete"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {getStatusLabel(caseItem.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => {
+                              setViewLinkedCases({
+                                open: false,
+                                cases: [],
+                                batchTimestamp: null,
+                              });
+                              handleStartConsultation(caseItem);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-1" /> View
+                          </Button>
+                          {!caseItem.doctorCompleted && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                              onClick={() => {
+                                setViewLinkedCases({
+                                  open: false,
+                                  cases: [],
+                                  batchTimestamp: null,
+                                });
+                                handleCompleteCase(caseItem.id, false);
+                              }}
+                            >
+                              <CheckIcon className="h-4 w-4 mr-1" /> Complete
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setViewLinkedCases({
+                  open: false,
+                  cases: [],
+                  batchTimestamp: null,
+                })
+              }
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
