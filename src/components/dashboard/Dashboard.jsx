@@ -156,7 +156,7 @@ const Dashboard = ({ currentUser }) => {
                   initialQueryParam = where("assignedDoctors.primary", "==", currentUser.uid);
                   break;
                 case "pharmacist":
-                  initialQueryParam = where("assignedPharmacistId", "==", currentUser.uid);
+                  initialQueryParam = where("pharmacistId", "==", currentUser.uid);
                   break;
                 default:
                   initialQueryParam = where("createdBy", "==", currentUser.uid);
@@ -204,7 +204,7 @@ const Dashboard = ({ currentUser }) => {
                   listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
                   break;
                 case "pharmacist":
-                  listenerQuery = query(collection(firestore, "cases"), where("assignedPharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
+                  listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
                   break;
                 default:
                   listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
