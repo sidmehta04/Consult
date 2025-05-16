@@ -89,6 +89,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     useState(false);
   const [doctorsData, setDoctorsData] = useState([]);
   const [pharmacistsData, setPharmacistsData] = useState([]);
+  const [doctorFallbackAssignment, setDoctorFallbackAssignment] = useState(true);
+  const [pharmaFallbackAssignment, setPharmaFallbackAssignment] = useState(true);
 
   useEffect(() => {
     const fetchProfessionals = async () => {
@@ -253,6 +255,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // IMPROVED: Support for extended hierarchy (beyond tertiary)
       let doctorHierarchy = [];
       let assignToAnyDoctor = userData.assignToAnyDoctor || false;
+
+      setDoctorFallbackAssignment(assignToAnyDoctor);
 
       // Check if we're dealing with a nurse (has assignedDoctors object) or pharmacist (has doctorHierarchy array)
       if (
@@ -485,6 +489,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         userData.assignToAnyPharmacist ||
         userData.assignedPharmacists?.assignToAnyPharmacist ||
         false;
+
+      setPharmaFallbackAssignment(assignToAnyPharmacist);
 
       // For nurses with assigned pharmacists from RO
       if (
@@ -1176,7 +1182,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                     </p>
                     <div className="space-y-2 max-h-[150px] overflow-y-auto">
                       {doctorsData.map((doctor) => (
-                        <div
+                        (doctor.isHierarchy || doctorFallbackAssignment) && (<div
                           key={doctor.id}
                           className="flex items-center justify-between bg-white p-2 rounded text-sm border border-gray-100"
                         >
@@ -1199,6 +1205,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                             {doctor.caseCount || 0}/10
                           </span>
                         </div>
+                      )
                       ))}
                     </div>
                   </div>
@@ -1252,7 +1259,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                     </p>
                     <div className="space-y-2 max-h-[150px] overflow-y-auto">
                       {pharmacistsData.map((pharmacist) => (
-                        <div
+                        (pharmacist.isHierarchy || pharmaFallbackAssignment) && (<div
                           key={pharmacist.id}
                           className="flex items-center justify-between bg-white p-2 rounded text-sm border border-gray-100"
                         >
@@ -1275,7 +1282,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                             {pharmacist.caseCount || 0}/10
                           </span>
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 )}
