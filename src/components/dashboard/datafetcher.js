@@ -90,17 +90,17 @@ export const fetchTabData = async (
     switch (tabName) {
       case "doctor":
         tabConstraints = [
+          where("status", "==", 'pending'),
           where("doctorCompleted", "==", false),
           where("isIncomplete", "!=", true),
-          orderBy("isIncomplete"), // Required for the previous where clause
-          orderBy("createdAt", "desc"),
+          orderBy("createdAt", "desc"),          
         ];
         break;
 
       case "pharmacist":
         tabConstraints = [
-          where("doctorCompleted", "==", true),
-          where("pharmacistCompleted", "==", false),
+          where("status", "==", 'doctor_completed'),
+       
           where("isIncomplete", "!=", true),
           orderBy("isIncomplete"), // Required for the previous where clause
           orderBy("createdAt", "desc"),
