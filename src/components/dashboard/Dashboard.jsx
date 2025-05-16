@@ -519,10 +519,14 @@ const Dashboard = ({ currentUser }) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          <div className="text-xs text-gray-500 flex items-center">
-            <ShieldAlert className="h-3 w-3 mr-1 text-blue-500" />
-            Showing cases based on your role access
-          </div>
+          {currentUser.role !== 'superAdmin' && (
+            <div className="text-xs text-gray-500 flex items-center">
+              <ShieldAlert className="h-3 w-3 mr-1 text-blue-500" />
+              Showing cases based on your role access
+            </div>
+          )}
+            
+          
           {["superAdmin", "zonalHead"].includes(currentUser.role) && (
             <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={!tableData?.cases || tableData.cases.length === 0}>
               <Download className="h-4 w-4 mr-2" />
