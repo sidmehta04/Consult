@@ -10,6 +10,7 @@ import {
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { firestore } from "./firebase";
+ 
 
 import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
@@ -18,7 +19,8 @@ import CaseManagementModule from "./components/CaseManagement";
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle} from "lucide-react";
-import { fixCaseCompletionStatus } from "./utils/createadmin";
+import { createAdminUsers } from "./utils/createadmin";
+import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
@@ -28,6 +30,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   useEffect(() => {
     const auth = getAuth();
+
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -382,6 +385,7 @@ function App() {
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+
       setIsAuthenticated(!!user);
       setLoading(false);
     });
