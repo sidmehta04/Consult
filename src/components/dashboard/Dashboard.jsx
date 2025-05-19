@@ -329,6 +329,7 @@ const Dashboard = ({ currentUser }) => {
   // Load specific tab data when requested
   const loadTabData = useCallback(
     async (tabName, filters = {}) => {
+      //console.log(filters);
       if (!currentUser?.role || !currentUser?.uid) { // Removed fetchingData from guard, handled by button state
           return;
       }
@@ -344,7 +345,7 @@ const Dashboard = ({ currentUser }) => {
           dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
           searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
         };
-        //console.log(clinicMapping)
+        //console.log(activeFilters);
         const tabData = await fetchTabData(
           currentUser.uid,
           currentUser.role,
@@ -440,6 +441,7 @@ const Dashboard = ({ currentUser }) => {
 
   // Handle filter changes
   const handleFilterApply = useCallback((filterType, value) => {
+    //console.log(filterType, value)
     let updatedFilters = { // Prepare the filters object for loadTabData
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,

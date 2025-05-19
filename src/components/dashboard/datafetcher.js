@@ -194,7 +194,7 @@ export const fetchTabData = async (
 
       // Apply filters if specified, but don't automatically filter by date
       // unless explicitly requested in the filters
-      if (shouldIncludeCase(caseData, filters)) {
+      if (shouldIncludeCase(caseData, filters, clinicMapping)) {
         // Add clinic and partner to unique sets
         if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
         if (caseData.clinicCode || caseData.clinicName) {
@@ -251,7 +251,7 @@ export const fetchTabData = async (
 };
 
 // Modified helper function to not automatically filter by date
-const shouldIncludeCase = (caseData, filters) => {
+const shouldIncludeCase = (caseData, filters, clinicMapping) => {
   // If no filters, include all cases
   if (!filters || Object.keys(filters).length === 0) return true;
 
@@ -279,7 +279,7 @@ const shouldIncludeCase = (caseData, filters) => {
   }
 
   // Partner filter
-  if (filters.partner && caseData.partnerName !== filters.partner) {
+  if (filters.partner && clinicMapping.get(caseData.clinicId).partnerName !== filters.partner) {
     return false;
   }
 
