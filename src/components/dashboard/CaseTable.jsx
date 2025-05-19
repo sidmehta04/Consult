@@ -279,6 +279,22 @@ const CasesTable = ({
             </td>
             <td className="p-3">{caseItem.partnerName || "N/A"}</td>
             <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
+            <td className="p-3">
+              {isIncompleteCase
+                ? "Incomplete"
+                : caseData.doctorCompleted
+                ? `${formatDate(caseData.doctorCompletedAt)} ${formatTime(
+                    caseData.doctorCompletedAt
+                  )}`
+                : "Pending"}
+            </td>
+            <td className="p-3">
+              {isIncompleteCase
+                ? "Incomplete"
+                : caseData.pharmacistCompleted
+                ? caseData.pharmacistCompletedByName || "Unknown"
+                : "Pending"}
+            </td>
             {/* Timeline columns - Doctor TAT */}
             <td className="p-3 whitespace-nowrap">
               {isIncompleteCase(caseItem) ? (
@@ -454,6 +470,8 @@ const CasesTable = ({
             <th className="p-3 text-left font-medium">Clinic Code</th>
             <th className="p-3 text-left font-medium">Partner</th>
             <th className="p-3 text-left font-medium">Doctor</th>
+            <th className="p-3 text-left font-medium">Doctor Completed At</th>
+            <th className="p-3 text-left font-medium">Pharmacist Completed At</th>
             <th className="p-3 text-left font-medium">Doctor TAT</th>
             <th className="p-3 text-left font-medium">Overall TAT</th>
             <th className="p-3 text-left font-medium">Created</th>
@@ -473,6 +491,8 @@ const CasesTable = ({
               </td>
               <td className="p-3">{caseItem.partnerName || "N/A"}</td>
               <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
+              <td className="p-3"></td>
+              <td className="p-3"></td>
               {/* Timeline columns - Doctor TAT */}
               <td className="p-3 whitespace-nowrap">
                 {isIncompleteCase(caseItem) ? (

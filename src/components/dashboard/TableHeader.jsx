@@ -162,6 +162,24 @@ const TableHeader = ({
         </div>
       </th>
 
+      <th className="p-3 text-left font-medium">
+        <div className="flex items-center justify-between gap-1">
+          <span>Doctor Completed At</span>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
+            <Filter className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </th>
+
+      <th className="p-3 text-left font-medium">
+        <div className="flex items-center justify-between gap-1">
+          <span>Pharmacist Completed At</span>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
+            <Filter className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </th>
+
       {/* Doctor TAT Column */}
       <th className="p-3 text-left font-medium">
         <div className="flex items-center justify-between gap-1">

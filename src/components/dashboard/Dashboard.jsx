@@ -60,6 +60,7 @@ const Dashboard = ({ currentUser }) => {
   const [clinicFilter, setClinicFilter] = useState("all");
   const [activeColumnFilter, setActiveColumnFilter] = useState(null);
   const [resetTimestamp, setResetTimestamp] = useState(Date.now());
+  const [refresh, setRefresh] = useState(false);
 
   const [summaryCounts, setSummaryCounts] = useState(null);
   const [loadingCounts, setLoadingCounts] = useState(null);
@@ -77,6 +78,7 @@ const Dashboard = ({ currentUser }) => {
   useEffect(() => {
     async function fetchClinicMapping() {
       const [mapping, partnerNames] = await getClinicMapping();
+      //console.log(mapping)
       setClinicMapping(mapping);
 
       const formattedPartners = partnerNames.map(partner => ({
@@ -97,7 +99,7 @@ const Dashboard = ({ currentUser }) => {
       }])
     }
 
-  }, [currentUser?.uid, currentUser?.role])
+  }, [currentUser, currentUser?.uid, currentUser?.role])
 
   const handlePartnerChange = (selectedOption) => {
     setPartnerName(selectedOption ? selectedOption.value : null);
@@ -288,7 +290,7 @@ const Dashboard = ({ currentUser }) => {
           initialLoadCompleteRef.current = false; // Reset on cleanup
           listenerCachePopulatedRef.current = false;
       };
-  }, [currentUser, calculateCaseContribution, applyCountChanges, partnerName, clinicMapping]); // Ensure all stable dependencies are listed
+  }, [currentUser, calculateCaseContribution, applyCountChanges, partnerName, clinicMapping, refresh]); // Ensure all stable dependencies are listed
 
   // --- FUNCS ---
   // Handle excel export
@@ -309,8 +311,20 @@ const Dashboard = ({ currentUser }) => {
   };
 
   const handleRefresh = useCallback(async () => {
+    setRefresh(!refresh);
 
+    loadTabData();
   });
+
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      handleRefresh();
+      
+    }, refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [currentUser, refreshInterval, clinicMapping]);
 
   // Load specific tab data when requested
   const loadTabData = useCallback(
@@ -486,6 +500,7 @@ const Dashboard = ({ currentUser }) => {
 
   const handleTabChange = useCallback((newTabName) => {
     if (newTabName === activeTab) return;
+    if (!clinicMapping) return; // Prevent loading if mapping not ready
 
     setActiveTab(newTabName);
     const currentFiltersForNewTab = {
@@ -497,10 +512,10 @@ const Dashboard = ({ currentUser }) => {
       };
 
     loadTabData(newTabName, currentFiltersForNewTab);
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm]); // Dependencies for reading current filters
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping]); // Dependencies for reading current filters
 
   const clinicOptions = tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [];
-  const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
+  //const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
 
   // --- RENDER LOGIC ---
   if (!currentUser?.role) {
@@ -605,7 +620,7 @@ const Dashboard = ({ currentUser }) => {
                     partnerFilter={partnerFilter}
                     dateRange={dateRange}
                     clinicOptions={clinicOptions}
-                    partnerOptions={partnerOptions}
+                    partnerOptions={partnersList}
                     handleFilterApply={handleFilterApply}
                     handleSingleFilterReset={handleSingleFilterReset}
                   />
