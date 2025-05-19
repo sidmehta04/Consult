@@ -46,6 +46,8 @@ const CasesTable = ({
     }
   }, [pagination?.page]);
 
+  
+
   // Add effect to listen for custom close event
   useEffect(() => {
     const handleClose = () => setSelectedCase(null);
@@ -232,7 +234,7 @@ const CasesTable = ({
     
     return (
       <tr className="border-t bg-gray-50">
-        <td colSpan="8">
+        <td colSpan="10">
           <div className="flex justify-between items-center px-6 py-4">
             <div className="text-sm text-gray-500">
               {paginationText}
@@ -280,19 +282,17 @@ const CasesTable = ({
             <td className="p-3">{caseItem.partnerName || "N/A"}</td>
             <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
             <td className="p-3">
-              {isIncompleteCase
-                ? "Incomplete"
-                : caseData.doctorCompleted
-                ? `${formatDate(caseData.doctorCompletedAt)} ${formatTime(
-                    caseData.doctorCompletedAt
+              {caseItem.doctorCompleted? 
+                `${formatDate(caseItem.doctorCompletedAt)} ${formatTime(
+                    caseItem.doctorCompletedAt
                   )}`
                 : "Pending"}
             </td>
             <td className="p-3">
-              {isIncompleteCase
-                ? "Incomplete"
-                : caseData.pharmacistCompleted
-                ? caseData.pharmacistCompletedByName || "Unknown"
+              {caseItem.pharmacistCompleted? 
+                `${formatDate(caseItem.pharmacistCompletedAt)} ${formatTime(
+                    caseItem.pharmacistCompletedAt
+                  )}`
                 : "Pending"}
             </td>
             {/* Timeline columns - Doctor TAT */}
