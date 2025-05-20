@@ -536,12 +536,12 @@ const Dashboard = ({ currentUser }) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          {currentUser.role !== 'superAdmin' && (
+          {/*currentUser.role !== 'superAdmin' && (
             <div className="text-xs text-gray-500 flex items-center">
               <ShieldAlert className="h-3 w-3 mr-1 text-blue-500" />
               Showing cases based on your role access
             </div>
-          )}
+          )*/}
             
           
           {["superAdmin", "zonalHead"].includes(currentUser.role) && (
@@ -613,7 +613,7 @@ const Dashboard = ({ currentUser }) => {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="min-w-full border-collapse">
                 <thead>
                   <TableHeader
                     activeColumnFilter={activeColumnFilter}

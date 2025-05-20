@@ -24,7 +24,7 @@ const TableHeader = ({
   return (
     <tr className="bg-gray-50 border-b">
       {/* Clinic Code Column with Filter */}
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">
           <span>Clinic Code</span>
           <Popover
@@ -89,7 +89,7 @@ const TableHeader = ({
       </th>
 
       {/* Partner Column with Filter */}
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[100px]">
         <div className="flex items-center justify-between gap-1">
           <span>Partner</span>
           <Popover
@@ -153,7 +153,7 @@ const TableHeader = ({
         </div>
       </th>
 
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[160px]">
         <div className="flex items-center justify-between gap-1">
           <span>Doctor</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
@@ -162,7 +162,7 @@ const TableHeader = ({
         </div>
       </th>
 
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[220px]">
         <div className="flex items-center justify-between gap-1">
           <span>Doctor Completed At</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
@@ -171,9 +171,9 @@ const TableHeader = ({
         </div>
       </th>
 
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[220px]">
         <div className="flex items-center justify-between gap-1">
-          <span>Pharmacist Completed At</span>
+          <span>Pharma. Completed At</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
             <Filter className="h-3.5 w-3.5" />
           </Button>
@@ -181,7 +181,7 @@ const TableHeader = ({
       </th>
 
       {/* Doctor TAT Column */}
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">
           <span>Doctor TAT</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
@@ -191,7 +191,7 @@ const TableHeader = ({
       </th>
 
       {/* Overall TAT Column */}
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">
           <span>Overall TAT</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
@@ -201,7 +201,7 @@ const TableHeader = ({
       </th>
 
       {/* Date Column with Filter */}
-      <th className="p-3 text-left font-medium">
+      <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">
           <span>Created</span>
           <Popover
@@ -294,9 +294,9 @@ const TableHeader = ({
         </div>
       </th>
 
-      <th className="p-3 text-center font-medium">Meeting</th>             
+      <th className="p-3 text-center font-medium min-w-[40px]">Meeting</th>             
 
-      <th className="p-3 text-left font-medium">Actions</th>
+      <th className="p-3 text-left font-medium min-w-[40px]">Actions</th>
     </tr>
   );
 };

@@ -254,6 +254,20 @@ const DoctorCaseManagement = ({ currentUser }) => {
     setCurrentCase(caseItem);
   };
 
+  const doctorJoined = async (caseItem) => {
+    //console.log(caseItem);
+    try {
+      const timestamp = new Date();
+      const caseRef = doc(firestore, "cases", caseItem.id);
+      const updateData = {
+        doctorJoined: timestamp
+      };
+      await retryOperation(() => updateDoc(caseRef, updateData));
+    } catch {
+      console.error("Error setting doctor joining time: ", err)
+    }
+  }
+
   const handleCompleteCase = async (caseId, isIncomplete = false) => {
     if (!caseId) return;
     if (isIncomplete && !incompleteReason) {
@@ -823,6 +837,9 @@ const DoctorCaseManagement = ({ currentUser }) => {
                     <Button
                       asChild
                       className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={() => {
+                        doctorJoined(currentCase);
+                      }}
                     >
                       <a
                         href={currentCase.contactInfo}
@@ -1095,6 +1112,9 @@ const DoctorCaseManagement = ({ currentUser }) => {
                                   <Button
                                     variant="outline"
                                     size="sm"
+                                    onClick={() => {
+                                      doctorJoined(caseItem);
+                                    }}
                                     className="flex items-center text-indigo-600 border-indigo-200 hover:bg-indigo-50"
                                     asChild
                                   >
@@ -1110,6 +1130,9 @@ const DoctorCaseManagement = ({ currentUser }) => {
                                   <Button
                                     variant="outline"
                                     size="sm"
+                                    onClick={() => {
+                                      doctorJoined(caseItem);
+                                    }}
                                     className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
                                     asChild
                                   >

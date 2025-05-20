@@ -104,6 +104,20 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     throw lastError;
   };
 
+  const pharmacistJoined = async (caseItem) => {
+    //console.log(caseItem);
+    try {
+      const timestamp = new Date();
+      const caseRef = doc(firestore, "cases", caseItem.id);
+      const updateData = {
+        pharmacistJoined: timestamp
+      };
+      await retryOperation(() => updateDoc(caseRef, updateData));
+    } catch {
+      console.error("Error setting pharmacist joining time: ", err)
+    }
+  }
+
   useEffect(() => {
     const fetchPharmacistStatus = async () => {
       try {
