@@ -18,13 +18,15 @@ import { initializeApp } from "firebase/app";
 import { firestore } from "../../firebase";
 
 // Firebase secondary app config
+
+// Your web app's Firebase configuration
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAaYqE22EemaN6YGu7DbkidyV-Rh-X3JjA",
-  authDomain: "consultations-fa042.firebaseapp.com",
-  projectId: "consultations-fa042",
-  storageBucket: "consultations-fa042.firebasestorage.app",
-  messagingSenderId: "790687866611",
-  appId: "1:790687866611:web:1ca05cecdf493a4a7ae186",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 export const useUserCreation = (currentUserRole, currentUser) => {
