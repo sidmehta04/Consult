@@ -521,7 +521,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                     ? "N/A"
                     : caseData.doctorCompleted
                     ? calculateTimeDifference(
-                        caseData.createdAt,
+                        caseData.doctorJoined ?? caseData.createdAt,
                         caseData.doctorCompletedAt
                       )
                     : "Pending"}
@@ -555,7 +555,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                     ? "N/A"
                     : caseData.pharmacistCompleted
                     ? calculateTimeDifference(
-                        caseData.createdAt,
+                        caseData.pharmacistJoined ?? caseData.createdAt,
                         caseData.pharmacistCompletedAt
                       )
                     : "In progress"}

@@ -1098,7 +1098,41 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                                 caseItem.chiefComplaint
                               )}
                             </TableCell>
-                            <TableCell>{caseItem.contactInfo}</TableCell>
+                            <TableCell>
+                              {caseItem.consultationType === "tele" ? (
+                                <Button
+                                  asChild
+                                  className="w-full bg-blue-600 hover:bg-blue-700"
+                                  onClick={() => {
+                                    pharmacistJoined(caseItem);
+                                  }}
+                                >
+                                  <a
+                                    href={caseItem.contactInfo}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center"
+                                  >
+                                    <Video className="h-4 w-4 mr-2" /> Join
+                                  </a>
+                                </Button>
+                              ) : (
+                                <Button
+                                  asChild
+                                  className="w-full bg-blue-600 hover:bg-blue-700"
+                                  onClick={() => {
+                                    pharmacistJoined(caseItem);
+                                  }}
+                                >
+                                  <a
+                                    href={`tel:${caseItem.contactInfo}`}
+                                    className="flex items-center justify-center"
+                                  >
+                                    <Phone className="h-4 w-4 mr-2" /> Call Patient
+                                  </a>
+                                </Button>
+                              )}
+                            </TableCell>
                             <TableCell>{caseItem.clinicName}</TableCell>
                             <TableCell>
                               {caseItem.assignedDoctors?.primaryName ||

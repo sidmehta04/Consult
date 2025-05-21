@@ -302,7 +302,7 @@ const CasesTable = ({
               ) : caseItem.doctorCompleted ? (
                 <span className="flex items-center">
                   <Clock className="h-3 w-3 mr-1 text-green-600" />
-                  {calculateTimeDifference(caseItem.createdAt, caseItem.doctorCompletedAt)}
+                  {calculateTimeDifference(caseItem.doctorJoined ?? caseItem.createdAt, caseItem.doctorCompletedAt)}
                 </span>
               ) : (
                 <span className="text-amber-600">In progress</span>
@@ -315,7 +315,7 @@ const CasesTable = ({
               ) : caseItem.pharmacistCompleted ? (
                 <span className="flex items-center">
                   <Clock className="h-3 w-3 mr-1 text-green-600" />
-                  {calculateTimeDifference(caseItem.createdAt, caseItem.pharmacistCompletedAt)}
+                  {calculateTimeDifference(caseItem.pharmacistJoined ?? caseItem.createdAt, caseItem.pharmacistCompletedAt)}
                 </span>
               ) : (
                 <span className="text-amber-600">In progress</span>
@@ -500,7 +500,7 @@ const CasesTable = ({
                 ) : caseItem.doctorCompleted ? (
                   <span className="flex items-center">
                     <Clock className="h-3 w-3 mr-1 text-green-600" />
-                    {calculateTimeDifference(caseItem.createdAt, caseItem.doctorCompletedAt)}
+                    {calculateTimeDifference(caseItem.doctorJoined ?? caseItem.createdAt, caseItem.doctorCompletedAt)}
                   </span>
                 ) : (
                   <span className="text-amber-600">In progress</span>
@@ -513,7 +513,7 @@ const CasesTable = ({
                 ) : caseItem.pharmacistCompleted ? (
                   <span className="flex items-center">
                     <Clock className="h-3 w-3 mr-1 text-green-600" />
-                    {calculateTimeDifference(caseItem.createdAt, caseItem.pharmacistCompletedAt)}
+                    {calculateTimeDifference(caseItem.pharmacistJoined ?? caseItem.createdAt, caseItem.pharmacistCompletedAt)}
                   </span>
                 ) : (
                   <span className="text-amber-600">In progress</span>

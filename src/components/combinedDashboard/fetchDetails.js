@@ -193,7 +193,8 @@ const promises = doctorsList.map(async (doctor) => {
             
             // Calculate TAT if possible (time from creation to doctor completion)
             if (caseData.createdAt && caseData.doctorCompletedAt) {
-                const startTime = caseData.createdAt.toDate();
+                //const startTime = caseData.createdAt.toDate();
+                const startTime = (caseData.doctorJoined ?? caseData.createdAt).toDate();
                 const endTime = caseData.doctorCompletedAt.toDate();
                 const tat = (endTime - startTime) / (1000 * 60); // TAT in minutes
                 
@@ -310,7 +311,8 @@ export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
             }
             // Calculate TAT if possible (time from creation to pharmacist completion)
             if (caseData.createdAt && caseData.pharmacistCompletedAt) {
-                const startTime = caseData.createdAt.toDate();
+                //const startTime = caseData.createdAt.toDate();
+                const startTime = (caseData.pharmacistJoined ?? caseData.createdAt).toDate();
                 const endTime = caseData.pharmacistCompletedAt.toDate();
                 const tat = (endTime - startTime) / (1000 * 60); // TAT in minutes
                 
