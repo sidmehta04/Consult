@@ -104,7 +104,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     throw lastError;
   };
 
-  const pharmacistJoined = async (caseItem) => {
+  const setPharmacistJoined = async (caseItem) => {
     //console.log(caseItem);
     try {
       const timestamp = new Date();
@@ -1104,7 +1104,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                                   asChild
                                   className="w-full bg-blue-600 hover:bg-blue-700"
                                   onClick={() => {
-                                    pharmacistJoined(caseItem);
+                                    setPharmacistJoined(caseItem);
                                   }}
                                 >
                                   <a
@@ -1121,7 +1121,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                                   asChild
                                   className="w-full bg-blue-600 hover:bg-blue-700"
                                   onClick={() => {
-                                    pharmacistJoined(caseItem);
+                                    setPharmacistJoined(caseItem);
                                   }}
                                 >
                                   <a

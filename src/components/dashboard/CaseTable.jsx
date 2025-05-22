@@ -282,9 +282,23 @@ const CasesTable = ({
             <td className="p-3">{caseItem.partnerName || "N/A"}</td>
             <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
             <td className="p-3">
+              {caseItem.doctorJoined? 
+                `${formatDate(caseItem.doctorJoined)} ${formatTime(
+                    caseItem.doctorJoined
+                  )}`
+                : "Pending"}
+            </td>
+            <td className="p-3">
               {caseItem.doctorCompleted? 
                 `${formatDate(caseItem.doctorCompletedAt)} ${formatTime(
                     caseItem.doctorCompletedAt
+                  )}`
+                : "Pending"}
+            </td>
+            <td className="p-3">
+              {caseItem.pharmacistJoined? 
+                `${formatDate(caseItem.pharmacistJoined)} ${formatTime(
+                    caseItem.pharmacistJoined
                   )}`
                 : "Pending"}
             </td>
