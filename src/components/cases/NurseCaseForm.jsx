@@ -371,6 +371,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         (doctor) =>
           doctor.availabilityStatus !== "unavailable" &&
           doctor.availabilityStatus !== "on_break" &&
+          doctor.availabilityStatus !== "busy" &&
           (doctor.caseCount || 0) < 10
       );
 
@@ -593,6 +594,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         (pharmacist) =>
           pharmacist.availabilityStatus !== "unavailable" &&
           pharmacist.availabilityStatus !== "on_break" &&
+          pharmacist.availabilityStatus !== "busy" &&
           (pharmacist.caseCount || 0) < 10
       );
 
