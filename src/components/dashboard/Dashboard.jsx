@@ -318,9 +318,11 @@ const Dashboard = ({ currentUser }) => {
 
 
   useEffect(() => {
+    if(refreshInterval == 0){
+      return;
+    }
     const interval = setInterval(async () => {
       handleRefresh();
-      
     }, refreshInterval);
 
     return () => clearInterval(interval);
