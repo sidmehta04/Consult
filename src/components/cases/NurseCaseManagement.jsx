@@ -237,6 +237,83 @@ const NurseCaseManagement = ({ currentUser }) => {
     }
   };
 
+  const handlePharmacistIncomplete = async (caseId) => {
+    if (!caseId) return;
+
+    try {
+
+      // First get the current case data to check doctor completion
+      const caseRef = doc(firestore, "cases", caseId);
+      const caseSnap = await getDoc(caseRef);
+
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+
+      const caseData = caseSnap.data();
+
+      // Enhanced check for doctor completion - check both the flag and the timestamp
+      if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
+        setError(
+          "This case cannot be marked incomplete until the doctor has completed their review."
+        );
+        return;
+      }
+
+      // Check for incomplete flag
+      if (caseData.isIncomplete) {
+        setError(
+          "This case has been marked as incomplete by the doctor and cannot be marked incomplete by you."
+        );
+        return;
+      }
+
+      // Check if already completed
+      if (caseData.pharmacistCompleted) {
+        setError("This case has already been completed.");
+        return;
+      }
+
+      const timestamp = new Date();
+      const currentVersion = caseData.version || 0;
+
+      try {
+        await retryOperation(() =>
+          updateDoc(caseRef, {
+            pharmacistCompleted: true,
+            inPharmacistPendingReview: false,
+            status: "pharmacist_incomplete",
+            pharmacistCompletedAt: timestamp,
+            pharmacistCompletedBy: currentUser.uid,
+            pharmacistCompletedByName: currentUser.displayName || "Pharmacist",
+            version: currentVersion + 1,
+            isIncomplete: true
+          })
+        );
+      } catch (err) {
+        console.error("Error updating case after retries:", err);
+        setError(
+          "Failed to update case after multiple attempts. Please try again."
+        );
+        return;
+      }
+
+      setCurrentCase(null);
+
+      // Status update logic remains the same
+      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
+        updatePharmacistStatus(
+          "available",
+          "Automatically marked as available due to reduced case load"
+        );
+      }
+    } catch (err) {
+      console.error("Error completing case:", err);
+      setError("Failed to mark case as incomplete");
+    }
+
+  }
+
   const handleComplete = async () => {
     try {
       const { caseId, type, isIncomplete, reason } = confirmComplete;
@@ -766,21 +843,35 @@ const NurseCaseManagement = ({ currentUser }) => {
                           {caseItem.doctorCompleted &&
                             !caseItem.pharmacistCompleted &&
                             !caseItem.isIncomplete && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
-                                onClick={() =>
-                                  openConfirmDialog(
-                                    caseItem.id,
-                                    "pharmacist",
-                                    caseItem
-                                  )
-                                }
-                              >
-                                <Check className="h-4 w-4 mr-1" /> Mark Pharm
-                                Done
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() =>
+                                    handlePharmacistIncomplete(caseItem.id)
+                                  }
+                                >
+                                  <X className="h-4 w-4 mr-1" /> Mark Pharm
+                                  Incomplete
+                                </Button>
+
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                                  onClick={() =>
+                                    openConfirmDialog(
+                                      caseItem.id,
+                                      "pharmacist",
+                                      caseItem
+                                    )
+                                  }
+                                >
+                                  <Check className="h-4 w-4 mr-1" /> Mark Pharm
+                                  Done
+                                </Button>
+                              </>
                             )}
 
                           {!caseItem.doctorCompleted &&

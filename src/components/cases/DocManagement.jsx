@@ -399,7 +399,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
       setIncompleteReason(""); // Reset reason
 
       // Update doctor status if case count decreases
-      if (activeCases.length <= 10 && doctorStatus.status === "busy") {
+      if (activeCases.length < 10 && doctorStatus.status === "busy") {
         updateDoctorStatus(
           "available",
           "Automatically marked as available due to reduced case load"

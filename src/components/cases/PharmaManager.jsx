@@ -192,6 +192,7 @@ const PharmacistAvailabilityManager = ({ currentUser }) => {
   // Auto-update status to busy if case load is high
   useEffect(() => {
     if (availabilityStatus === "available" && activeCases.length >= 10) {
+      console.log("hi")
       updatePharmacistStatus("busy", "Automatically marked as busy due to high case load");
     }
   }, [activeCases, availabilityStatus]);

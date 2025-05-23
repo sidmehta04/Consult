@@ -599,7 +599,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                     Case Status
                   </label>
                   <p className="text-red-700 font-medium">
-                    Doctor marked as incomplete
+                    Pharmacist marked as incomplete
                   </p>
                 </div>
                 <Badge className="bg-red-100 text-red-800">Incomplete</Badge>

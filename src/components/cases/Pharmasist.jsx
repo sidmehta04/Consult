@@ -425,7 +425,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       setCompletingCase(false);
 
       // Status update logic remains the same
-      if (activeCases.length <= 5 && pharmacistStatus.status === "busy") {
+      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
         updatePharmacistStatus(
           "available",
           "Automatically marked as available due to reduced case load"
@@ -508,7 +508,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       setCompletingCase(false);
 
       // Status update logic remains the same
-      if (activeCases.length <= 5 && pharmacistStatus.status === "busy") {
+      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
         updatePharmacistStatus(
           "available",
           "Automatically marked as available due to reduced case load"
@@ -982,7 +982,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                 </div>
 
                 <div className="flex flex-col space-y-3 pt-4">
-                  {!currentCase.pharmacistCompleted && !currentCase.isIncomplete && currentCase.doctorCompleted && (
+                  {!currentCase.pharmacistCompleted && !currentCase.isIncomplete && currentCase.doctorCompleted && !completingCase && (
                       <Button
                         onClick={() => handlePharmacistIncomplete(currentCase.id)}
                         disabled={
@@ -990,19 +990,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                         }
                         className="w-full bg-amber-600 hover:bg-amber-700 flex items-center justify-center"
                       >
-                        {completingCase ? (
-                          <>
-                            <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <AlertCircle className="h-4 w-4 mr-2" />
-                            {currentCase.doctorCompleted
-                              ? "Mark Incomplete"
-                              : "Waiting for Doctor Completion"}
-                          </>
-                        )}
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        Mark as Incomplete
                       </Button>
                     )
                   }
