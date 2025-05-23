@@ -274,6 +274,7 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
     } catch (err) {
       console.error("Error saving hierarchy:", err);
       setError("Failed to save pharmacist hierarchy. Please try again.");
+      setSaving(false);
     } finally {
       setSaving(false);
     }
