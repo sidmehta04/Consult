@@ -425,6 +425,7 @@ const NurseCaseManagement = ({ currentUser }) => {
       case "doctor_completed":
         return "secondary";
       case "doctor_incomplete":
+      case "pharmacist_incomplete":
       case "incomplete":
         return "destructive";
       default:
@@ -440,6 +441,8 @@ const NurseCaseManagement = ({ currentUser }) => {
         return "Doctor Completed";
       case "doctor_incomplete":
         return "Doctor Incomplete";
+      case "pharmacist_incomplete":
+        return "Pharmacist Incomplete"
       case "incomplete":
         return "Incomplete";
       default:
@@ -1126,7 +1129,7 @@ const NurseCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-blue-100 text-blue-800"
-                              : caseItem.status === "doctor_incomplete"
+                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }

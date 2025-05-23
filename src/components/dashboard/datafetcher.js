@@ -187,7 +187,7 @@ export const fetchTabData = async (
       // Special handling for incomplete tab
       if (tabName === "incomplete") {
         // If we're on the incomplete tab, make sure we only include actual incomplete cases
-        if (!caseData.isIncomplete && caseData.status !== "doctor_incomplete") {
+        if (!caseData.isIncomplete && caseData.status !== "doctor_incomplete" && caseData.status !== "pharmacist_incomplete") {
           return; // Skip this case if it's not truly incomplete
         }
       }
@@ -273,7 +273,8 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
     if (
       filters.status === "incomplete" &&
       !caseData.isIncomplete &&
-      caseData.status !== "doctor_incomplete"
+      caseData.status !== "doctor_incomplete" &&
+      caseData.status !== "pharmacist_incomplete"
     )
       return false;
   }
@@ -368,7 +369,7 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
 };
 
 const determinePendingQueue = (caseData) => {
-  if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
+  if (caseData.isIncomplete || caseData.status === "doctor_incomplete" || caseData.status === "pharmacist_incomplete") {
     return "incomplete";
   } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {
     return "completed";
@@ -403,7 +404,7 @@ export const calculateCaseContribution = (caseData, todayEpoch, tomorrowEpoch, p
 
   if (isToday) contribution.todayCases = (contribution.todayCases || 0) + len;
 
-  if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
+  if (caseData.isIncomplete || caseData.status === "doctor_incomplete" || caseData.status === "pharmacist_incomplete") {
     contribution.incompleteCases = (contribution.incompleteCases || 0) + len;
     if (isToday) contribution.todayIncomplete = (contribution.todayIncomplete || 0) + len;
   } else if (caseData.doctorCompleted && caseData.pharmacistCompleted) {

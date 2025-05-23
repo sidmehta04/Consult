@@ -67,7 +67,7 @@ const DoctorDetailView = ({ doctorPharmacist, doctor, onClose }) => {
               pendingCases++;
             }
           } else if (doctorPharmacist === "pharmacist") {
-            if (caseData.isIncomplete){
+            if (caseData.isIncomplete || caseData.status === "pharmacist_incomplete"){
               incompleteCases++;
             } else if (caseData.status === "doctor_completed") {
               pendingCases++;

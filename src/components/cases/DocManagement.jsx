@@ -466,7 +466,13 @@ const DoctorCaseManagement = ({ currentUser }) => {
       case "doctor_incomplete":
         return (
           <Badge className="bg-red-100 text-red-800 border-red-200">
-            Marked Incomplete
+            Marked Incomplete by Doctor
+          </Badge>
+        );
+      case "pharmacist_incomplete":
+        return (
+          <Badge className="bg-red-100 text-red-800 border-red-200">
+            Marked Incomplete by Pharmacist
           </Badge>
         );
       case "completed":
@@ -1068,7 +1074,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                                 caseItem.chiefComplaint
                               )}
                             </TableCell>
-                            <TableCell>{caseItem.clinicName}</TableCell>
+                            <TableCell>{caseItem.clinicCode ?? caseItem.clinicName}</TableCell>
                             <TableCell>
                               <Badge
                                 variant={
@@ -1430,7 +1436,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-blue-100 text-blue-800"
-                              : caseItem.status === "doctor_incomplete"
+                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }

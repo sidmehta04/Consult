@@ -355,6 +355,90 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     setCurrentCase(caseItem);
   };
 
+  const handlePharmacistIncomplete = async (caseId) => {
+    if (!caseId) return;
+
+    try {
+      setCompletingCase(true);
+
+      // First get the current case data to check doctor completion
+      const caseRef = doc(firestore, "cases", caseId);
+      const caseSnap = await getDoc(caseRef);
+
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+
+      const caseData = caseSnap.data();
+
+      // Enhanced check for doctor completion - check both the flag and the timestamp
+      if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
+        setError(
+          "This case cannot be marked incomplete until the doctor has completed their review."
+        );
+        setCompletingCase(false);
+        return;
+      }
+
+      // Check for incomplete flag
+      if (caseData.isIncomplete) {
+        setError(
+          "This case has been marked as incomplete by the doctor and cannot be marked incomplete by you."
+        );
+        setCompletingCase(false);
+        return;
+      }
+
+      // Check if already completed
+      if (caseData.pharmacistCompleted) {
+        setError("This case has already been completed.");
+        setCompletingCase(false);
+        return;
+      }
+
+      const timestamp = new Date();
+      const currentVersion = caseData.version || 0;
+
+      try {
+        await retryOperation(() =>
+          updateDoc(caseRef, {
+            pharmacistCompleted: true,
+            inPharmacistPendingReview: false,
+            status: "pharmacist_incomplete",
+            pharmacistCompletedAt: timestamp,
+            pharmacistCompletedBy: currentUser.uid,
+            pharmacistCompletedByName: currentUser.displayName || "Pharmacist",
+            version: currentVersion + 1,
+            isIncomplete: true
+          })
+        );
+      } catch (err) {
+        console.error("Error updating case after retries:", err);
+        setError(
+          "Failed to update case after multiple attempts. Please try again."
+        );
+        setCompletingCase(false);
+        return;
+      }
+
+      setCurrentCase(null);
+      setCompletingCase(false);
+
+      // Status update logic remains the same
+      if (activeCases.length <= 5 && pharmacistStatus.status === "busy") {
+        updatePharmacistStatus(
+          "available",
+          "Automatically marked as available due to reduced case load"
+        );
+      }
+    } catch (err) {
+      console.error("Error completing case:", err);
+      setError("Failed to complete case");
+      setCompletingCase(false);
+    }
+
+  }
+
   const handleCompleteCase = async (caseId) => {
     if (!caseId) return;
 
@@ -490,6 +574,12 @@ const PharmacistCaseManagement = ({ currentUser }) => {
         return (
           <Badge className="bg-red-100 text-red-800 border-red-200">
             Doctor Marked Incomplete
+          </Badge>
+        );
+      case "pharmacist_incomplete":
+        return (
+          <Badge className="bg-red-100 text-red-800 border-red-200">
+            Pharmacist Marked Incomplete
           </Badge>
         );
       case "completed":
@@ -892,6 +982,31 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                 </div>
 
                 <div className="flex flex-col space-y-3 pt-4">
+                  {!currentCase.pharmacistCompleted && !currentCase.isIncomplete && currentCase.doctorCompleted && (
+                      <Button
+                        onClick={() => handlePharmacistIncomplete(currentCase.id)}
+                        disabled={
+                          completingCase || !currentCase.doctorCompleted
+                        }
+                        className="w-full bg-amber-600 hover:bg-amber-700 flex items-center justify-center"
+                      >
+                        {completingCase ? (
+                          <>
+                            <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            {currentCase.doctorCompleted
+                              ? "Mark Incomplete"
+                              : "Waiting for Doctor Completion"}
+                          </>
+                        )}
+                      </Button>
+                    )
+                  }
+                  
                   {!currentCase.pharmacistCompleted &&
                     !currentCase.isIncomplete && (
                       <Button
@@ -915,7 +1030,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                           </>
                         )}
                       </Button>
-                    )}
+                    )
+                  }
 
                   {currentCase.isIncomplete && (
                     <div className="bg-red-50 border border-red-200 p-3 rounded-md">
@@ -1229,7 +1345,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-amber-100 text-amber-800"
-                              : caseItem.status === "doctor_incomplete"
+                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }

@@ -210,7 +210,7 @@ const CasesTable = ({
 
   // Helper to determine if a case is incomplete
   const isIncompleteCase = (caseItem) => {
-    return caseItem.isIncomplete === true || caseItem.status === "doctor_incomplete";
+    return caseItem.isIncomplete === true || caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete";
   };
 
   // Render pagination footer
@@ -234,7 +234,7 @@ const CasesTable = ({
     
     return (
       <tr className="border-t bg-gray-50">
-        <td colSpan="10">
+        <td colSpan="12">
           <div className="flex justify-between items-center px-6 py-4">
             <div className="text-sm text-gray-500">
               {paginationText}

@@ -591,6 +591,20 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                 <Badge className="bg-red-100 text-red-800">Incomplete</Badge>
               </div>
             )}
+
+            {caseData.status === "pharmacist_incomplete" && (
+              <div className="flex items-center justify-between bg-red-50 p-3 rounded-md border border-red-200">
+                <div>
+                  <label className="text-sm font-medium text-red-800">
+                    Case Status
+                  </label>
+                  <p className="text-red-700 font-medium">
+                    Doctor marked as incomplete
+                  </p>
+                </div>
+                <Badge className="bg-red-100 text-red-800">Incomplete</Badge>
+              </div>
+            )}
           </div>
         </TabsContent>
 

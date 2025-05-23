@@ -804,6 +804,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           createdByName: currentUser.displayName || nurseData.name,
           clinicId: currentUser.uid,
           clinicName: nurseData.name,
+          clinicCode: nurseData.clinicCode,
+          partnerName: nurseData.partnerName,
           assignedDoctors: {
             primary: assignedDoctor.id,
             primaryName: assignedDoctor.name,
