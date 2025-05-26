@@ -31,19 +31,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Building2,
   BadgeCheck,
   AlertCircle,
-  ShieldMinus,
-  Trash,
-  Minus,
-  Plus,
-  Save,
-  ExternalLink,
   Search,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -60,139 +56,93 @@ import {
 import { firestore } from "../../firebase";
 
 import PharmacistHierarchyCard from "./PharmacistHierarchyCard";
-import { fetchUserHierarchy } from "./helperfuncs";
-
-
 
 const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
-  const [availableClinics, setAvailableClinics] = useState([]);
-  const [assignedClinics, setAssignedClinics] = useState([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isDeletingClinics, setIsDeletingClinics] = useState(false);
+  const [clinics, setClinics] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredClinics, setFilteredClinics] = useState([]);
   const [selectedClinic, setSelectedClinic] = useState(null);
-  const [deactivatingId, setDeactivatingId] = useState(null);
+  const [filterType, setFilterType] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
-  // Fetch all clinics and current assignments
+  // Fetch all clinics in the system
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchClinics = async () => {
       try {
         setLoading(true);
 
-        const userHierarchyUids = fetchUserHierarchy(currentUser.uid, userRole);
+        // Fetch ALL clinics in the system (nurses with role "nurse")
+        const clinicsQuery = query(
+          collection(firestore, "users"),
+          where("role", "==", "nurse")
+        );
 
-        // Fetch pharmacist's data to see already assigned clinics
-        const pharmacistRef = doc(firestore, "users", currentUser.uid);
-        const pharmacistSnapshot = await getDoc(pharmacistRef);
+        const clinicsSnapshot = await getDocs(clinicsQuery);
+        const clinicsList = [];
 
-        if (pharmacistSnapshot.exists()) {
-          const pharmacistData = pharmacistSnapshot.data();
+        clinicsSnapshot.forEach((doc) => {
+          const clinicData = {
+            id: doc.id,
+            name: doc.data().name,
+            clinicCode: doc.data().clinicCode || "N/A",
+            email: doc.data().email || "N/A",
+            state: doc.data().state || "N/A",
+            district: doc.data().district || "N/A",
+            address: doc.data().address || "N/A",
+            createdBy: doc.data().createdBy || "",
+            partnerName: doc.data().partnerName || "N/A",
+            deactivated: doc.data().deactivated || false,
+            assignedPharmacists: doc.data().assignedPharmacists || {},
+            createdAt: doc.data().createdAt
+              ? new Date(
+                  doc.data().createdAt.seconds * 1000
+                ).toLocaleDateString()
+              : "N/A",
+            ...doc.data(),
+          };
 
-          // Fetch ALL available clinics in the system
-          const clinicsQuery = query(
-            collection(firestore, "users"),
-            where("role", "==", "nurse")
-          );
+          // Only include non-deactivated clinics
+          if (!clinicData.deactivated) {
+            clinicsList.push(clinicData);
+          }
+        });
 
-          const clinicsSnapshot = await getDocs(clinicsQuery);
-          const clinicsList = [];
-          const assignedClinicsList = [];
+        // Sort clinics by name
+        clinicsList.sort((a, b) => a.name.localeCompare(b.name));
 
-          clinicsSnapshot.forEach((doc) => {
-            const clinicData = {
-              id: doc.id,
-              name: doc.data().name,
-              clinicCode: doc.data().clinicCode || "N/A",
-              email: doc.data().email || "N/A",
-              state: doc.data().state || "N/A",
-              district: doc.data().district || "N/A",
-              address: doc.data().address || "N/A",
-              createdBy: doc.data().createdBy || "",
-              partnerName: doc.data().partnerName || "N/A",
-              deactivated: doc.data().deactivated || false,
-              createdAt: doc.data().createdAt
-                ? new Date(
-                    doc.data().createdAt.seconds * 1000
-                  ).toLocaleDateString()
-                : "N/A",
-              ...doc.data(),
-            };
-
-            // Add a flag for clinics created by this pharmacist
-            if(userRole == 'pharmacist'){
-              clinicData.isOwnClinic = clinicData.createdBy === currentUser.uid;
-            } else {
-              clinicData.isOwnClinic = false;
-            }
-
-            if(!clinicData.deactivated){
-              clinicsList.push(clinicData);
-              // Check if this clinic is assigned to the pharmacist
-              let isAssigned;
-              if(userRole === 'pharmacist'){
-                isAssigned =
-                  pharmacistData.assignedClinics &&
-                  pharmacistData.assignedClinics[doc.id] === true;
-              } else {
-                isAssigned = true;
-              }
-
-              if (isAssigned) {
-                assignedClinicsList.push(clinicData);
-              }
-            }
-          });
-
-          // Sort clinics - own clinics first, then by name
-          clinicsList.sort((a, b) => {
-            if (a.isOwnClinic && !b.isOwnClinic) return -1;
-            if (!a.isOwnClinic && b.isOwnClinic) return 1;
-            return a.name.localeCompare(b.name);
-          });
-
-          setAvailableClinics(clinicsList);
-          setAssignedClinics(assignedClinicsList);
-          setFilteredClinics(clinicsList);
-        }
+        setClinics(clinicsList);
+        setFilteredClinics(clinicsList);
       } catch (err) {
-        console.error("Error fetching data:", err);
+        console.error("Error fetching clinics:", err);
         setError("Failed to load clinics. Please try again.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [currentUser.uid]);
-
-  const [filterType, setFilterType] = useState("all");
-
-  useEffect(() => {
-    setFilterType("all");
-  }, [isDialogOpen, isDeletingClinics])
+    if (userRole === "teamLeader") {
+      fetchClinics();
+    }
+  }, [userRole]);
 
   // Filter clinics based on search term and filter type
   useEffect(() => {
-    let filtered = [...availableClinics];
+    let filtered = [...clinics];
 
     // Apply filter type first
-    if (filterType === "own") {
-      filtered = filtered.filter((clinic) => clinic.isOwnClinic);
-    } else if (filterType === "other") {
-      filtered = filtered.filter((clinic) => !clinic.isOwnClinic);
-    } else if (filterType === "assigned") {
-      filtered = filtered.filter((clinic) =>
-        assignedClinics.some((assigned) => assigned.id === clinic.id)
+    if (filterType === "with_pharmacist") {
+      filtered = filtered.filter((clinic) => 
+        clinic.assignedPharmacists && 
+        (clinic.assignedPharmacists.primary || Object.keys(clinic.assignedPharmacists).length > 0)
       );
-    } else if (filterType === "unassigned") {
-      filtered = filtered.filter(
-        (clinic) =>
-          !assignedClinics.some((assigned) => assigned.id === clinic.id)
+    } else if (filterType === "without_pharmacist") {
+      filtered = filtered.filter((clinic) => 
+        !clinic.assignedPharmacists || 
+        (!clinic.assignedPharmacists.primary && Object.keys(clinic.assignedPharmacists).length === 0)
       );
     }
 
@@ -213,347 +163,71 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
     }
 
     setFilteredClinics(filtered);
-  }, [searchTerm, availableClinics, filterType, assignedClinics]);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [searchTerm, clinics, filterType]);
 
-  //Deactivate Clinic
-  /*
-  const deactivateClinic = async (clinic) => {
+  // Refresh clinic data after hierarchy changes
+  const refreshClinicData = async () => {
     try {
-      //remove from all doctors and pharmacists assignments
-
-      const medQuery = query(
+      const clinicsQuery = query(
         collection(firestore, "users"),
-        where("assignedClinics."+clinic.id, "==", true)
+        where("role", "==", "nurse")
       );
 
-      const medSnapshot = await getDocs(medQuery);
+      const clinicsSnapshot = await getDocs(clinicsQuery);
+      const updatedClinics = [];
 
-      for (const doc of medSnapshot.docs) {
-        await setDoc(
-          doc.ref,
-          { [`assignedClinics.${clinic.id}`]: false },
-          { merge: true }
-        );
-      }
-      //add deactivated = true
+      clinicsSnapshot.forEach((doc) => {
+        const clinicData = {
+          id: doc.id,
+          name: doc.data().name,
+          clinicCode: doc.data().clinicCode || "N/A",
+          email: doc.data().email || "N/A",
+          state: doc.data().state || "N/A",
+          district: doc.data().district || "N/A",
+          address: doc.data().address || "N/A",
+          createdBy: doc.data().createdBy || "",
+          partnerName: doc.data().partnerName || "N/A",
+          deactivated: doc.data().deactivated || false,
+          assignedPharmacists: doc.data().assignedPharmacists || {},
+          createdAt: doc.data().createdAt
+            ? new Date(
+                doc.data().createdAt.seconds * 1000
+              ).toLocaleDateString()
+            : "N/A",
+          ...doc.data(),
+        };
 
-      const clinicRef = doc(firestore, "users", clinic.id);
-      setDoc(
-        clinicRef,
-        { deactivated : true },
-        { merge : true }
-      )
+        if (!clinicData.deactivated) {
+          updatedClinics.push(clinicData);
+        }
+      });
 
+      updatedClinics.sort((a, b) => a.name.localeCompare(b.name));
+      setClinics(updatedClinics);
     } catch (err) {
-      console.error("Error deactivating clinic:", err);
+      console.error("Error refreshing clinic data:", err);
     }
+  };
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredClinics.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentClinics = filteredClinics.slice(startIndex, endIndex);
+
+  const goToNextPage = () => {
+    setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  };
+
+  const goToPrevPage = () => {
+    setCurrentPage(prev => Math.max(prev - 1, 1));
+  };
+
+  // Don't render for non-teamLeader users
+  if (userRole !== "teamLeader") {
+    return null;
   }
-  */
-  // Add a clinic to the assignment
-  const addClinic = (clinicId) => {
-    // Check if clinic is already assigned
-    if (assignedClinics.some((clinic) => clinic.id === clinicId)) {
-      setError("This clinic is already in your assignments.");
-      return;
-    }
-
-    const clinicToAdd = availableClinics.find(
-      (clinic) => clinic.id === clinicId
-    );
-    if (clinicToAdd) {
-      setAssignedClinics([...assignedClinics, clinicToAdd]);
-    }
-  };
-
-  // Remove clinic from assignments
-  const removeClinic = (clinicId) => {
-    setAssignedClinics(
-      assignedClinics.filter((clinic) => clinic.id !== clinicId)
-    );
-  };
-
-  // Save clinic assignments -- OLD, UNOPTIMIZED --
-  /*
-  const saveAssignments = async () => {
-    try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
-      console.log(1);
-      // Create a new object with clinic IDs as keys and true as values
-      const clinicAssignments = {};
-      assignedClinics.forEach((clinic) => {
-        clinicAssignments[clinic.id] = true;
-      });
-      console.log(2);
-      // Update pharmacist's assigned clinics
-      const pharmacistRef = doc(firestore, "users", currentUser.uid);
-      await setDoc(
-        pharmacistRef,
-        {
-          assignedClinics: clinicAssignments,
-        },
-        { merge: true }
-      );
-
-      // Update clinic assignments for all assigned clinics
-      const updatePromises = [];
-
-      // Get pharmacist data for name
-      const pharmacistSnapshot = await getDoc(pharmacistRef);
-      const pharmacistData = pharmacistSnapshot.data();
-      console.log(3);
-      // Get the doctor hierarchy if it exists
-      const doctorHierarchy = pharmacistData.doctorHierarchy || [];
-
-      console.log(availableClinics.length);
-      // For each clinic, set or remove the pharmacist assignment
-      for (const clinic of availableClinics) {
-        const clinicRef = doc(firestore, "users", clinic.id);
-        const clinicSnapshot = await getDoc(clinicRef);
-        console.log(4, clinicSnapshot);
-        if (clinicSnapshot.exists()) {
-          const clinicData = clinicSnapshot.data();
-          const assignedPharmacists = clinicData.assignedPharmacists || {};
-
-          // Check if clinic is in our assigned list
-          const isAssigned = assignedClinics.some((c) => c.id === clinic.id);
-
-          if (isAssigned) {
-            // Add pharmacist to clinic's assignedPharmacists
-            assignedPharmacists.primary = currentUser.uid;
-            assignedPharmacists.primaryName = pharmacistData.name;
-
-            updatePromises.push(
-              setDoc(
-                clinicRef,
-                {
-                  assignedPharmacists,
-                },
-                { merge: true }
-              )
-            );
-
-            console.log(5, clinic);
-            // Also ensure doctors in hierarchy are assigned to this clinic
-            for (const doctorId of doctorHierarchy) {
-              const doctorRef = doc(firestore, "users", doctorId);
-              const doctorSnapshot = await getDoc(doctorRef);
-
-              if (doctorSnapshot.exists()) {
-                const doctorData = doctorSnapshot.data();
-                const updatedClinics = {
-                  ...(doctorData.assignedClinics || {}),
-                  [clinic.id]: true,
-                };
-
-                updatePromises.push(
-                  setDoc(
-                    doctorRef,
-                    {
-                      assignedClinics: updatedClinics,
-                    },
-                    { merge: true }
-                  )
-                );
-              }
-            }
-          } else {
-            // Remove this pharmacist from clinic's assignedPharmacists if present
-            if (assignedPharmacists.primary === currentUser.uid) {
-              delete assignedPharmacists.primary;
-              delete assignedPharmacists.primaryName;
-
-              updatePromises.push(
-                setDoc(
-                  clinicRef,
-                  {
-                    assignedPharmacists,
-                  },
-                  { merge: true }
-                )
-              );
-
-              // Also remove doctors in hierarchy from this clinic
-              for (const doctorId of doctorHierarchy) {
-                const doctorRef = doc(firestore, "users", doctorId);
-                const doctorSnapshot = await getDoc(doctorRef);
-
-                if (doctorSnapshot.exists()) {
-                  const doctorData = doctorSnapshot.data();
-                  const updatedClinics = {
-                    ...(doctorData.assignedClinics || {}),
-                  };
-
-                  if (updatedClinics[clinic.id]) {
-                    delete updatedClinics[clinic.id];
-
-                    updatePromises.push(
-                      setDoc(
-                        doctorRef,
-                        {
-                          assignedClinics: updatedClinics,
-                        },
-                        { merge: true }
-                      )
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      console.log(6, updatePromises);
-      await Promise.all(updatePromises);
-
-      setSuccess("Clinic assignments saved successfully.");
-    } catch (err) {
-      console.error("Error saving clinic assignments:", err);
-      setError("Failed to save clinic assignments. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-  */
-
-  // New saveAssignments, should be optimized (from AI)
-  const saveAssignments = async () => {
-    try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
-
-      // Build new assignments object
-      const newAssignments = {};
-      assignedClinics.forEach((clinic) => {
-        newAssignments[clinic.id] = true;
-      });
-
-      // Get previous assignments from Firestore
-      const pharmacistRef = doc(firestore, "users", currentUser.uid);
-      const pharmacistSnapshot = await getDoc(pharmacistRef);
-      const pharmacistData = pharmacistSnapshot.data();
-      const prevAssignments = pharmacistData.assignedClinics || {};
-      
-      // Calculate delta
-      const newlyAssigned = assignedClinics
-        .map((c) => c.id)
-        .filter((id) => !prevAssignments[id]);
-      const removed = Object.keys(prevAssignments)
-        .filter((id) => prevAssignments[id] && !newAssignments[id]);
-
-      // Mark removed clinics as false in newAssignments
-      for (const clinicId of removed) {
-        newAssignments[clinicId] = false;
-      }
-
-      // Update pharmacist's assignedClinics
-      await setDoc(
-        pharmacistRef,
-        { assignedClinics: newAssignments },
-        { merge: true }
-      );
-
-      // Get doctor hierarchy
-      const doctorHierarchy = pharmacistData.doctorHierarchy || [];
-      const updatePromises = [];
-
-      // Only update clinics that changed
-      for (const clinicId of newlyAssigned) {
-        const clinicRef = doc(firestore, "users", clinicId);
-        const clinicSnapshot = await getDoc(clinicRef);
-        if (clinicSnapshot.exists()) {
-          const clinicData = clinicSnapshot.data();
-          console.log('updating clinic: ', clinicData.name, clinicData.clinicCode);
-          const assignedPharmacists = clinicData.assignedPharmacists || {};
-          if (userRole === 'pharmacist'){
-            assignedPharmacists.primary = currentUser.uid;
-            assignedPharmacists.primaryName = pharmacistData.name;
-            updatePromises.push(
-              setDoc(
-                clinicRef,
-                { assignedPharmacists },
-                { merge: true }
-              )
-            );
-          }
-          // Assign to doctors
-          for (const doctorId of doctorHierarchy) {
-            const doctorRef = doc(firestore, "users", doctorId);
-            const doctorSnapshot = await getDoc(doctorRef);
-            if (doctorSnapshot.exists()) {
-              const doctorData = doctorSnapshot.data();
-              const updatedClinics = {
-                ...(doctorData.assignedClinics || {}),
-                [clinicId]: true,
-              };
-              updatePromises.push(
-                setDoc(
-                  doctorRef,
-                  { assignedClinics: updatedClinics },
-                  { merge: true }
-                )
-              );
-            }
-          }
-        }
-      }
-
-      for (const clinicId of removed) {
-        const clinicRef = doc(firestore, "users", clinicId);
-        const clinicSnapshot = await getDoc(clinicRef);
-        if (clinicSnapshot.exists()) {
-          const clinicData = clinicSnapshot.data();
-          const assignedPharmacists = clinicData.assignedPharmacists || {};
-          console.log('removing clinic: ', clinicData.name, clinicData.clinicCode);
-          if (assignedPharmacists.primary === currentUser.uid) {
-            delete assignedPharmacists.primary;
-            delete assignedPharmacists.primaryName;
-            updatePromises.push(
-              setDoc(
-                clinicRef,
-                { assignedPharmacists },
-                { merge: true }
-              )
-            );
-          }
-          // Remove from doctors
-          for (const doctorId of doctorHierarchy) {
-            const doctorRef = doc(firestore, "users", doctorId);
-            const doctorSnapshot = await getDoc(doctorRef);
-            if (doctorSnapshot.exists()) {
-              const doctorData = doctorSnapshot.data();
-              const updatedClinics = { ...(doctorData.assignedClinics || {}) };
-              if (updatedClinics[clinicId]) {
-                delete updatedClinics[clinicId];
-                updatePromises.push(
-                  setDoc(
-                    doctorRef,
-                    { assignedClinics: updatedClinics },
-                    { merge: true }
-                  )
-                );
-              }
-            }
-          }
-        }
-      }
-
-      await Promise.all(updatePromises);
-      setSuccess("Clinic assignments saved successfully.");
-    } catch (err) {
-      console.error("Error saving clinic assignments:", err);
-      setError("Failed to save clinic assignments. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Check if a clinic is already assigned
-  const isClinicAssigned = (clinicId) => {
-    return assignedClinics.some((clinic) => clinic.id === clinicId);
-  };
 
   return (
     <Card className="w-full max-w-8xl mx-auto bg-white shadow-xl">
@@ -561,12 +235,12 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
         <div className="flex items-center space-x-2">
           <Building2 className="h-6 w-6 text-purple-600" />
           <CardTitle className="text-2xl font-bold text-grey-700">
-            Clinic Management
+            Clinic Pharmacist Hierarchy Management
           </CardTitle>
         </div>
         <CardDescription className="text-grey-700/70">
-          Manage which clinics are assigned to you and your doctor hierarchy.
-          You can add any clinic in the system to your assignments.
+          Manage pharmacist hierarchies for all clinics in the system. 
+          You can view and update the assigned pharmacists for each clinic.
         </CardDescription>
       </CardHeader>
 
@@ -596,332 +270,28 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Assigned Clinics</h3>
-              <div className="flex gap-2 ml-auto">
-                {/*
-                <Dialog
-                  open={isDeletingClinics}
-                  onOpenChange={setIsDeletingClinics}
-                  className="!bg-white"
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      className="flex items-center gap-1 bg-red-600 hover:bg-grey-700"
-                    >
-                      <Minus className="h-4 w-4" />
-                      Deactivate Clinic
-                    </Button>
-                  </DialogTrigger>
-
-                  <DialogContent
-                    className="!w-[70vw] !h-[80vh] !bg-white p-6 shadow-xl border border-gray-200 overflow-auto !max-w-none"
-                    style={{ backgroundColor: "white", backdropFilter: "none" }}
-                  >
-                    <DialogHeader className="px-6 py-4 border-b bg-white">
-                      <DialogTitle className="text-xl font-semibold text-grey-700">
-                        Deactivate a Clinic
-                      </DialogTitle>
-                      <DialogDescription className="text-sm text-gray-600">
-                        Select a clinic to deactivate. This will remove the login and unassign it from doctors and pharmacists.
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="px-6 py-4 bg-white">
-                      <div className="flex flex-col md:flex-row gap-4 mb-4">
-                        <div className="relative flex-1">
-                          <Input
-                            type="text"
-                            placeholder="Search clinics by name, code, location, partner..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 w-full"
-                          />
-                          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        </div>
-                        <Select value={filterType} onValueChange={setFilterType}>
-                          <SelectTrigger className="w-full md:w-[200px]">
-                            <SelectValue placeholder="Filter clinics" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="own">My Clinics</SelectItem>
-                            <SelectItem value="all">All Clinics</SelectItem>
-                            <SelectItem value="other">Other Clinics</SelectItem>
-                            <SelectItem value="assigned">Assigned</SelectItem>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="h-[350px] overflow-y-auto border rounded-md">
-                        <Table>
-                          <TableHeader className="sticky top-0 bg-white z-10">
-                            <TableRow>
-                              <TableHead className="w-[30%]">
-                                Clinic Name
-                              </TableHead>
-                              <TableHead className="w-[15%]">
-                                Clinic Code
-                              </TableHead>
-                              <TableHead className="w-[20%]">Location</TableHead>
-                              <TableHead className="w-[20%]">Partner</TableHead>
-                              <TableHead className="w-[15%] text-right">
-                                Action
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredClinics.length === 0 ? (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={5}
-                                  className="text-center py-8 text-gray-500"
-                                >
-                                  No clinics found matching your criteria
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredClinics
-                                .map((clinic) => (
-                                  <TableRow
-                                    key={clinic.id}
-                                    className={
-                                      clinic.isOwnClinic ? "bg-grey-50" : ""
-                                    }
-                                  >
-                                    <TableCell className="font-medium">
-                                      {clinic.name}
-                                      {clinic.isOwnClinic && (
-                                        <Badge
-                                          variant="outline"
-                                          className="ml-2 bg-grey-100 text-grey-800 border-grey-300"
-                                        >
-                                          Created by you
-                                        </Badge>
-                                      )}
-                                    </TableCell>
-                                    <TableCell>{clinic.clinicCode}</TableCell>
-                                    <TableCell>
-                                      {clinic.district}, {clinic.state}
-                                    </TableCell>
-                                    <TableCell>{clinic.partnerName}</TableCell>
-                                    <TableCell className="text-right">
-                                      <Button
-                                        variant="secondary"
-                                        onClick={() => deactivateClinic(clinic.id)}
-                                        size="sm"
-                                        className="bg-grey-100 text-grey-700 hover:bg-grey-200"
-                                      >
-                                        {deactivatingId === clinic.id ? (
-                                          <>
-                                            <svg
-                                              className="animate-spin h-4 w-4"
-                                              xmlns="http://www.w3.org/2000/svg"
-                                              fill="none"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <circle
-                                                className="opacity-25"
-                                                cx="12"
-                                                cy="12"
-                                                r="10"
-                                                stroke="currentColor"
-                                                strokeWidth="4"
-                                              ></circle>
-                                              <path
-                                                className="opacity-75"
-                                                fill="currentColor"
-                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                              ></path>
-                                            </svg>
-                                            Deactivating
-                                          </>
-                                        ) : (
-                                          <>
-                                            <ShieldMinus className="h-4 w-4" />
-                                            Deactivate
-                                          </>
-                                        )}
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
-
-                    <DialogFooter className="px-6 py-4 border-t bg-gray-50 flex justify-end w-full">
-                      <Button
-                        onClick={() => {setIsDeletingClinics(false); setFilterType("own")}}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        Done
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                */}
-          
-                <Dialog
-                  open={isDialogOpen}
-                  onOpenChange={setIsDialogOpen}
-                  className="!bg-white"
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      className="flex items-center gap-1 bg-purple-600 hover:bg-grey-700"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Clinic
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent
-                    className="!w-[70vw] !h-[97vh] !bg-white p-6 shadow-xl border border-gray-200 overflow-auto !max-w-none"
-                    style={{ backgroundColor: "white", backdropFilter: "none" }}
-                  >
-                    <DialogHeader className="px-6 py-4 border-b bg-white">
-                      <DialogTitle className="text-xl font-semibold text-grey-700">
-                        Add Clinic to Your Assignments
-                      </DialogTitle>
-                      <DialogDescription className="text-sm text-gray-600">
-                        Select clinics to add to your assignments. Your assigned
-                        doctors will also be able to access these clinics.
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="px-6 py-4 bg-white">
-                      <div className="flex flex-col md:flex-row gap-4 mb-4">
-                        <div className="relative flex-1">
-                          <Input
-                            type="text"
-                            placeholder="Search clinics by name, code, location, partner..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 w-full"
-                          />
-                          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        </div>
-
-                        <Select value={filterType} onValueChange={setFilterType}>
-                          <SelectTrigger className="w-full md:w-[200px]">
-                            <SelectValue placeholder="Filter clinics" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="own">My Clinics</SelectItem>
-                            <SelectItem value="all">All Clinics</SelectItem>
-                            <SelectItem value="other">Other Clinics</SelectItem>
-                            <SelectItem value="assigned">Assigned</SelectItem>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="h-[350px] overflow-y-auto border rounded-md">
-                        <Table>
-                          <TableHeader className="sticky top-0 bg-white z-10">
-                            <TableRow>
-                              <TableHead className="w-[30%]">
-                                Clinic Name
-                              </TableHead>
-                              <TableHead className="w-[15%]">
-                                Clinic Code
-                              </TableHead>
-                              <TableHead className="w-[20%]">Location</TableHead>
-                              <TableHead className="w-[20%]">Partner</TableHead>
-                              <TableHead className="w-[15%] text-right">
-                                Action
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredClinics.length === 0 ? (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={5}
-                                  className="text-center py-8 text-gray-500"
-                                >
-                                  No clinics found matching your criteria
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredClinics
-                                .filter((clinic) => !isClinicAssigned(clinic.id))
-                                .map((clinic) => (
-                                  <TableRow
-                                    key={clinic.id}
-                                    className={
-                                      clinic.isOwnClinic ? "bg-grey-50" : ""
-                                    }
-                                  >
-                                    <TableCell className="font-medium">
-                                      {clinic.name}
-                                      {clinic.isOwnClinic && (
-                                        <Badge
-                                          variant="outline"
-                                          className="ml-2 bg-grey-100 text-grey-800 border-grey-300"
-                                        >
-                                          Created by you
-                                        </Badge>
-                                      )}
-                                    </TableCell>
-                                    <TableCell>{clinic.clinicCode}</TableCell>
-                                    <TableCell>
-                                      {clinic.district}, {clinic.state}
-                                    </TableCell>
-                                    <TableCell>{clinic.partnerName}</TableCell>
-                                    <TableCell className="text-right">
-                                      <Button
-                                        variant="secondary"
-                                        onClick={() => addClinic(clinic.id)}
-                                        size="sm"
-                                        className="bg-grey-100 text-grey-700 hover:bg-grey-200"
-                                      >
-                                        Add
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
-
-                      {/* Show already assigned clinics in dialog for easy reference */}
-                      {assignedClinics.length > 0 && (
-                        <div className="mt-4 border-t pt-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">
-                            Already Assigned Clinics
-                          </h4>
-                          <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
-                            {assignedClinics.map((clinic) => (
-                              <Badge
-                                key={clinic.id}
-                                variant="secondary"
-                                className="py-1 px-3"
-                              >
-                                {clinic.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <DialogFooter className="px-6 py-4 border-t bg-gray-50 flex justify-end w-full">
-                      <Button
-                        onClick={() => {setIsDialogOpen(false); setFilterType("own")}}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        Done
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
+              <div className="relative flex-1">
+                <Input
+                  type="text"
+                  placeholder="Search clinics by name, code, location, partner..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-full"
+                />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               </div>
+
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="w-full md:w-[250px]">
+                  <SelectValue placeholder="Filter clinics" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Clinics</SelectItem>
+                  <SelectItem value="with_pharmacist">With Pharmacist Assigned</SelectItem>
+                  <SelectItem value="without_pharmacist">Without Pharmacist</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <Separator />
@@ -929,37 +299,32 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             <div className="flex justify-between items-center mb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-medium text-gray-500">
-                  Total Assigned: {assignedClinics.length}
+                  Total Clinics: {filteredClinics.length}
                 </h4>
-                {(assignedClinics.length > 0 && userRole === 'pharmacist')&& (
-                  <Badge
-                    variant="outline"
-                    className="bg-grey-50 text-grey-700 border-grey-200"
-                  >
-                    Showing
-                    {" "}{assignedClinics.filter((c) => c.isOwnClinic).length}{" "}
-                    created by you
-                  </Badge>
-                )}
+                <Badge
+                  variant="outline"
+                  className="bg-grey-50 text-grey-700 border-grey-200"
+                >
+                  {clinics.filter(c => c.assignedPharmacists && 
+                    (c.assignedPharmacists.primary || Object.keys(c.assignedPharmacists).length > 0)
+                  ).length} with pharmacists assigned
+                </Badge>
               </div>
-
-              {assignedClinics.length > 0 && (
-                <Input
-                  type="text"
-                  placeholder="Filter assigned clinics..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-64"
-                />
+              
+              {/* Pagination Info */}
+              {filteredClinics.length > 0 && (
+                <div className="text-sm text-gray-500">
+                  Showing {startIndex + 1}-{Math.min(endIndex, filteredClinics.length)} of {filteredClinics.length}
+                </div>
               )}
             </div>
 
-            {assignedClinics.length === 0 ? (
+            {filteredClinics.length === 0 ? (
               <div className="text-center py-8 bg-gray-50 rounded-md border border-dashed border-gray-300">
                 <Building2 className="h-10 w-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No clinics assigned yet</p>
+                <p className="text-gray-500">No clinics found</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Add clinics to your assignments using the button above
+                  Try adjusting your search criteria
                 </p>
               </div>
             ) : (
@@ -967,33 +332,23 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                 <Table>
                   <TableHeader className="bg-gray-50">
                     <TableRow>
-                      <TableHead className="w-[25%]">Clinic Name</TableHead>
+                      <TableHead className="w-[25%]">Nurse Name</TableHead>
                       <TableHead className="w-[15%]">Clinic Code</TableHead>
                       <TableHead className="w-[20%]">Location</TableHead>
                       <TableHead className="w-[20%]">Partner</TableHead>
-                      <TableHead className="w-[20%] text-right">
-                        Actions
-                      </TableHead>
+                      <TableHead className="w-[15%]">Pharmacist Status</TableHead>
+                      <TableHead className="w-[5%] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredClinics
-                      .filter((c) => isClinicAssigned(c.id))
-                      .map((clinic) => (
-                        <TableRow
-                          key={clinic.id}
-                          className={clinic.isOwnClinic ? "bg-grey-50" : ""}
-                        >
+                    {currentClinics.map((clinic) => {
+                      const hasPharmacist = clinic.assignedPharmacists && 
+                        (clinic.assignedPharmacists.primary || Object.keys(clinic.assignedPharmacists).length > 0);
+                      
+                      return (
+                        <TableRow key={clinic.id}>
                           <TableCell className="font-medium">
                             {clinic.name}
-                            {clinic.isOwnClinic && (
-                              <Badge
-                                variant="outline"
-                                className="ml-2 bg-grey-100 text-grey-800 border-grey-300"
-                              >
-                                Created by you
-                              </Badge>
-                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-medium">
@@ -1004,40 +359,42 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                             {clinic.district}, {clinic.state}
                           </TableCell>
                           <TableCell>{clinic.partnerName}</TableCell>
+                          <TableCell>
+                            {hasPharmacist ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                <BadgeCheck className="h-3 w-3 mr-1" />
+                                Assigned
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                No Pharmacist
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setSelectedClinic(clinic)}
-                                className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                                title="View Details"
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removeClinic(clinic.id)}
-                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                title="Remove from assignments"
-                              >
-                                <Trash className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSelectedClinic(clinic)}
+                              className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                              title="Manage Pharmacist Hierarchy"
+                            >
+                              <Settings className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      );
+                    })}
 
-                    {/* Show message when filtered results are empty */}
-                    {filteredClinics.filter((c) => isClinicAssigned(c.id))
-                      .length === 0 && (
+                    {/* Show message when no results on current page */}
+                    {currentClinics.length === 0 && filteredClinics.length > 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={5}
+                          colSpan={6}
                           className="text-center py-6 text-gray-500"
                         >
-                          No assigned clinics match your search criteria
+                          No clinics on this page
                         </TableCell>
                       </TableRow>
                     )}
@@ -1046,15 +403,35 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
               </div>
             )}
 
-            {assignedClinics.length > 0 && (
-              <Alert className="bg-grey-50 border-grey-200">
-                <AlertDescription className="text-grey-800">
-                  <span className="font-semibold">Assignment information:</span>{" "}
-                  These clinics will be accessible to you and all doctors in
-                  your doctor hierarchy. Removing a clinic will also remove it
-                  from your assigned doctors.
-                </AlertDescription>
-              </Alert>
+            {/* Pagination Controls */}
+            {filteredClinics.length > itemsPerPage && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                <div className="text-sm text-gray-500">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToPrevPage}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             )}
 
             {error && (
@@ -1079,85 +456,53 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
       <CardFooter className="bg-gray-50 px-6 py-4 border-t">
         <div className="flex items-center justify-between w-full">
           <div className="text-sm text-gray-500">
-            {assignedClinics.length > 0 ? (
-              <span>
-                You have <strong>{assignedClinics.length}</strong> clinic
-                {assignedClinics.length !== 1 ? "s" : ""} assigned
-              </span>
-            ) : (
-              <span>No clinics assigned yet</span>
-            )}
-          </div>
-
-          <div className="flex gap-3">
-            
-            <Button
-              variant="outline"
-              onClick={() => setIsDialogOpen(true)}
-              disabled={loading}
-              className="flex gap-2 items-center border-grey-300 text-grey-700 hover:bg-grey-50"
-            >
-              <Plus className="h-4 w-4" />
-              Add Clinics
-            </Button>
-
-            <Button
-              onClick={saveAssignments}
-              disabled={saving || loading}
-              className="flex gap-2 items-center bg-purple-600 hover:bg-purple-700"
-            >
-              {saving ? (
-                <>
-                  <svg
-                    className="animate-spin h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Saving Changes...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Save Clinic Assignments
-                </>
+            <span>
+              Managing <strong>{clinics.length}</strong> clinic
+              {clinics.length !== 1 ? "s" : ""} in the system
+              {filteredClinics.length > itemsPerPage && (
+                <span> • Page {currentPage} of {totalPages}</span>
               )}
-            </Button>
+            </span>
+          </div>
+          <div className="text-sm text-gray-500">
+            Click the settings icon to manage pharmacist hierarchies
           </div>
         </div>
       </CardFooter>
-      {/* Case Detail Dialog */}
+
+      {/* Pharmacist Hierarchy Management Dialog */}
       {selectedClinic && (
         <Dialog 
           open={!!selectedClinic} 
           onOpenChange={(open) => {
-            if (!open) setSelectedClinic(null);
+            if (!open) {
+              setSelectedClinic(null);
+              // Refresh data when dialog closes to reflect any changes
+              refreshClinicData();
+            }
           }}
         >
           <DialogContent 
             className="!max-w-4xl !w-[90vw] p-0 overflow-hidden"
           >
-            <PharmacistHierarchyCard currentUser={currentUser} selectedClinic={selectedClinic}/>
+            <DialogHeader className="sr-only">
+              <DialogTitle>
+                Manage Pharmacist Hierarchy for {selectedClinic.name}
+              </DialogTitle>
+              <DialogDescription>
+                Update pharmacist assignments and hierarchy for this clinic
+              </DialogDescription>
+            </DialogHeader>
+            <PharmacistHierarchyCard 
+              currentUser={currentUser} 
+              selectedClinic={selectedClinic}
+              userRole={userRole}
+              onUpdate={refreshClinicData}
+            />
           </DialogContent>
         </Dialog>
       )}
     </Card>
-
-    
   );
 };
 
