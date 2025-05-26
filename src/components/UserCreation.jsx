@@ -126,13 +126,7 @@ const UserCreationTab = () => {
               Pharmacist Hierarchy
             </TabsTrigger>
           )}
-           {/* Show pharmacist hierarchy management tab for pharmacists and TLs, DrManagers, ZonalHeads */}
-           {['teamLeader', 'drManager', 'zonalHead', 'pharmacist'].includes(userRole) && (
-            <TabsTrigger value="clinicHierarchy">
-              <Hospital className="h-4 w-4 mr-2" />
-              Clinic Hierarchy
-            </TabsTrigger>
-          )}
+           
         </TabsList>
         
         <TabsContent value="create" className="pt-4">
@@ -157,14 +151,7 @@ const UserCreationTab = () => {
             />
           </TabsContent>
         )}
-        {['teamLeader', 'drManager', 'zonalHead', 'pharmacist'].includes(userRole)  && (
-          <TabsContent value="clinicHierarchy" className="pt-4">
-            <ClinicHierarchyManagement 
-              currentUser={currentUser}
-              userRole={userRole} 
-            />
-          </TabsContent>
-        )}
+       
       </Tabs>
     </div>
   );

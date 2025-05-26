@@ -56,6 +56,7 @@ const BasicInfoForm = ({
     "Satya South",
     "Projects",
     "Digital/Night Team",
+    "AVGB"
   ];
 
   return (
