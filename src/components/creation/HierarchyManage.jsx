@@ -127,7 +127,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             if(userRole == 'pharmacist'){
               clinicData.isOwnClinic = clinicData.createdBy === currentUser.uid;
             } else {
-              clinicData.isOwnClinic = true;
+              clinicData.isOwnClinic = false;
             }
 
             if(!clinicData.deactivated){
@@ -170,10 +170,10 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
     fetchData();
   }, [currentUser.uid]);
 
-  const [filterType, setFilterType] = useState("own");
+  const [filterType, setFilterType] = useState("all");
 
   useEffect(() => {
-    setFilterType("own");
+    setFilterType("all");
   }, [isDialogOpen, isDeletingClinics])
 
   // Filter clinics based on search term and filter type
@@ -467,15 +467,17 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
           const clinicData = clinicSnapshot.data();
           console.log('updating clinic: ', clinicData.name, clinicData.clinicCode);
           const assignedPharmacists = clinicData.assignedPharmacists || {};
-          assignedPharmacists.primary = currentUser.uid;
-          assignedPharmacists.primaryName = pharmacistData.name;
-          updatePromises.push(
-            setDoc(
-              clinicRef,
-              { assignedPharmacists },
-              { merge: true }
-            )
-          );
+          if (userRole === 'pharmacist'){
+            assignedPharmacists.primary = currentUser.uid;
+            assignedPharmacists.primaryName = pharmacistData.name;
+            updatePromises.push(
+              setDoc(
+                clinicRef,
+                { assignedPharmacists },
+                { merge: true }
+              )
+            );
+          }
           // Assign to doctors
           for (const doctorId of doctorHierarchy) {
             const doctorRef = doc(firestore, "users", doctorId);
