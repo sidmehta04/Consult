@@ -272,19 +272,20 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
     );
   };
 
-  // Save clinic assignments
+  // Save clinic assignments -- OLD, UNOPTIMIZED --
+  /*
   const saveAssignments = async () => {
     try {
       setSaving(true);
       setError("");
       setSuccess("");
-
+      console.log(1);
       // Create a new object with clinic IDs as keys and true as values
       const clinicAssignments = {};
       assignedClinics.forEach((clinic) => {
         clinicAssignments[clinic.id] = true;
       });
-
+      console.log(2);
       // Update pharmacist's assigned clinics
       const pharmacistRef = doc(firestore, "users", currentUser.uid);
       await setDoc(
@@ -301,15 +302,16 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
       // Get pharmacist data for name
       const pharmacistSnapshot = await getDoc(pharmacistRef);
       const pharmacistData = pharmacistSnapshot.data();
-
+      console.log(3);
       // Get the doctor hierarchy if it exists
       const doctorHierarchy = pharmacistData.doctorHierarchy || [];
 
+      console.log(availableClinics.length);
       // For each clinic, set or remove the pharmacist assignment
       for (const clinic of availableClinics) {
         const clinicRef = doc(firestore, "users", clinic.id);
         const clinicSnapshot = await getDoc(clinicRef);
-
+        console.log(4, clinicSnapshot);
         if (clinicSnapshot.exists()) {
           const clinicData = clinicSnapshot.data();
           const assignedPharmacists = clinicData.assignedPharmacists || {};
@@ -332,6 +334,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
               )
             );
 
+            console.log(5, clinic);
             // Also ensure doctors in hierarchy are assigned to this clinic
             for (const doctorId of doctorHierarchy) {
               const doctorRef = doc(firestore, "users", doctorId);
@@ -401,9 +404,141 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
           }
         }
       }
-
+      console.log(6, updatePromises);
       await Promise.all(updatePromises);
 
+      setSuccess("Clinic assignments saved successfully.");
+    } catch (err) {
+      console.error("Error saving clinic assignments:", err);
+      setError("Failed to save clinic assignments. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  */
+
+  // New saveAssignments, should be optimized (from AI)
+  const saveAssignments = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      // Build new assignments object
+      const newAssignments = {};
+      assignedClinics.forEach((clinic) => {
+        newAssignments[clinic.id] = true;
+      });
+
+      // Get previous assignments from Firestore
+      const pharmacistRef = doc(firestore, "users", currentUser.uid);
+      const pharmacistSnapshot = await getDoc(pharmacistRef);
+      const pharmacistData = pharmacistSnapshot.data();
+      const prevAssignments = pharmacistData.assignedClinics || {};
+      
+      // Calculate delta
+      const newlyAssigned = assignedClinics
+        .map((c) => c.id)
+        .filter((id) => !prevAssignments[id]);
+      const removed = Object.keys(prevAssignments)
+        .filter((id) => prevAssignments[id] && !newAssignments[id]);
+
+      // Mark removed clinics as false in newAssignments
+      for (const clinicId of removed) {
+        newAssignments[clinicId] = false;
+      }
+
+      // Update pharmacist's assignedClinics
+      await setDoc(
+        pharmacistRef,
+        { assignedClinics: newAssignments },
+        { merge: true }
+      );
+
+      // Get doctor hierarchy
+      const doctorHierarchy = pharmacistData.doctorHierarchy || [];
+      const updatePromises = [];
+
+      // Only update clinics that changed
+      for (const clinicId of newlyAssigned) {
+        const clinicRef = doc(firestore, "users", clinicId);
+        const clinicSnapshot = await getDoc(clinicRef);
+        if (clinicSnapshot.exists()) {
+          const clinicData = clinicSnapshot.data();
+          console.log('updating clinic: ', clinicData.name, clinicData.clinicCode);
+          const assignedPharmacists = clinicData.assignedPharmacists || {};
+          assignedPharmacists.primary = currentUser.uid;
+          assignedPharmacists.primaryName = pharmacistData.name;
+          updatePromises.push(
+            setDoc(
+              clinicRef,
+              { assignedPharmacists },
+              { merge: true }
+            )
+          );
+          // Assign to doctors
+          for (const doctorId of doctorHierarchy) {
+            const doctorRef = doc(firestore, "users", doctorId);
+            const doctorSnapshot = await getDoc(doctorRef);
+            if (doctorSnapshot.exists()) {
+              const doctorData = doctorSnapshot.data();
+              const updatedClinics = {
+                ...(doctorData.assignedClinics || {}),
+                [clinicId]: true,
+              };
+              updatePromises.push(
+                setDoc(
+                  doctorRef,
+                  { assignedClinics: updatedClinics },
+                  { merge: true }
+                )
+              );
+            }
+          }
+        }
+      }
+
+      for (const clinicId of removed) {
+        const clinicRef = doc(firestore, "users", clinicId);
+        const clinicSnapshot = await getDoc(clinicRef);
+        if (clinicSnapshot.exists()) {
+          const clinicData = clinicSnapshot.data();
+          const assignedPharmacists = clinicData.assignedPharmacists || {};
+          console.log('removing clinic: ', clinicData.name, clinicData.clinicCode);
+          if (assignedPharmacists.primary === currentUser.uid) {
+            delete assignedPharmacists.primary;
+            delete assignedPharmacists.primaryName;
+            updatePromises.push(
+              setDoc(
+                clinicRef,
+                { assignedPharmacists },
+                { merge: true }
+              )
+            );
+          }
+          // Remove from doctors
+          for (const doctorId of doctorHierarchy) {
+            const doctorRef = doc(firestore, "users", doctorId);
+            const doctorSnapshot = await getDoc(doctorRef);
+            if (doctorSnapshot.exists()) {
+              const doctorData = doctorSnapshot.data();
+              const updatedClinics = { ...(doctorData.assignedClinics || {}) };
+              if (updatedClinics[clinicId]) {
+                delete updatedClinics[clinicId];
+                updatePromises.push(
+                  setDoc(
+                    doctorRef,
+                    { assignedClinics: updatedClinics },
+                    { merge: true }
+                  )
+                );
+              }
+            }
+          }
+        }
+      }
+
+      await Promise.all(updatePromises);
       setSuccess("Clinic assignments saved successfully.");
     } catch (err) {
       console.error("Error saving clinic assignments:", err);
