@@ -67,7 +67,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState("availability");
   const [completingCase, setCompletingCase] = useState(false);
   const [doctorStatus, setDoctorStatus] = useState({
-    status: "available",
+    availabilityStatus: "available",
     lastUpdate: null,
     history: [],
   });
@@ -255,6 +255,10 @@ const DoctorCaseManagement = ({ currentUser }) => {
   };
 
   const doctorJoined = async (caseItem) => {
+<<<<<<< HEAD
+=======
+    console.log(caseItem);
+>>>>>>> e568e5a3a0724cd984c9d923de6c721996350435
     try {
       const timestamp = new Date();
       console.log(caseItem.id);
