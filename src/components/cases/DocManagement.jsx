@@ -255,14 +255,33 @@ const DoctorCaseManagement = ({ currentUser }) => {
   };
 
   const doctorJoined = async (caseItem) => {
-    //console.log(caseItem);
     try {
       const timestamp = new Date();
+      console.log(caseItem.id);
       const caseRef = doc(firestore, "cases", caseItem.id);
+
+
+      const caseSnap = await getDoc(caseRef);
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+      const caseData = caseSnap.data();
+      // Check if doctor has already joined
+      if (caseData.doctorJoined) {
+        console.warn("Doctor has already joined this case.");
+        return;
+      }
+
+      if(caseData.batchSize > 1){
+
+      }
+      
+      
       const updateData = {
         doctorJoined: timestamp
       };
       await retryOperation(() => updateDoc(caseRef, updateData));
+
     } catch {
       console.error("Error setting doctor joining time: ", err)
     }

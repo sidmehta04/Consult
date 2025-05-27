@@ -113,6 +113,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
         pharmacistJoined: timestamp
       };
       await retryOperation(() => updateDoc(caseRef, updateData));
+      console.log('set pharamacist joined')
     } catch {
       console.error("Error setting pharmacist joining time: ", err)
     }

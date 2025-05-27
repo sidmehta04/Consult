@@ -245,8 +245,8 @@ export const enrichPharmacistsWithShiftData = (pharmacists) => {
         ...pharmacist,
         shiftTiming: "9AM-6PM", // Default shift timing
         shiftType: "Full-Time", // Default shift type
-        hourlyTarget: DEFAULT_HOURLY_TARGET, // Default hourly target
-        dailyTarget: DEFAULT_HOURLY_TARGET * 8 // Default daily target for 8-hour shift
+        hourlyTarget: 6.25, // Default hourly target
+        dailyTarget: 50 // Default daily target for 8-hour shift
     }));
 };
 
