@@ -23,6 +23,7 @@ import {
   Users,
   Coffee,
   CalendarIcon,
+  RefreshCw,
 } from "lucide-react";
 import {
   doc,
@@ -36,6 +37,7 @@ import {
   updateDoc,
   runTransaction,
   writeBatch,
+  onSnapshot, // Added for real-time monitoring
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import DoctorStatusIndicator from "./DocStatus";
@@ -48,6 +50,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     contactInfo: "",
     notes: "",
   });
+  
   const addPatient = () => {
     setFormData((prev) => ({
       ...prev,
@@ -85,12 +88,202 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   const [assignedDoctor, setAssignedDoctor] = useState(null);
   const [assignedPharmacist, setAssignedPharmacist] = useState(null);
   const [doctorSearchAttempted, setDoctorSearchAttempted] = useState(false);
-  const [pharmacistSearchAttempted, setPharmacistSearchAttempted] =
-    useState(false);
+  const [pharmacistSearchAttempted, setPharmacistSearchAttempted] = useState(false);
   const [doctorsData, setDoctorsData] = useState([]);
   const [pharmacistsData, setPharmacistsData] = useState([]);
   const [doctorFallbackAssignment, setDoctorFallbackAssignment] = useState(true);
   const [pharmaFallbackAssignment, setPharmaFallbackAssignment] = useState(true);
+  
+  // NEW: State for real-time monitoring
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [doctorStatusListener, setDoctorStatusListener] = useState(null);
+  const [pharmacistStatusListener, setPharmacistStatusListener] = useState(null);
+  const [nurseHierarchyData, setNurseHierarchyData] = useState(null);
+
+  // NEW: Function to check if a doctor is available
+  const isDoctorAvailable = (doctor) => {
+    if (!doctor) return false;
+    const isUnavailable = 
+      doctor.availabilityStatus === "unavailable" || 
+      doctor.availabilityStatus === "on_break";
+    const isAtCapacity = (doctor.caseCount || 0) >= 10;
+    return !isUnavailable && !isAtCapacity;
+  };
+  
+
+  // NEW: Function to check if a pharmacist is available
+  const isPharmacistAvailable = (pharmacist) => {
+    if (!pharmacist) return false;
+    const isUnavailable = 
+      pharmacist.availabilityStatus === "unavailable" || 
+      pharmacist.availabilityStatus === "on_break";
+    const isAtCapacity = (pharmacist.caseCount || 0) >= 10;
+    return !isUnavailable && !isAtCapacity;
+  };
+
+  // NEW: Function to automatically reassign doctor when current one becomes unavailable
+  const handleDoctorUnavailable = async () => {
+    if (isReassigning) return; // Prevent multiple simultaneous reassignments
+    
+    setIsReassigning(true);
+    console.log("Doctor became unavailable, attempting reassignment...");
+    
+    try {
+      // Find new available doctor using the same logic
+      await findAvailableDoctorFast(nurseHierarchyData);
+      
+      if (!assignedDoctor) {
+        setError("Your assigned doctor became unavailable and no replacement could be found. Please try again later.");
+      }
+    } catch (err) {
+      console.error("Error during doctor reassignment:", err);
+      setError("Failed to reassign doctor. Please refresh and try again.");
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
+  // NEW: Function to automatically reassign pharmacist when current one becomes unavailable
+  const handlePharmacistUnavailable = async () => {
+    if (isReassigning) return;
+    
+    setIsReassigning(true);
+    console.log("Pharmacist became unavailable, attempting reassignment...");
+    
+    try {
+      await findAvailablePharmacistFast(nurseHierarchyData);
+      
+      if (!assignedPharmacist) {
+        setError("Your assigned pharmacist became unavailable and no replacement could be found. Please try again later.");
+      }
+    } catch (err) {
+      console.error("Error during pharmacist reassignment:", err);
+      setError("Failed to reassign pharmacist. Please refresh and try again.");
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
+  // NEW: Set up real-time listener for assigned doctor's status
+  // Alternative: Update the existing status listeners to also fetch case counts
+const setupDoctorStatusListener = (doctorId) => {
+  if (doctorStatusListener) {
+    doctorStatusListener();
+  }
+
+  if (!doctorId) return;
+
+  const doctorRef = doc(firestore, "users", doctorId);
+  const unsubscribe = onSnapshot(doctorRef, async (docSnap) => {
+    if (docSnap.exists()) {
+      const doctorData = docSnap.data();
+      
+      // Get real-time case count
+      const activeCasesQuery = query(
+        collection(firestore, "cases"),
+        where("assignedDoctors.primary", "==", doctorId),
+        where("doctorCompleted", "==", false),
+        where("isIncomplete", "!=", true)
+      );
+      
+      const casesSnapshot = await getDocs(activeCasesQuery);
+      const currentCaseCount = casesSnapshot.docs.length;
+      
+      const updatedDoctor = {
+        id: docSnap.id,
+        name: doctorData.name,
+        availabilityStatus: doctorData.availabilityStatus || "available",
+        caseCount: currentCaseCount, // Use real-time count
+      };
+
+      // Update the assigned doctor's current status
+      if (assignedDoctor && assignedDoctor.id === doctorId) {
+        setAssignedDoctor(prev => ({
+          ...prev,
+          availabilityStatus: updatedDoctor.availabilityStatus,
+          caseCount: updatedDoctor.caseCount,
+        }));
+
+        // Check if doctor became unavailable
+        if (!isDoctorAvailable(updatedDoctor)) {
+          console.log(`Doctor ${doctorData.name} became unavailable`);
+          handleDoctorUnavailable();
+        }
+      }
+
+      // Update in the doctors list as well
+      setDoctorsData(prev => prev.map(doc => 
+        doc.id === doctorId 
+          ? { ...doc, ...updatedDoctor }
+          : doc
+      ));
+    }
+  }, (error) => {
+    console.error("Error listening to doctor status:", error);
+  });
+
+  setDoctorStatusListener(() => unsubscribe);
+};
+
+  // Updated setupPharmacistStatusListener with real-time case counts
+const setupPharmacistStatusListener = (pharmacistId) => {
+  if (pharmacistStatusListener) {
+    pharmacistStatusListener();
+  }
+
+  if (!pharmacistId) return;
+
+  const pharmacistRef = doc(firestore, "users", pharmacistId);
+  const unsubscribe = onSnapshot(pharmacistRef, async (docSnap) => {
+    if (docSnap.exists()) {
+      const pharmacistData = docSnap.data();
+      
+      // Get real-time case count
+      const activeCasesQuery = query(
+        collection(firestore, "cases"),
+        where("pharmacistId", "==", pharmacistId),
+        where("pharmacistCompleted", "==", false),
+        where("isIncomplete", "!=", true)
+      );
+      
+      const casesSnapshot = await getDocs(activeCasesQuery);
+      const currentCaseCount = casesSnapshot.docs.length;
+      
+      const updatedPharmacist = {
+        id: docSnap.id,
+        name: pharmacistData.name,
+        availabilityStatus: pharmacistData.availabilityStatus || "available",
+        caseCount: currentCaseCount, // Use real-time count
+      };
+
+      // Update the assigned pharmacist's current status
+      if (assignedPharmacist && assignedPharmacist.id === pharmacistId) {
+        setAssignedPharmacist(prev => ({
+          ...prev,
+          availabilityStatus: updatedPharmacist.availabilityStatus,
+          caseCount: updatedPharmacist.caseCount,
+        }));
+
+        // Check if pharmacist became unavailable
+        if (!isPharmacistAvailable(updatedPharmacist)) {
+          console.log(`Pharmacist ${pharmacistData.name} became unavailable`);
+          handlePharmacistUnavailable();
+        }
+      }
+
+      // Update in the pharmacists list as well
+      setPharmacistsData(prev => prev.map(pharm => 
+        pharm.id === pharmacistId 
+          ? { ...pharm, ...updatedPharmacist }
+          : pharm
+      ));
+    }
+  }, (error) => {
+    console.error("Error listening to pharmacist status:", error);
+  });
+
+  setPharmacistStatusListener(() => unsubscribe);
+};
 
   useEffect(() => {
     const fetchProfessionals = async () => {
@@ -102,6 +295,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         if (!nurseSnapshot.exists()) return;
 
         const nurseData = nurseSnapshot.data();
+        setNurseHierarchyData(nurseData); // Store for reassignment logic
 
         // Check if the nurse has direct pharmacist assignments (created by RO)
         if (nurseData.assignedPharmacists) {
@@ -120,8 +314,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               id: pharmacistSnap.id,
               name: pharmacistData.name,
               type: "primary",
-              availabilityStatus:
-                pharmacistData.availabilityStatus || "available",
+              availabilityStatus: pharmacistData.availabilityStatus || "available",
               caseCount: 0,
             });
           }
@@ -150,6 +343,41 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     fetchProfessionals();
   }, [currentUser.uid]);
 
+  // NEW: Set up listeners when professionals are assigned
+  useEffect(() => {
+    if (assignedDoctor && assignedDoctor.id) {
+      setupDoctorStatusListener(assignedDoctor.id);
+    }
+    return () => {
+      if (doctorStatusListener) {
+        doctorStatusListener();
+      }
+    };
+  }, [assignedDoctor?.id]);
+
+  useEffect(() => {
+    if (assignedPharmacist && assignedPharmacist.id) {
+      setupPharmacistStatusListener(assignedPharmacist.id);
+    }
+    return () => {
+      if (pharmacistStatusListener) {
+        pharmacistStatusListener();
+      }
+    };
+  }, [assignedPharmacist?.id]);
+
+  // Cleanup listeners on component unmount
+  useEffect(() => {
+    return () => {
+      if (doctorStatusListener) {
+        doctorStatusListener();
+      }
+      if (pharmacistStatusListener) {
+        pharmacistStatusListener();
+      }
+    };
+  }, []);
+
   const fetchAllDoctors = async (userData) => {
     try {
       const assignedDoctors = userData.assignedDoctors || {};
@@ -168,6 +396,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           id: docSnap.id,
           name: doctorData.name,
           availabilityStatus: doctorData.availabilityStatus || "available",
+          caseCount: doctorData.caseCount || 0, // Added case count
           isHierarchy:
             docSnap.id === assignedDoctors.primary
               ? "primary"
@@ -342,7 +571,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           id: doc.id,
           name: doctorData.name || "Doctor",
           availabilityStatus: doctorData.availabilityStatus || "available",
-          caseCount: 0,
+          caseCount: doctorData.caseCount || 0, // Added case count
         };
       });
 
@@ -368,11 +597,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Ensure there's at least one available doctor
       const anyAvailable = Object.values(doctorsMap).some(
-        (doctor) =>
-          doctor.availabilityStatus !== "unavailable" &&
-          doctor.availabilityStatus !== "on_break" &&
-          doctor.availabilityStatus !== "busy" &&
-          (doctor.caseCount || 0) < 10
+        (doctor) => isDoctorAvailable(doctor)
       );
 
       if (!anyAvailable) {
@@ -385,19 +610,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Store doctors data for UI
       setDoctorsData(Object.values(doctorsMap));
-
-      // Check doctor availability
-      const isDoctorAvailable = (id) => {
-        if (!id || !doctorsMap[id]) return false;
-
-        const doctor = doctorsMap[id];
-        const isUnavailable =
-          doctor.availabilityStatus === "unavailable" ||
-          doctor.availabilityStatus === "on_break";
-        const isAtCapacity = (doctor.caseCount || 0) >= 10;
-
-        return !isUnavailable && !isAtCapacity;
-      };
 
       // Function to assign a doctor
       const assignDoctor = (id, hierarchyLevel) => {
@@ -420,7 +632,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // IMPROVED PRIORITY LOGIC: Try each doctor in the hierarchy order
       for (let i = 0; i < doctorHierarchy.length; i++) {
         const doctorId = doctorHierarchy[i];
-        if (isDoctorAvailable(doctorId)) {
+        const doctor = doctorsMap[doctorId];
+        if (doctor && isDoctorAvailable(doctor)) {
           return assignDoctor(doctorId, i);
         }
       }
@@ -435,12 +648,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             }
 
             // Check availability
-            const isUnavailable =
-              doctor.availabilityStatus === "unavailable" ||
-              doctor.availabilityStatus === "on_break";
-            const isAtCapacity = (doctor.caseCount || 0) >= 10;
-
-            return !isUnavailable && !isAtCapacity;
+            return isDoctorAvailable(doctor);
           })
           .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
 
@@ -564,7 +772,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           id: doc.id,
           name: pharmacistData.name || "Pharmacist",
           availabilityStatus: pharmacistData.availabilityStatus || "available",
-          caseCount: 0,
+          caseCount: pharmacistData.caseCount || 0, // Added case count
         };
       });
 
@@ -591,11 +799,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Ensure there's at least one available pharmacist
       const anyAvailable = Object.values(pharmacistsMap).some(
-        (pharmacist) =>
-          pharmacist.availabilityStatus !== "unavailable" &&
-          pharmacist.availabilityStatus !== "on_break" &&
-          pharmacist.availabilityStatus !== "busy" &&
-          (pharmacist.caseCount || 0) < 10
+        (pharmacist) => isPharmacistAvailable(pharmacist)
       );
 
       if (!anyAvailable) {
@@ -608,19 +812,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Set pharmacist data for UI
       setPharmacistsData(Object.values(pharmacistsMap));
-
-      // Check pharmacist availability
-      const isPharmacistAvailable = (id) => {
-        if (!id || !pharmacistsMap[id]) return false;
-
-        const pharmacist = pharmacistsMap[id];
-        const isUnavailable =
-          pharmacist.availabilityStatus === "unavailable" ||
-          pharmacist.availabilityStatus === "on_break";
-        const isAtCapacity = (pharmacist.caseCount || 0) >= 10;
-
-        return !isUnavailable && !isAtCapacity;
-      };
 
       // Function to assign a pharmacist
       const assignPharmacist = (id, hierarchyLevel) => {
@@ -643,7 +834,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // IMPROVED: Try each pharmacist in the hierarchy order
       for (let i = 0; i < pharmacistHierarchy.length; i++) {
         const pharmacistId = pharmacistHierarchy[i];
-        if (isPharmacistAvailable(pharmacistId)) {
+        const pharmacist = pharmacistsMap[pharmacistId];
+        if (pharmacist && isPharmacistAvailable(pharmacist)) {
           return assignPharmacist(pharmacistId, i);
         }
       }
@@ -658,12 +850,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             }
 
             // Check availability
-            const isUnavailable =
-              pharmacist.availabilityStatus === "unavailable" ||
-              pharmacist.availabilityStatus === "on_break";
-            const isAtCapacity = (pharmacist.caseCount || 0) >= 10;
-
-            return !isUnavailable && !isAtCapacity;
+            return isPharmacistAvailable(pharmacist);
           })
           .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
 
@@ -689,6 +876,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setError("Failed to find available pharmacist. Please try again.");
     }
   };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -754,6 +942,16 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
     if (!assignedPharmacist) {
       setError("No pharmacist assigned. Please contact support.");
+      return;
+    }
+
+    // NEW: Final availability check before submitting
+    if (!isDoctorAvailable(assignedDoctor)) {
+      setError("Assigned doctor is no longer available. Please wait for reassignment or refresh the page.");
+      return;
+    }
+    if (!isPharmacistAvailable(assignedPharmacist)) {
+      setError("Assigned pharmacist is no longer available. Please wait for reassignment or refresh the page.");
       return;
     }
 
@@ -893,6 +1091,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setLoading(false);
     }
   };
+
   // Function to get status icon for a professional
   const getStatusIcon = (status) => {
     switch (status) {
@@ -909,12 +1108,44 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
 
+  // NEW: Manual refresh function for edge cases
+  const handleRefreshAssignments = async () => {
+    setIsReassigning(true);
+    setError("");
+    
+    try {
+      if (nurseHierarchyData) {
+        await findAvailableDoctorFast(nurseHierarchyData);
+        await findAvailablePharmacistFast(nurseHierarchyData);
+      }
+    } catch (err) {
+      console.error("Error refreshing assignments:", err);
+      setError("Failed to refresh assignments. Please try again.");
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   return (
     <Card className="border border-gray-100 shadow-md">
       <CardHeader className="bg-gray-50 pb-4">
-        <CardTitle className="text-xl flex items-center">
-          <ClipboardList className="h-5 w-5 text-blue-600 mr-2" />
-          Create New Case
+        <CardTitle className="text-xl flex items-center justify-between">
+          <div className="flex items-center">
+            <ClipboardList className="h-5 w-5 text-blue-600 mr-2" />
+            Create New Case
+          </div>
+          {/* NEW: Refresh button for manual reassignment */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshAssignments}
+            disabled={isReassigning}
+            className="flex items-center text-sm"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${isReassigning ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </CardTitle>
       </CardHeader>
 
@@ -923,6 +1154,16 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* NEW: Reassignment notification */}
+        {isReassigning && (
+          <Alert className="mb-6 border-amber-200 bg-amber-50">
+            <RefreshCw className="h-4 w-4 animate-spin text-amber-600" />
+            <AlertDescription className="text-amber-800">
+              Reassigning healthcare professionals due to availability changes...
+            </AlertDescription>
           </Alert>
         )}
 
@@ -1136,6 +1377,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             <h3 className="text-md font-medium flex items-center">
               <Info className="h-4 w-4 mr-2 text-blue-500" />
               Assigned Healthcare Professionals
+              {/* NEW: Real-time status indicator */}
+              <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                Live Status
+              </span>
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1162,6 +1408,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                               status={assignedDoctor.availabilityStatus}
                               caseCount={assignedDoctor.caseCount}
                             />
+                          )}
+                          {/* NEW: Indicator if doctor is unavailable */}
+                          {!isDoctorAvailable(assignedDoctor) && (
+                            <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full animate-pulse">
+                              Reassigning...
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1240,6 +1492,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                               caseCount={assignedPharmacist.caseCount}
                             />
                           )}
+                          {/* NEW: Indicator if pharmacist is unavailable */}
+                          {!isPharmacistAvailable(assignedPharmacist) && (
+                            <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full animate-pulse">
+                              Reassigning...
+                            </span>
+                          )}
                         </div>
                       </div>
                     ) : pharmacistSearchAttempted ? (
@@ -1298,7 +1556,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             <Button
               type="submit"
               disabled={
-                loading || validating || !assignedDoctor || !assignedPharmacist
+                loading || 
+                validating || 
+                !assignedDoctor || 
+                !assignedPharmacist ||
+                isReassigning ||
+                !isDoctorAvailable(assignedDoctor) ||
+                !isPharmacistAvailable(assignedPharmacist)
               }
               className="bg-blue-600 hover:bg-blue-700 flex items-center"
             >
@@ -1306,6 +1570,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   {validating ? "Validating EMR..." : "Creating..."}
+                </>
+              ) : isReassigning ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Reassigning...
                 </>
               ) : (
                 <>

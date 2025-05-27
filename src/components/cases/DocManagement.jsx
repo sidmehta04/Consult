@@ -67,7 +67,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState("availability");
   const [completingCase, setCompletingCase] = useState(false);
   const [doctorStatus, setDoctorStatus] = useState({
-    status: "available",
+    availabilityStatus: "available",
     lastUpdate: null,
     history: [],
   });
@@ -255,7 +255,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
   };
 
   const doctorJoined = async (caseItem) => {
-    //console.log(caseItem);
+    console.log(caseItem);
     try {
       const timestamp = new Date();
       const caseRef = doc(firestore, "cases", caseItem.id);

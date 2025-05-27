@@ -33,7 +33,7 @@ import {
   Edit,
   LinkIcon,
   Info,
-  UserPen
+  UserPen,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,7 @@ const NurseCaseManagement = ({ currentUser }) => {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [linkedCases, setLinkedCases] = useState({});
+  const [currentCase, setCurrentCase] = useState(null);
 
   const [confirmComplete, setConfirmComplete] = useState({
     open: false,
@@ -76,7 +77,7 @@ const NurseCaseManagement = ({ currentUser }) => {
   const [viewLinkedCases, setViewLinkedCases] = useState({
     open: false,
     cases: [],
-    batchTimestamp: null
+    batchTimestamp: null,
   });
 
   const openEditDialog = (caseData) => {
@@ -120,18 +121,18 @@ const NurseCaseManagement = ({ currentUser }) => {
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
           const casesData = [];
           const linkedCasesMap = {};
-          
+
           querySnapshot.forEach((doc) => {
             const caseData = doc.data();
-            
+
             // Process batch-created cases for linking
             if (caseData.batchCreated && caseData.batchTimestamp) {
               const batchKey = caseData.batchTimestamp.toString();
-              
+
               if (!linkedCasesMap[batchKey]) {
                 linkedCasesMap[batchKey] = [];
               }
-              
+
               linkedCasesMap[batchKey].push({
                 id: doc.id,
                 ...caseData,
@@ -154,7 +155,7 @@ const NurseCaseManagement = ({ currentUser }) => {
                   : null,
               });
             }
-            
+
             casesData.push({
               id: doc.id,
               ...caseData,
@@ -182,7 +183,7 @@ const NurseCaseManagement = ({ currentUser }) => {
           casesData.sort(
             (a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()
           );
-          
+
           // Update state with all cases and the linked cases map
           setCases(casesData);
           setLinkedCases(linkedCasesMap);
@@ -210,7 +211,7 @@ const NurseCaseManagement = ({ currentUser }) => {
 
     try {
       const caseData = editCase.caseData;
-      
+
       const formData = {
         patientName: e.target.patientName.value,
         emrNumber: e.target.emrNumber.value,
@@ -241,7 +242,6 @@ const NurseCaseManagement = ({ currentUser }) => {
     if (!caseId) return;
 
     try {
-
       // First get the current case data to check doctor completion
       const caseRef = doc(firestore, "cases", caseId);
       const caseSnap = await getDoc(caseRef);
@@ -287,7 +287,7 @@ const NurseCaseManagement = ({ currentUser }) => {
             pharmacistCompletedBy: currentUser.uid,
             pharmacistCompletedByName: currentUser.displayName || "Pharmacist",
             version: currentVersion + 1,
-            isIncomplete: true
+            isIncomplete: true,
           })
         );
       } catch (err) {
@@ -299,9 +299,13 @@ const NurseCaseManagement = ({ currentUser }) => {
       }
 
       setCurrentCase(null);
+      // Get active cases count from current cases state
+      const activeCasesCount = cases.filter(
+        (c) => !c.pharmacistCompleted && c.doctorCompleted && !c.isIncomplete
+      ).length;
 
       // Status update logic remains the same
-      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
+      if (activeCasesCount.length < 10 && pharmacistStatus.status === "busy") {
         updatePharmacistStatus(
           "available",
           "Automatically marked as available due to reduced case load"
@@ -311,8 +315,7 @@ const NurseCaseManagement = ({ currentUser }) => {
       console.error("Error completing case:", err);
       setError("Failed to mark case as incomplete");
     }
-
-  }
+  };
 
   const handleComplete = async () => {
     try {
@@ -490,7 +493,7 @@ const NurseCaseManagement = ({ currentUser }) => {
       setViewLinkedCases({
         open: true,
         cases: linkedCases[batchTimestamp],
-        batchTimestamp
+        batchTimestamp,
       });
     }
   };
@@ -519,7 +522,7 @@ const NurseCaseManagement = ({ currentUser }) => {
       case "doctor_incomplete":
         return "Doctor Incomplete";
       case "pharmacist_incomplete":
-        return "Pharmacist Incomplete"
+        return "Pharmacist Incomplete";
       case "incomplete":
         return "Incomplete";
       default:
@@ -624,7 +627,11 @@ const NurseCaseManagement = ({ currentUser }) => {
                               <Badge
                                 variant="outline"
                                 className="ml-2 text-xs cursor-pointer hover:bg-blue-50"
-                                onClick={() => openLinkedCasesDialog(caseItem.batchTimestamp.toString())}
+                                onClick={() =>
+                                  openLinkedCasesDialog(
+                                    caseItem.batchTimestamp.toString()
+                                  )
+                                }
                               >
                                 <LinkIcon className="h-3 w-3 mr-1" />
                                 Batch ({getLinkedCasesCount(caseItem)})
@@ -633,7 +640,8 @@ const NurseCaseManagement = ({ currentUser }) => {
                           </div>
                           {caseItem.batchCreated && (
                             <div className="text-xs text-gray-500">
-                              Patient {caseItem.batchIndex + 1} of {caseItem.batchSize}
+                              Patient {caseItem.batchIndex + 1} of{" "}
+                              {caseItem.batchSize}
                             </div>
                           )}
                         </div>
@@ -891,7 +899,8 @@ const NurseCaseManagement = ({ currentUser }) => {
                           {caseItem.isIncomplete && (
                             <div className="mt-1 text-xs text-red-600 flex items-center">
                               <X className="h-3.5 w-3.5 mr-1" />
-                              Marked incomplete - <br/> No further action needed
+                              Marked incomplete - <br /> No further action
+                              needed
                             </div>
                           )}
                         </div>
@@ -956,7 +965,7 @@ const NurseCaseManagement = ({ currentUser }) => {
                   {confirmComplete.caseData.chiefComplaint}
                 </span>
               </div>
-              
+
               <div className="flex items-center">
                 <Clock className="h-4 w-4 text-gray-400 mr-2" />
                 <span className="font-medium">Created At:</span>{" "}
@@ -1047,7 +1056,9 @@ const NurseCaseManagement = ({ currentUser }) => {
             </Button>
             <Button
               onClick={handleComplete}
-              disabled={confirmComplete.isIncomplete && !confirmComplete.reason.trim()}
+              disabled={
+                confirmComplete.isIncomplete && !confirmComplete.reason.trim()
+              }
               className={
                 confirmComplete.isIncomplete
                   ? "bg-red-600 hover:bg-red-700 disabled:opacity-50"
@@ -1109,9 +1120,7 @@ const NurseCaseManagement = ({ currentUser }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editChiefComplaint">
-                      Chief Complaint
-                    </Label>
+                    <Label htmlFor="editChiefComplaint">Chief Complaint</Label>
                     <Input
                       id="editChiefComplaint"
                       name="chiefComplaint"
@@ -1166,7 +1175,7 @@ const NurseCaseManagement = ({ currentUser }) => {
       {/* Linked Cases Dialog */}
       <Dialog
         open={viewLinkedCases.open}
-        onOpenChange={(open) => 
+        onOpenChange={(open) =>
           setViewLinkedCases({ ...viewLinkedCases, open })
         }
       >
@@ -1185,7 +1194,8 @@ const NurseCaseManagement = ({ currentUser }) => {
             <div className="flex items-center mb-4 space-x-2">
               <Info className="h-4 w-4 text-blue-500" />
               <p className="text-sm text-gray-600">
-                These cases were created together in the same batch and share the same contact information.
+                These cases were created together in the same batch and share
+                the same contact information.
               </p>
             </div>
 
@@ -1220,7 +1230,8 @@ const NurseCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-blue-100 text-blue-800"
-                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
+                              : caseItem.status === "doctor_incomplete" ||
+                                caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }
@@ -1235,7 +1246,11 @@ const NurseCaseManagement = ({ currentUser }) => {
                             size="sm"
                             className="flex items-center text-gray-600 border-gray-200 hover:bg-gray-50"
                             onClick={() => {
-                              setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
+                              setViewLinkedCases({
+                                open: false,
+                                cases: [],
+                                batchTimestamp: null,
+                              });
                               openEditDialog(caseItem);
                             }}
                           >
@@ -1247,26 +1262,44 @@ const NurseCaseManagement = ({ currentUser }) => {
                               size="sm"
                               className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
                               onClick={() => {
-                                setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
-                                openConfirmDialog(caseItem.id, "doctor", caseItem);
+                                setViewLinkedCases({
+                                  open: false,
+                                  cases: [],
+                                  batchTimestamp: null,
+                                });
+                                openConfirmDialog(
+                                  caseItem.id,
+                                  "doctor",
+                                  caseItem
+                                );
                               }}
                             >
                               <Check className="h-4 w-4 mr-1" /> Dr Done
                             </Button>
                           )}
-                          {caseItem.doctorCompleted && !caseItem.pharmacistCompleted && !caseItem.isIncomplete && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
-                              onClick={() => {
-                                setViewLinkedCases({ open: false, cases: [], batchTimestamp: null });
-                                openConfirmDialog(caseItem.id, "pharmacist", caseItem);
-                              }}
-                            >
-                              <Check className="h-4 w-4 mr-1" /> Pharm Done
-                            </Button>
-                          )}
+                          {caseItem.doctorCompleted &&
+                            !caseItem.pharmacistCompleted &&
+                            !caseItem.isIncomplete && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                                onClick={() => {
+                                  setViewLinkedCases({
+                                    open: false,
+                                    cases: [],
+                                    batchTimestamp: null,
+                                  });
+                                  openConfirmDialog(
+                                    caseItem.id,
+                                    "pharmacist",
+                                    caseItem
+                                  );
+                                }}
+                              >
+                                <Check className="h-4 w-4 mr-1" /> Pharm Done
+                              </Button>
+                            )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1279,7 +1312,13 @@ const NurseCaseManagement = ({ currentUser }) => {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setViewLinkedCases({ open: false, cases: [], batchTimestamp: null })}
+              onClick={() =>
+                setViewLinkedCases({
+                  open: false,
+                  cases: [],
+                  batchTimestamp: null,
+                })
+              }
             >
               Close
             </Button>
