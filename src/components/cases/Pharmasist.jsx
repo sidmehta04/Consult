@@ -109,11 +109,34 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     try {
       const timestamp = new Date();
       const caseRef = doc(firestore, "cases", caseItem.id);
+
+      const caseSnap = await getDoc(caseRef);
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+      const caseData = caseSnap.data();
+      // Check if doctor has already joined
+      if (caseData.pharmacistJoined) {
+        console.warn("Pharmacist has already joined this case.");
+        return;
+      }
+
       const updateData = {
         pharmacistJoined: timestamp
       };
-      await retryOperation(() => updateDoc(caseRef, updateData));
-      console.log('set pharamacist joined')
+
+      if(caseData.batchSize > 1){
+        const baseID = "case_" + caseData.id.split("_")[1];
+        for (let i = 0; i < caseData.batchSize; i++) {
+          const batchCaseId = `${baseID}_${i}`;
+          const batchCaseRef = doc(firestore, "cases", batchCaseId);
+
+          try{await retryOperation(() => updateDoc(batchCaseRef, updateData))}
+          catch {}        
+        }
+      } else {
+        await retryOperation(() => updateDoc(caseRef, updateData));
+      }
     } catch {
       console.error("Error setting pharmacist joining time: ", err)
     }

@@ -255,13 +255,8 @@ const DoctorCaseManagement = ({ currentUser }) => {
   };
 
   const doctorJoined = async (caseItem) => {
-<<<<<<< HEAD
-=======
-    console.log(caseItem);
->>>>>>> e568e5a3a0724cd984c9d923de6c721996350435
     try {
       const timestamp = new Date();
-      console.log(caseItem.id);
       const caseRef = doc(firestore, "cases", caseItem.id);
 
 
@@ -276,16 +271,21 @@ const DoctorCaseManagement = ({ currentUser }) => {
         return;
       }
 
-      if(caseData.batchSize > 1){
-
-      }
-      
-      
       const updateData = {
         doctorJoined: timestamp
       };
-      await retryOperation(() => updateDoc(caseRef, updateData));
 
+      if(caseData.batchSize > 1){
+        const baseID = "case_" + caseData.id.split("_")[1];
+        for (let i = 0; i < caseData.batchSize; i++) {
+          const batchCaseId = `${baseID}_${i}`;
+          const batchCaseRef = doc(firestore, "cases", batchCaseId);
+          try{await retryOperation(() => updateDoc(batchCaseRef, updateData))}
+          catch {}          
+        }
+      } else {
+        await retryOperation(() => updateDoc(caseRef, updateData));
+      }
     } catch {
       console.error("Error setting doctor joining time: ", err)
     }
