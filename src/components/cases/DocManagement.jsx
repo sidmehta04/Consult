@@ -261,6 +261,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
 
 
       const caseSnap = await getDoc(caseRef);
+
       if (!caseSnap.exists()) {
         throw new Error("Case not found");
       }
@@ -275,14 +276,17 @@ const DoctorCaseManagement = ({ currentUser }) => {
         doctorJoined: timestamp
       };
 
-      if(caseData.batchSize > 1){
-        const baseID = "case_" + caseData.id.split("_")[1];
-        for (let i = 0; i < caseData.batchSize; i++) {
-          const batchCaseId = `${baseID}_${i}`;
-          const batchCaseRef = doc(firestore, "cases", batchCaseId);
-          try{await retryOperation(() => updateDoc(batchCaseRef, updateData))}
-          catch {}          
-        }
+      if(caseData.batchCode){
+          const casesQuery = query(
+                    collection(firestore, "cases"),
+                    where("batchCode", "==", caseData.batchCode)
+          );
+          const batchSnapshot = await getDocs(casesQuery);
+          
+          batchSnapshot.forEach(async (doc) => {
+            const batchCaseRef = doc.ref;
+            await retryOperation(() => updateDoc(batchCaseRef, updateData));
+          });
       } else {
         await retryOperation(() => updateDoc(caseRef, updateData));
       }

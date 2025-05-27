@@ -976,6 +976,8 @@ const setupPharmacistStatusListener = (pharmacistId) => {
       
       // Create separate case for each patient
       const createdCaseIds = [];
+
+      const batchCode = `batch_${Date.now()}`
       
       for (let i = 0; i < formData.patients.length; i++) {
         const patient = formData.patients[i];
@@ -983,7 +985,6 @@ const setupPharmacistStatusListener = (pharmacistId) => {
         // Create new case ID with timestamp and patient index
         const caseId = `case_${Date.now()}_${i}`;
         createdCaseIds.push(caseId);
-        
         // Create case document
         const caseRef = doc(firestore, "cases", caseId);
         
@@ -1024,7 +1025,8 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           batchCreated: true,
           batchTimestamp: timestamp,
           batchSize: formData.patients.length,
-          batchIndex: i
+          batchIndex: i,
+          batchCode: batchCode
         };
         
         // Add to batch
