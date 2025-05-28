@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Select from "react-select";
 import {
   Card,
   CardContent,
@@ -9,13 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -264,16 +258,20 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
       // Update the clinic's assigned pharmacists
       const clinicRef = doc(firestore, "users", clinicUid);
 
-      await setDoc(clinicRef, {
-        assignedPharmacists: {
+      const clinicSnapshot = await getDoc(clinicRef);
+      const clinicData = clinicSnapshot.data()
+      
+      clinicData.assignedPharmacists = {
           ...assignedPharmacists.reduce((acc, pharm) => {
             const positionKey = getPositionName(pharm.position).toLowerCase();
             acc[positionKey] = pharm.id;
             acc[`${positionKey}Name`] = pharm.name;
             return acc;
           }, {}),
-        },
-      }, { merge: true });
+          assignToAnyPharmacist: clinicData.assignedPharmacists?.assignToAnyPharmacist,
+        }
+
+      await setDoc(clinicRef, clinicData, {merge: false})
 
       // Also update each pharmacist's assigned clinics
       for (const pharmacist of assignedPharmacists) {
@@ -384,6 +382,20 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
                   </DialogHeader>
                   
                   <div className="py-4">
+                    <Select
+                      //value={getAvailablePharmacistsForSelect().find(p => p.id === selectedPharmacist) || null}
+                      onChange={option => setSelectedPharmacist(option ? option.id : "")}
+                      options={getAvailablePharmacistsForSelect().map(pharmacist => ({
+                        value: pharmacist.id,
+                        label: `${pharmacist.name} (${pharmacist.email})`,
+                        id: pharmacist.id,
+                      }))}
+                      placeholder="Select a pharmacist"
+                      isClearable
+                      noOptionsMessage={() => "No available pharmacists to add"}
+                    />
+                  </div>
+                  {/*<div className="py-4">
                     <Select value={selectedPharmacist} onValueChange={setSelectedPharmacist}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a pharmacist" />
@@ -402,7 +414,7 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
                         )}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </div>*/}
 
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>

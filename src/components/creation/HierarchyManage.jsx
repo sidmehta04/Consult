@@ -40,6 +40,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  PillBottle,
+  BriefcaseMedical
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -56,6 +58,7 @@ import {
 import { firestore } from "../../firebase";
 
 import PharmacistHierarchyCard from "./PharmacistHierarchyCard";
+import DoctorHierarchyCard from "./DoctorHierarchyCard";
 
 const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
   const [loading, setLoading] = useState(true);
@@ -65,6 +68,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredClinics, setFilteredClinics] = useState([]);
   const [selectedClinic, setSelectedClinic] = useState(null);
+  const [selectedClinicDr, setSelectedClinicDr] = useState(null)
   const [filterType, setFilterType] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -97,6 +101,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             partnerName: doc.data().partnerName || "N/A",
             deactivated: doc.data().deactivated || false,
             assignedPharmacists: doc.data().assignedPharmacists || {},
+            assignedDoctors: doc.data().assignedDoctors || {},
             createdAt: doc.data().createdAt
               ? new Date(
                   doc.data().createdAt.seconds * 1000
@@ -143,6 +148,16 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
       filtered = filtered.filter((clinic) => 
         !clinic.assignedPharmacists || 
         (!clinic.assignedPharmacists.primary && Object.keys(clinic.assignedPharmacists).length === 0)
+      );
+    } else if (filterType === "with_doctor") {
+      filtered = filtered.filter((clinic) => 
+        clinic.assignedDoctors && 
+        (clinic.assignedDoctors.primary || Object.keys(clinic.assignedDoctors).length > 0)
+      );
+    } else if (filterType === "without_doctor") {
+      filtered = filtered.filter((clinic) => 
+        !clinic.assignedDoctors || 
+        (!clinic.assignedDoctors.primary && Object.keys(clinic.assignedDoctors).length === 0)
       );
     }
 
@@ -235,12 +250,12 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
         <div className="flex items-center space-x-2">
           <Building2 className="h-6 w-6 text-purple-600" />
           <CardTitle className="text-2xl font-bold text-grey-700">
-            Clinic Pharmacist Hierarchy Management
+            Clinic Pharmacist & Doctor Hierarchy Management
           </CardTitle>
         </div>
         <CardDescription className="text-grey-700/70">
-          Manage pharmacist hierarchies for all clinics in the system. 
-          You can view and update the assigned pharmacists for each clinic.
+          Manage pharmacist and doctor hierarchies for all clinics in the system. 
+          You can view and update the assigned pharmacists and doctors for each clinic.
         </CardDescription>
       </CardHeader>
 
@@ -290,6 +305,8 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                   <SelectItem value="all">All Clinics</SelectItem>
                   <SelectItem value="with_pharmacist">With Pharmacist Assigned</SelectItem>
                   <SelectItem value="without_pharmacist">Without Pharmacist</SelectItem>
+                  <SelectItem value="with_doctor">With Doctor Assigned</SelectItem>
+                  <SelectItem value="without_doctor">Without Doctor</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -301,14 +318,14 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                 <h4 className="text-sm font-medium text-gray-500">
                   Total Clinics: {filteredClinics.length}
                 </h4>
-                <Badge
+                {/*<Badge
                   variant="outline"
                   className="bg-grey-50 text-grey-700 border-grey-200"
                 >
                   {clinics.filter(c => c.assignedPharmacists && 
                     (c.assignedPharmacists.primary || Object.keys(c.assignedPharmacists).length > 0)
                   ).length} with pharmacists assigned
-                </Badge>
+                </Badge>*/}
               </div>
               
               {/* Pagination Info */}
@@ -333,17 +350,20 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                   <TableHeader className="bg-gray-50">
                     <TableRow>
                       <TableHead className="w-[25%]">Nurse Name</TableHead>
-                      <TableHead className="w-[15%]">Clinic Code</TableHead>
-                      <TableHead className="w-[20%]">Location</TableHead>
-                      <TableHead className="w-[20%]">Partner</TableHead>
-                      <TableHead className="w-[15%]">Pharmacist Status</TableHead>
-                      <TableHead className="w-[5%] text-right">Actions</TableHead>
+                      <TableHead className="w-[10%]">Clinic Code</TableHead>
+                      <TableHead className="w-[25%]">Location</TableHead>
+                      <TableHead className="w-[15%]">Partner</TableHead>
+                      <TableHead className="w-[10%]">Doctor Status</TableHead>
+                      <TableHead className="w-[10%]">Pharma. Status</TableHead>
+                      <TableHead className="w-[5%] text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {currentClinics.map((clinic) => {
                       const hasPharmacist = clinic.assignedPharmacists && 
                         (clinic.assignedPharmacists.primary || Object.keys(clinic.assignedPharmacists).length > 0);
+                      const hasDoctor = clinic.assignedDoctors &&
+                        (clinic.assignedDoctors.primary || Object.keys(clinic.assignedDoctors).length > 0);
                       
                       return (
                         <TableRow key={clinic.id}>
@@ -360,6 +380,19 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                           </TableCell>
                           <TableCell>{clinic.partnerName}</TableCell>
                           <TableCell>
+                            {hasDoctor ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                <BadgeCheck className="h-3 w-3 mr-1" />
+                                Assigned
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                No Doctor
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {hasPharmacist ? (
                               <Badge className="bg-green-100 text-green-800 border-green-200">
                                 <BadgeCheck className="h-3 w-3 mr-1" />
@@ -368,7 +401,7 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                             ) : (
                               <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
                                 <AlertCircle className="h-3 w-3 mr-1" />
-                                No Pharmacist
+                                No Pharma.
                               </Badge>
                             )}
                           </TableCell>
@@ -380,7 +413,16 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
                               className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
                               title="Manage Pharmacist Hierarchy"
                             >
-                              <Settings className="h-4 w-4" />
+                              <PillBottle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSelectedClinicDr(clinic)}
+                              className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                              title="Manage Doctor Hierarchy"
+                            >
+                              <BriefcaseMedical className="h-4 w-4" />
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -496,6 +538,38 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
             <PharmacistHierarchyCard 
               currentUser={currentUser} 
               selectedClinic={selectedClinic}
+              userRole={userRole}
+              onUpdate={refreshClinicData}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+      {/* Doctor Hierarchy Management Dialog */}
+      {selectedClinicDr && (
+        <Dialog 
+          open={!!selectedClinicDr} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedClinicDr(null);
+              // Refresh data when dialog closes to reflect any changes
+              refreshClinicData();
+            }
+          }}
+        >
+          <DialogContent 
+            className="!max-w-4xl !w-[90vw] p-0 overflow-hidden"
+          >
+            <DialogHeader className="sr-only">
+              <DialogTitle>
+                Manage Doctor Hierarchy for {selectedClinicDr.name}
+              </DialogTitle>
+              <DialogDescription>
+                Update doctor assignments and hierarchy for this clinic
+              </DialogDescription>
+            </DialogHeader>
+            <DoctorHierarchyCard 
+              currentUser={currentUser} 
+              selectedClinic={selectedClinicDr}
               userRole={userRole}
               onUpdate={refreshClinicData}
             />

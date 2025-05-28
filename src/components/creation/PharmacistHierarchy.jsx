@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Select from "react-select";
 import {
   Card,
   CardContent,
@@ -10,7 +11,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
+  //Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -381,6 +382,20 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                   </DialogHeader>
                   
                   <div className="py-4">
+                    <Select
+                      //value={getAvailablePharmacistsForSelect().find(p => p.id === selectedPharmacist) || null}
+                      onChange={option => setSelectedPharmacist(option ? option.id : "")}
+                      options={getAvailablePharmacistsForSelect().map(pharmacist => ({
+                        value: pharmacist.id,
+                        label: `${pharmacist.name} (${pharmacist.email})`,
+                        id: pharmacist.id,
+                      }))}
+                      placeholder="Select a pharmacist"
+                      isClearable
+                      noOptionsMessage={() => "No available pharmacists to add"}
+                    />
+                  </div>
+                  {/*<div className="py-4">
                     <Select value={selectedPharmacist} onValueChange={setSelectedPharmacist}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a pharmacist" />
@@ -399,7 +414,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                         )}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </div>*/}
 
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>

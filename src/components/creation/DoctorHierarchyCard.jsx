@@ -11,13 +11,6 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
-  //Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -36,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Users,
-  Stethoscope,
+  ClipboardPlus,
   BadgeCheck,
   AlertCircle,
   ChevronUp,
@@ -45,6 +38,7 @@ import {
   Plus,
   Save,
   Check,
+  UserPlus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -53,7 +47,7 @@ import { Switch } from "@/components/ui/switch";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
-const DoctorHierarchyManagement = ({ currentUser }) => {
+const DoctorHierarchyCard = ({ currentUser, selectedClinic }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -62,7 +56,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
   const [assignedDoctors, setAssignedDoctors] = useState([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState("");
-  const [assignToAnyDoctor, setAssignToAnyDoctor] = useState(false);
+  const [clinicUid, setClinicUid] = useState("");
+  const [hasExistingHierarchy, setHasExistingHierarchy] = useState(false);
 
   // Fetch all doctors and current assignments
   useEffect(() => {
@@ -88,49 +83,65 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
         });
         setAvailableDoctors(doctorsList);
         
-        // Fetch pharmacist's data to see already assigned doctors
-        const pharmacistRef = doc(firestore, "users", currentUser.uid);
-        const pharmacistSnapshot = await getDoc(pharmacistRef);
-        
-        if (pharmacistSnapshot.exists()) {
-          const pharmacistData = pharmacistSnapshot.data();
+        // Fetch clinic-specific doctor assignments (nurse)
+        const clinicQuery = query(
+          collection(firestore, "users"),
+          where("clinicCode", "==", selectedClinic.clinicCode),
+        );
+
+        const clinicSnapshot = await getDocs(clinicQuery);
+        const clinicData = clinicSnapshot.docs[0]?.data(); //there should only be one item
+
+        if (clinicData && clinicData.assignedDoctors) {
+          setClinicUid(clinicSnapshot.docs[0].id); // Set the clinic UID
           
-          // Check if the pharmacist has doctor hierarchy configured
-          if (pharmacistData.doctorHierarchy && Array.isArray(pharmacistData.doctorHierarchy)) {
-            // Convert to array of assigned doctors with their hierarchy position
+          // Check if there are any assigned doctors
+          const hasAnyDoctors = Object.keys(clinicData.assignedDoctors).some(key => 
+            !key.includes('Name') && clinicData.assignedDoctors[key]
+          );
+          
+          setHasExistingHierarchy(hasAnyDoctors);
+          
+          if (hasAnyDoctors) {
             const assignedDoctorsList = await Promise.all(
-              pharmacistData.doctorHierarchy.map(async (doctorId, index) => {
-                const doctorRef = doc(firestore, "users", doctorId);
-                const doctorSnap = await getDoc(doctorRef);
-                
-                if (doctorSnap.exists()) {
-                  return {
-                    id: doctorId,
-                    position: index + 1,
-                    name: doctorSnap.data().name,
-                    email: doctorSnap.data().email
-                  };
-                } else {
-                  return {
-                    id: doctorId,
-                    position: index + 1,
-                    name: "Unknown Doctor",
-                    email: "N/A"
-                  };
+              Array.from({ length: 5 }, (_, index) => {//check up to 5 doctors ??
+                const i = index + 1;
+                const positionKey = getPositionName(i).toLowerCase();
+                const doctorId = clinicData.assignedDoctors?.[positionKey];
+
+                if (!doctorId) {
+                  return Promise.resolve(null); // Skip this one
                 }
+
+                return getDoc(doc(firestore, "users", doctorId))
+                  .then(snapshot => ({
+                    id: doctorId,
+                    position: i,
+                    name: snapshot.exists() ? snapshot.data().name : "Unknown Doctor",
+                    email: snapshot.exists() ? snapshot.data().email : "Unknown Email",
+                  }))
+                  .catch(error => {
+                    console.error(`Error fetching doctor at position ${i}`, error);
+                    return {
+                      id: doctorId,
+                      position: i,
+                      name: "Error Fetching",
+                      email: "Error Fetching",
+                    };
+                  });
               })
             );
-            
-            setAssignedDoctors(assignedDoctorsList);
-          } else {
-            setAssignedDoctors([]);
+
+            // Filter out null values
+            const filteredAssignedDoctors = assignedDoctorsList.filter(doctor => doctor !== null);
+        
+            setAssignedDoctors(filteredAssignedDoctors);
           }
-          
-          // Load assignToAnyDoctor setting if it exists
-          if (pharmacistData.assignToAnyDoctor !== undefined) {
-            setAssignToAnyDoctor(pharmacistData.assignToAnyDoctor);
-          }
+        } else {
+          setClinicUid(clinicSnapshot.docs[0]?.id || "");
+          setHasExistingHierarchy(false);
         }
+        
       } catch (err) {
         console.error("Error fetching data:", err);
         setError("Failed to load doctors. Please try again.");
@@ -140,7 +151,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
     };
     
     fetchData();
-  }, [currentUser.uid]);
+  }, [currentUser.uid, selectedClinic]);
 
   // Get position name based on index
   const getPositionName = (position) => {
@@ -170,12 +181,12 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
     if (!selectedDoctor) return;
     
     // Check if doctor is already assigned
-    if (assignedDoctors.some(doc => doc.id === selectedDoctor)) {
+    if (assignedDoctors.some(pharm => pharm.id === selectedDoctor)) {
       setError("This doctor is already in your hierarchy.");
       return;
     }
     
-    const doctorToAdd = availableDoctors.find(doc => doc.id === selectedDoctor);
+    const doctorToAdd = availableDoctors.find(pharm => pharm.id === selectedDoctor);
     if (doctorToAdd) {
       const position = assignedDoctors.length + 1;
       setAssignedDoctors([
@@ -202,8 +213,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       [newAssignedDoctors[index], newAssignedDoctors[index - 1]];
     
     // Update positions
-    newAssignedDoctors.forEach((doc, i) => {
-      doc.position = i + 1;
+    newAssignedDoctors.forEach((pharm, i) => {
+      pharm.position = i + 1;
     });
     
     setAssignedDoctors(newAssignedDoctors);
@@ -218,8 +229,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       [newAssignedDoctors[index + 1], newAssignedDoctors[index]];
     
     // Update positions
-    newAssignedDoctors.forEach((doc, i) => {
-      doc.position = i + 1;
+    newAssignedDoctors.forEach((pharm, i) => {
+      pharm.position = i + 1;
     });
     
     setAssignedDoctors(newAssignedDoctors);
@@ -227,11 +238,11 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
 
   // Remove doctor from hierarchy
   const removeDoctor = (doctorId) => {
-    const newAssignedDoctors = assignedDoctors.filter(doc => doc.id !== doctorId);
+    const newAssignedDoctors = assignedDoctors.filter(pharm => pharm.id !== doctorId);
     
     // Update positions
-    newAssignedDoctors.forEach((doc, i) => {
-      doc.position = i + 1;
+    newAssignedDoctors.forEach((pharm, i) => {
+      pharm.position = i + 1;
     });
     
     setAssignedDoctors(newAssignedDoctors);
@@ -244,71 +255,34 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       setError("");
       setSuccess("");
       
-      // Extract doctor IDs in order
-      const doctorHierarchy = assignedDoctors.sort((a, b) => a.position - b.position).map(doc => doc.id);
+      // Update the clinic's assigned doctors
+      const clinicRef = doc(firestore, "users", clinicUid);
+
+      const clinicSnapshot = await getDoc(clinicRef);
+      const clinicData = clinicSnapshot.data()
       
-      const pharmacistRef = doc(firestore, "users", currentUser.uid);
-      
-      // Update pharmacist's doctor hierarchy and assignToAnyDoctor setting
-      await setDoc(pharmacistRef, { 
-        doctorHierarchy,
-        assignToAnyDoctor 
-      }, { merge: true });
-      
-      // Update all clinics under this pharmacist to assign these doctors
-      const clinicsQuery = query(
-        collection(firestore, "users"),
-        where("role", "==", "nurse"),
-        where("createdBy", "==", currentUser.uid)
-      );
-      
-      const clinicsSnapshot = await getDocs(clinicsQuery);
-      
-      const updatePromises = [];
-      clinicsSnapshot.forEach((clinic) => {
-        // Create doctor assignments object for each clinic
-        const doctorAssignments = {};
-        
-        assignedDoctors.forEach((doctor) => {
-          const positionKey = getPositionName(doctor.position).toLowerCase();
-          doctorAssignments[positionKey] = doctor.id;
-          doctorAssignments[`${positionKey}Name`] = doctor.name;
-        });
-        
-        // Add assignToAnyDoctor setting to clinic
-        doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-        
-        // Update the clinic
-        const clinicRef = doc(firestore, "users", clinic.id);
-        updatePromises.push(
-          setDoc(clinicRef, { assignedDoctors: doctorAssignments }, { merge: true })
-        );
-        
-        // Also update each doctor's assigned clinics
-        doctorHierarchy.forEach((doctorId) => {
-          const doctorRef = doc(firestore, "users", doctorId);
-          updatePromises.push(
-            getDoc(doctorRef).then((doctorSnap) => {
-              if (doctorSnap.exists()) {
-                const doctorData = doctorSnap.data();
-                const updatedClinics = {
-                  ...(doctorData.assignedClinics || {}),
-                  [clinic.id]: true
-                };
-                
-                return setDoc(doctorRef, 
-                  { assignedClinics: updatedClinics }, 
-                  { merge: true }
-                );
-              }
-            })
-          );
-        });
-      });
-      
-      await Promise.all(updatePromises);
-      
-      setSuccess("Doctor hierarchy saved successfully. All your clinics have been updated.");
+      clinicData.assignedDoctors = {
+          ...assignedDoctors.reduce((acc, pharm) => {
+            const positionKey = getPositionName(pharm.position).toLowerCase();
+            acc[positionKey] = pharm.id;
+            acc[`${positionKey}Name`] = pharm.name;
+            return acc;
+          }, {}),
+          assignToAnyDoctor: clinicData.assignedDoctors?.assignToAnyDoctor,
+        }
+
+      await setDoc(clinicRef, clinicData, {merge: false})
+
+      // Also update each doctor's assigned clinics
+      for (const doctor of assignedDoctors) {
+        const doctorRef = doc(firestore, "users", doctor.id);
+
+        await setDoc(doctorRef, {
+          [`assignedClinics.${clinicUid}`]: true
+        }, { merge: true });
+      }
+
+      setSuccess("Doctor hierarchy updated successfully.");
     } catch (err) {
       console.error("Error saving hierarchy:", err);
       setError("Failed to save doctor hierarchy. Please try again.");
@@ -323,17 +297,41 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
     );
   };
 
+  // Component for when no hierarchy exists
+  const NoHierarchyMessage = () => (
+    <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+      <UserPlus className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">
+        No Doctor Hierarchy Found
+      </h3>
+      <p className="text-gray-500 mb-4 max-w-md mx-auto">
+        This clinic doesn't have a doctor hierarchy set up yet. 
+        Please create a hierarchy first before you can edit doctor assignments.
+      </p>
+      <Alert className="bg-blue-50 border-blue-200 max-w-md mx-auto">
+        <AlertCircle className="h-4 w-4 text-blue-600" />
+        <AlertDescription className="text-blue-800">
+          You can only edit existing hierarchies here. To create a new hierarchy, 
+          please use the hierarchy creation feature.
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
+
   return (
     <Card className="w-full max-w-4xl mx-auto bg-white shadow-xl">
       <CardHeader>
         <div className="flex items-center space-x-2">
-          <Stethoscope className="h-6 w-6 text-blue-500" />
+          <ClipboardPlus className="h-6 w-6 text-purple-500" />
           <CardTitle className="text-2xl font-bold">
-            Doctor Hierarchy Management
+            {hasExistingHierarchy ? "Edit Doctor Hierarchy" : "Doctor Hierarchy"}
           </CardTitle>
         </div>
         <CardDescription>
-          Configure the hierarchy of doctors who will be assigned to all your clinics
+          {hasExistingHierarchy 
+            ? `Edit the doctor hierarchy for ${selectedClinic.name} : ${selectedClinic.clinicCode}`
+            : `View doctor hierarchy status for ${selectedClinic.name} : ${selectedClinic.clinicCode}`
+          }
         </CardDescription>
       </CardHeader>
 
@@ -341,7 +339,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
         {loading ? (
           <div className="flex justify-center py-8">
             <svg
-              className="animate-spin h-8 w-8 text-blue-500"
+              className="animate-spin h-8 w-8 text-purple-500"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -361,6 +359,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
               ></path>
             </svg>
           </div>
+        ) : !hasExistingHierarchy ? (
+          <NoHierarchyMessage />
         ) : (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -377,14 +377,14 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                   <DialogHeader>
                     <DialogTitle>Add Doctor to Hierarchy</DialogTitle>
                     <DialogDescription>
-                      Select a doctor to add to your hierarchy. They will be assigned to all your clinics.
+                      Select a doctor to add to the existing hierarchy for this clinic.
                     </DialogDescription>
                   </DialogHeader>
-
+                  
                   <div className="py-4">
                     <Select
                       //value={getAvailableDoctorsForSelect().find(p => p.id === selectedDoctor) || null}
-                      onChange={option => setSelectedDoctors(option ? option.id : "")}
+                      onChange={option => setSelectedDoctor(option ? option.id : "")}
                       options={getAvailableDoctorsForSelect().map(doctor => ({
                         value: doctor.id,
                         label: `${doctor.name} (${doctor.email})`,
@@ -433,9 +433,9 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
             {assignedDoctors.length === 0 ? (
               <div className="text-center py-8 bg-gray-50 rounded-md border border-dashed border-gray-300">
                 <Users className="h-10 w-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No doctors assigned yet</p>
+                <p className="text-gray-500">No doctors currently assigned</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Add doctors to create your hierarchy
+                  Add doctors to update the hierarchy
                 </p>
               </div>
             ) : (
@@ -468,6 +468,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                               onClick={() => moveUp(index)}
                               disabled={index === 0}
                               className="h-8 w-8"
+                              title="Move up in hierarchy"
                             >
                               <ChevronUp className="h-4 w-4" />
                             </Button>
@@ -477,6 +478,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                               onClick={() => moveDown(index)}
                               disabled={index === assignedDoctors.length - 1}
                               className="h-8 w-8"
+                              title="Move down in hierarchy"
                             >
                               <ChevronDown className="h-4 w-4" />
                             </Button>
@@ -485,6 +487,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                               size="icon"
                               onClick={() => removeDoctor(doctor.id)}
                               className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              title="Remove from hierarchy"
                             >
                               <Trash className="h-4 w-4" />
                             </Button>
@@ -496,32 +499,10 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
               </Table>
             )}
             
-            <div className="flex items-center space-x-4 rounded-md border p-4">
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="assign-to-any" className="text-base">
-                  Fallback Assignment
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  When primary doctors are unavailable, assign cases to any available doctor
-                </p>
-              </div>
-              <Switch 
-                id="assign-to-any" 
-                checked={assignToAnyDoctor} 
-                onCheckedChange={setAssignToAnyDoctor} 
-              />
-            </div>
-            
             {assignedDoctors.length > 0 && (
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertDescription className="text-blue-800">
                   The order above determines the doctor hierarchy. Primary doctors get first priority, followed by Secondary, etc.
-                  {assignToAnyDoctor && (
-                    <span className="block mt-2 font-medium">
-                      <Check className="h-4 w-4 inline mr-1" />
-                      Cases will be assigned to any available doctor when hierarchy doctors are unavailable.
-                    </span>
-                  )}
                 </AlertDescription>
               </Alert>
             )}
@@ -545,46 +526,48 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
         )}
       </CardContent>
 
-      <CardFooter className="bg-gray-50 px-6 py-4">
-        <Button
-          onClick={saveHierarchy}
-          disabled={saving || loading || assignedDoctors.length === 0}
-          className="ml-auto flex gap-2 items-center"
-        >
-          {saving ? (
-            <>
-              <svg
-                className="animate-spin h-4 w-4"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Save Doctor Hierarchy
-            </>
-          )}
-        </Button>
-      </CardFooter>
+      {hasExistingHierarchy && (
+        <CardFooter className="bg-gray-50 px-6 py-4">
+          <Button
+            onClick={saveHierarchy}
+            disabled={saving || loading}
+            className="ml-auto flex gap-2 items-center"
+          >
+            {saving ? (
+              <>
+                <svg
+                  className="animate-spin h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Saving Changes...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 };
 
-export default DoctorHierarchyManagement;
+export default DoctorHierarchyCard;
