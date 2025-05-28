@@ -51,6 +51,7 @@ const DashboardHeader = ({
             value={refreshInterval}
             onChange={(e) => setRefreshInterval(Number(e.target.value))}
           >
+            <option value={15000}>15 seconds</option>
             <option value={30000}>30 seconds</option>
             <option value={60000}>1 minute</option>
             <option value={300000}>5 minutes</option>

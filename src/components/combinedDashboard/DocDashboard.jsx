@@ -1,4 +1,18 @@
 import React, { useState, useEffect, use } from "react";
+import { 
+    collection, 
+    query, 
+    where, 
+    getDocs, 
+    doc, 
+    getDoc, 
+    orderBy, 
+    limit, 
+    onSnapshot,
+    Timestamp
+  } from "firebase/firestore";
+
+import { firestore } from "../../firebase";
 
 import { fetchData } from "./fetchData"; 
 import { fetchRealtimeData, 
@@ -22,7 +36,7 @@ const CombinedDashboard = ({ currentUser }) => {
   const [pharmacists, setPharmacists] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [refreshInterval, setRefreshInterval] = useState(60000); // 1 minute refresh by default
+  const [refreshInterval, setRefreshInterval] = useState(15000); // 1 minute refresh by default
   const [realtimeData, setRealtimeData] = useState({});
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [viewMode, setViewMode] = useState("table"); // table or cards
@@ -65,15 +79,44 @@ const CombinedDashboard = ({ currentUser }) => {
     }
   };
 
+  const updateAvailabilityStatus = async () => {
+    try {
+      if (doctorPharmacist == "doctor") {
+        doctors.forEach(async (doctor) => {
+          const userRef = doc(firestore, "users", doctor.id);
+          const snapshot = await getDoc(userRef);
+          if (snapshot.exists()) {
+            const userData = snapshot.data();
+            doctor.availabilityStatus = userData.availabilityStatus;
+            doctor.availabilityHistory = userData.availabilityHistory;
+          }
+        })
+      } else if (doctorPharmacist == "pharmacist") {
+        pharmacists.forEach(async (doctor) => {
+          const userRef = doc(firestore, "users", doctor.id);
+          const snapshot = await getDoc(userRef);
+          if (snapshot.exists()) {
+            const userData = snapshot.data();
+            doctor.availabilityStatus = userData.availabilityStatus;
+            doctor.availabilityHistory = userData.availabilityHistory;
+          }
+        })
+      }
+    } catch (err) {
+      console.error("Error fetching availability data:", err);
+    }
+  }
+
   // Handle refresh button click
   const handleRefresh = async () => {
-    ////console.log("Refreshing data...");
-    if (doctors.length > 0) {
+    if ((doctorPharmacist == "doctor" && doctors.length > 0) || (doctorPharmacist == "pharmacist" && pharmacists.length > 0)) {
       try {
         if (doctorPharmacist == "doctor") {
+          await updateAvailabilityStatus();
           const updatedDoctors = await enrichDoctorsWithCaseData(doctors);
           setDoctors(updatedDoctors);
         } else if (doctorPharmacist == "pharmacist") {
+          await updateAvailabilityStatus();
           const updatedPharmacists = await enrichPharmacistsWithCaseData(pharmacists);
           setPharmacists(updatedPharmacists);
         }
