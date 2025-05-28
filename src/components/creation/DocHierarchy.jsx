@@ -265,7 +265,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       const clinicsSnapshot = await getDocs(clinicsQuery);
       
       const updatePromises = [];
-      clinicsSnapshot.forEach((clinic) => {
+      clinicsSnapshot.forEach(async (clinic) => {
         // Create doctor assignments object for each clinic
         const doctorAssignments = {};
         
@@ -280,8 +280,13 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
         
         // Update the clinic
         const clinicRef = doc(firestore, "users", clinic.id);
+        const clinicSnapshot = await getDoc(clinicRef);
+        const clinicData = clinicSnapshot.data();
+
+        clinicData.assignedDoctors = doctorAssignments;
+
         updatePromises.push(
-          setDoc(clinicRef, { assignedDoctors: doctorAssignments }, { merge: true })
+          setDoc(clinicRef, clinicData, { merge: false })
         );
         
         // Also update each doctor's assigned clinics
