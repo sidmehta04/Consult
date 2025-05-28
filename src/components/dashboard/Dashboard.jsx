@@ -169,12 +169,12 @@ const Dashboard = ({ currentUser }) => {
                 totalCount, completedCount, incompleteCount, docPendingCount, pharmPendingCount, todayCount, todayCompleted, todayIncomplete
               ] = await Promise.all([
                 fetchCounts(partnerName, clinicMapping, query(casesRef)),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("pharmacistCompleted", "==", true))),
+                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("status", "==", "completed"))),
                 fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("isIncomplete", "==", true))),
                 fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("doctorCompleted", "==", false))),
                 fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
                 fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("createdAt", ">=", today), where("createdAt", "<", tomorrow))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("pharmacistCompleted", "==", true), where("createdAt", ">=", today), where("createdAt", "<", tomorrow))),
+                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("status", "==", "completed"), where("createdAt", ">=", today), where("createdAt", "<", tomorrow))),
                 fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("isIncomplete", "==", true), where("createdAt", ">=", today), where("createdAt", "<", tomorrow)))
               ]);
 
