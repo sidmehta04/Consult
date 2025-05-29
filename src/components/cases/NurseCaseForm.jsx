@@ -1043,6 +1043,8 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           const currentCaseCount = doctorData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
           
+          //deprecating busy
+          ///*
           if (newCaseCount >= 10 && doctorData.availabilityStatus === "available") {
             batch.update(doctorRef, {
               availabilityStatus: "busy",
@@ -1050,6 +1052,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
               autoStatusChange: true,
             });
           }
+          /**/
         }
       }
 
@@ -1063,6 +1066,8 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           const currentCaseCount = pharmacistData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
           
+          //deprecating busy
+          ///*
           if (newCaseCount >= 10 && pharmacistData.availabilityStatus === "available") {
             batch.update(pharmRef, {
               availabilityStatus: "busy",
@@ -1070,6 +1075,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
               autoStatusChange: true,
             });
           }
+          /**/ 
         }
       }
       
