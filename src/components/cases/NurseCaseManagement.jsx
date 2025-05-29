@@ -238,6 +238,10 @@ const NurseCaseManagement = ({ currentUser }) => {
     }
   };
 
+  const handleFallbackDoctor = async (caseItem) => {
+
+  }
+
   const handlePharmacistIncomplete = async (caseId) => {
     if (!caseId) return;
 

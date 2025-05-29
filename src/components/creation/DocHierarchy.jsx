@@ -389,7 +389,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                   <div className="py-4">
                     <Select
                       //value={getAvailableDoctorsForSelect().find(p => p.id === selectedDoctor) || null}
-                      onChange={option => setSelectedDoctors(option ? option.id : "")}
+                      onChange={option => setSelectedDoctor(option ? option.id : "")}
                       options={getAvailableDoctorsForSelect().map(doctor => ({
                         value: doctor.id,
                         label: `${doctor.name} (${doctor.email})`,
