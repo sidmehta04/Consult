@@ -190,12 +190,15 @@ const PharmacistAvailabilityManager = ({ currentUser }) => {
   };
   
   // Auto-update status to busy if case load is high
+  // deprecating busy
+  ///*
   useEffect(() => {
     if (availabilityStatus === "available" && activeCases.length >= 10) {
       console.log("hi")
       updatePharmacistStatus("busy", "Automatically marked as busy due to high case load");
     }
   }, [activeCases, availabilityStatus]);
+  /**/
   
   if (loading) {
     return (
@@ -265,7 +268,7 @@ const PharmacistAvailabilityManager = ({ currentUser }) => {
                 <Button
                   variant={availabilityStatus === "busy" ? "default" : "outline"}
                   className={availabilityStatus === "busy" ? "bg-red-600 hover:bg-red-700" : ""}
-                  onClick={() => handleStatusChange("busy")}
+                  //onClick={() => handleStatusChange("busy")}
                 >
                   <Users className="h-4 w-4 mr-2" />
                   Busy

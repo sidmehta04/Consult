@@ -64,9 +64,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
           collection(firestore, "cases"),
           where("assignedDoctors.primary", "==", currentUser.uid),
           where("doctorCompleted", "==", false),
-          where("incomplete", "==", false) // Add this condition
-
-          
+          where("isIncomplete", "==", false) // Add this condition          
         );
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -113,7 +111,8 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
         previousStatus: availabilityStatus,
         newStatus: status,
         changedAt: new Date(), // Use client timestamp for immediate UI update
-        reason: reason
+        reason: reason,
+        casesNo: activeCases.length,
       };
       
       if (duration) {
@@ -197,12 +196,14 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
   };
   
   // Auto-update status to busy if case load is high
+  // deprecating busy?
+  ///*
   useEffect(() => {
     if (availabilityStatus === "available" && activeCases.length >= 10) {
       updateDoctorStatus("busy", "Automatically marked as busy due to high case load");
     }
   }, [activeCases, availabilityStatus]);
-  
+  /**/
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
@@ -271,7 +272,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 <Button
                   variant={availabilityStatus === "busy" ? "default" : "outline"}
                   className={availabilityStatus === "busy" ? "bg-red-600 hover:bg-red-700" : ""}
-                  onClick={() => handleStatusChange("busy")}
+                  //onClick={() => handleStatusChange("busy")}
                 >
                   <Users className="h-4 w-4 mr-2" />
                   Busy
