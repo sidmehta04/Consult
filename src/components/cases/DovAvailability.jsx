@@ -306,7 +306,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                     <p className="font-medium text-blue-800">Status Explanation</p>
                     <ul className="mt-2 space-y-1 text-sm text-gray-600">
                       <li><span className="font-medium text-green-600">Available:</span> Ready to accept new cases</li>
-                      {/*<li><span className="font-medium text-red-600">Busy:</span> Already handling maximum cases</li>*/}
+                      <li><span className="font-medium text-red-600">Busy:</span> Already handling maximum cases</li>
                       <li><span className="font-medium text-gray-600">Unavailable:</span> Off duty or not working</li>
                       <li><span className="font-medium text-amber-600">Lunch Break:</span> Temporarily unavailable</li>
                     </ul>

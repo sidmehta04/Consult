@@ -81,12 +81,19 @@ const DoctorStatusHistory = ({ availabilityHistory = [] }) => {
                   {entry.reason}
                 </p>
               )}
-              
+              <div className="flex justify-between items-start">              
               {entry.previousStatus && (
                 <p className="text-xs text-gray-500 mt-1">
                   Previous: {formatStatus(entry.previousStatus)}
                 </p>
               )}
+
+              {entry.casesNo && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Doctor had {entry.casesNo} active case(s) at this time.
+                </p>
+              )}
+              </div>
             </li>
           ))}
         </ul>
