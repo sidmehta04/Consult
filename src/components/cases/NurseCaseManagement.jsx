@@ -241,229 +241,377 @@ const NurseCaseManagement = ({ currentUser }) => {
   const handleFallbackDoctor = async (caseItem) => {
 
   }
+  const updateDoctorStatusIfNeeded = async (doctorId) => {
+  if (!doctorId) return;
+
+  try {
+    // Get doctor's current status
+    const doctorRef = doc(firestore, "users", doctorId);
+    const doctorSnap = await getDoc(doctorRef);
+    
+    if (!doctorSnap.exists()) return;
+    
+    const doctorData = doctorSnap.data();
+    const currentStatus = doctorData.availabilityStatus;
+    
+    // Count doctor's active cases
+    const doctorActiveCasesQuery = query(
+      collection(firestore, "cases"),
+      where("assignedDoctors.primary", "==", doctorId),
+      where("doctorCompleted", "==", false),
+      where("isIncomplete", "!=", true)
+    );
+    
+    const doctorActiveCasesSnapshot = await getDocs(doctorActiveCasesQuery);
+    const activeCaseCount = doctorActiveCasesSnapshot.size;
+    
+    console.log(`Doctor ${doctorId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
+    
+    const timestamp = new Date();
+    const history = doctorData.availabilityHistory || [];
+    
+    // Update status based on case load
+    if (activeCaseCount >= 10 && currentStatus === "available") {
+      // Mark as busy
+      const statusChange = {
+        previousStatus: currentStatus,
+        newStatus: "busy",
+        changedAt: timestamp,
+        reason: "Automatically marked as busy due to high case load (via nurse action)",
+        casesNo: activeCaseCount,
+      };
+      
+      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      
+      await updateDoc(doctorRef, {
+        availabilityStatus: "busy",
+        lastStatusUpdate: timestamp,
+        availabilityHistory: updatedHistory,
+      });
+      
+      console.log(`Updated doctor ${doctorId} status to busy`);
+      
+    } else if (activeCaseCount < 10 && currentStatus === "busy") {
+      // Mark as available
+      const statusChange = {
+        previousStatus: currentStatus,
+        newStatus: "available",
+        changedAt: timestamp,
+        reason: "Automatically marked as available due to reduced case load (via nurse action)",
+        casesNo: activeCaseCount,
+      };
+      
+      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      
+      await updateDoc(doctorRef, {
+        availabilityStatus: "available",
+        lastStatusUpdate: timestamp,
+        availabilityHistory: updatedHistory,
+      });
+      
+      console.log(`Updated doctor ${doctorId} status to available`);
+    }
+    
+  } catch (err) {
+    console.error("Error updating doctor status:", err);
+  }
+};
+const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
+  if (!pharmacistId) return;
+
+  try {
+    // Get pharmacist's current status
+    const pharmacistRef = doc(firestore, "users", pharmacistId);
+    const pharmacistSnap = await getDoc(pharmacistRef);
+    
+    if (!pharmacistSnap.exists()) return;
+    
+    const pharmacistData = pharmacistSnap.data();
+    const currentStatus = pharmacistData.availabilityStatus;
+    
+    // Count pharmacist's active cases
+    const pharmacistActiveCasesQuery = query(
+      collection(firestore, "cases"),
+      where("pharmacistId", "==", pharmacistId),
+      where("pharmacistCompleted", "==", false),
+      where("isIncomplete", "!=", true)
+    );
+    
+    const pharmacistActiveCasesSnapshot = await getDocs(pharmacistActiveCasesQuery);
+    const activeCaseCount = pharmacistActiveCasesSnapshot.size;
+    
+    console.log(`Pharmacist ${pharmacistId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
+    
+    const timestamp = new Date();
+    const history = pharmacistData.availabilityHistory || [];
+    
+    // Update status based on case load
+    if (activeCaseCount >= 10 && currentStatus === "available") {
+      // Mark as busy
+      const statusChange = {
+        previousStatus: currentStatus,
+        newStatus: "busy",
+        changedAt: timestamp,
+        reason: "Automatically marked as busy due to high case load (via nurse action)",
+        casesNo: activeCaseCount,
+      };
+      
+      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      
+      await updateDoc(pharmacistRef, {
+        availabilityStatus: "busy",
+        lastStatusUpdate: timestamp,
+        availabilityHistory: updatedHistory,
+      });
+      
+      console.log(`Updated pharmacist ${pharmacistId} status to busy`);
+      
+    } else if (activeCaseCount < 10 && currentStatus === "busy") {
+      // Mark as available
+      const statusChange = {
+        previousStatus: currentStatus,
+        newStatus: "available",
+        changedAt: timestamp,
+        reason: "Automatically marked as available due to reduced case load (via nurse action)",
+        casesNo: activeCaseCount,
+      };
+      
+      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      
+      await updateDoc(pharmacistRef, {
+        availabilityStatus: "available",
+        lastStatusUpdate: timestamp,
+        availabilityHistory: updatedHistory,
+      });
+      
+      console.log(`Updated pharmacist ${pharmacistId} status to available`);
+    }
+    
+  } catch (err) {
+    console.error("Error updating pharmacist status:", err);
+  }
+};
+
 
   const handlePharmacistIncomplete = async (caseId) => {
-    if (!caseId) return;
+  if (!caseId) return;
 
-    try {
-      // First get the current case data to check doctor completion
-      const caseRef = doc(firestore, "cases", caseId);
-      const caseSnap = await getDoc(caseRef);
+  try {
+    // First get the current case data to check doctor completion
+    const caseRef = doc(firestore, "cases", caseId);
+    const caseSnap = await getDoc(caseRef);
 
-      if (!caseSnap.exists()) {
-        throw new Error("Case not found");
-      }
-
-      const caseData = caseSnap.data();
-
-      // Enhanced check for doctor completion - check both the flag and the timestamp
-      if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
-        setError(
-          "This case cannot be marked incomplete until the doctor has completed their review."
-        );
-        return;
-      }
-
-      // Check for incomplete flag
-      if (caseData.isIncomplete) {
-        setError(
-          "This case has been marked as incomplete by the doctor and cannot be marked incomplete by you."
-        );
-        return;
-      }
-
-      // Check if already completed
-      if (caseData.pharmacistCompleted) {
-        setError("This case has already been completed.");
-        return;
-      }
-
-      const timestamp = new Date();
-      const currentVersion = caseData.version || 0;
-
-      try {
-        await retryOperation(() =>
-          updateDoc(caseRef, {
-            pharmacistCompleted: true,
-            inPharmacistPendingReview: false,
-            status: "pharmacist_incomplete",
-            pharmacistCompletedAt: timestamp,
-            pharmacistCompletedBy: currentUser.uid,
-            pharmacistCompletedByName: currentUser.displayName || "Pharmacist",
-            version: currentVersion + 1,
-            isIncomplete: true,
-          })
-        );
-      } catch (err) {
-        console.error("Error updating case after retries:", err);
-        setError(
-          "Failed to update case after multiple attempts. Please try again."
-        );
-        return;
-      }
-
-      setCurrentCase(null);
-      // Get active cases count from current cases state
-      const activeCasesCount = cases.filter(
-        (c) => !c.pharmacistCompleted && c.doctorCompleted && !c.isIncomplete
-      ).length;
-
-      // Status update logic remains the same
-      if (activeCasesCount.length < 10 && pharmacistStatus.status === "busy") {
-        updatePharmacistStatus(
-          "available",
-          "Automatically marked as available due to reduced case load"
-        );
-      }
-    } catch (err) {
-      console.error("Error completing case:", err);
-      setError("Failed to mark case as incomplete");
+    if (!caseSnap.exists()) {
+      throw new Error("Case not found");
     }
-  };
 
-  const handleComplete = async () => {
+    const caseData = caseSnap.data();
+
+    // Enhanced check for doctor completion - check both the flag and the timestamp
+    if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
+      setError("This case cannot be marked incomplete until the doctor has completed their review.");
+      return;
+    }
+
+    // Check for incomplete flag
+    if (caseData.isIncomplete) {
+      setError("This case has been marked as incomplete by the doctor and cannot be marked incomplete by you.");
+      return;
+    }
+
+    // Check if already completed
+    if (caseData.pharmacistCompleted) {
+      setError("This case has already been completed.");
+      return;
+    }
+
+    const timestamp = new Date();
+    const currentVersion = caseData.version || 0;
+
     try {
-      const { caseId, type, isIncomplete, reason } = confirmComplete;
-
-      // Validate that a reason is provided when marking as incomplete
-      if (isIncomplete && !reason.trim()) {
-        setError("Please provide a reason for marking the case as incomplete.");
-        return;
-      }
-
-      const caseRef = doc(firestore, "cases", caseId);
-      const timestamp = new Date();
-
-      // Get the current case data to verify workflow state
-      const caseSnap = await getDoc(caseRef);
-      if (!caseSnap.exists()) {
-        throw new Error("Case not found");
-      }
-
-      const caseData = caseSnap.data();
-
-      if (type === "doctor") {
-        const updateData = {
-          doctorCompleted: true,
-          status: isIncomplete ? "doctor_incomplete" : "doctor_completed",
-          doctorCompletedAt: timestamp,
-          doctorCompletedBy: currentUser.uid,
-          doctorCompletedByName: currentUser.displayName || "Nurse",
-          // Always set inPharmacistPendingReview based on complete/incomplete status
-          inPharmacistPendingReview: !isIncomplete,
-          version: (caseData.version || 0) + 1,
-        };
-
-        // Only add isIncomplete and incompleteReason if it's true
-        if (isIncomplete) {
-          updateData.isIncomplete = true;
-          updateData.incompleteReason = reason; // Add the reason
-        }
-
-        try {
-          await retryOperation(() => updateDoc(caseRef, updateData));
-        } catch (err) {
-          console.error("Error updating case after retries:", err);
-          setError(
-            "Failed to update case after multiple attempts. Please try again."
-          );
-          throw err; // Rethrow to be caught by the outer try/catch
-        }
-      } else if (type === "pharmacist") {
-        // Extra validation: Cannot complete pharmacist part if doctor hasn't completed
-        if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
-          setError(
-            "The doctor must complete this case before the pharmacist can be marked as complete."
-          );
-          setConfirmComplete({
-            open: false,
-            caseId: null,
-            type: null,
-            caseData: null,
-            isIncomplete: false,
-            reason: "",
-          });
-          return;
-        }
-
-        // Cannot complete if case is marked as incomplete by doctor
-        if (caseData.isIncomplete) {
-          setError(
-            "This case has been marked as incomplete by the doctor and cannot be completed."
-          );
-          setConfirmComplete({
-            open: false,
-            caseId: null,
-            type: null,
-            caseData: null,
-            isIncomplete: false,
-            reason: "",
-          });
-          return;
-        }
-
-        // Cannot complete if already completed
-        if (caseData.pharmacistCompleted) {
-          setError("This case has already been completed by a pharmacist.");
-          setConfirmComplete({
-            open: false,
-            caseId: null,
-            type: null,
-            caseData: null,
-            isIncomplete: false,
-            reason: "",
-          });
-          return;
-        }
-
-        const updateData = {
+      await retryOperation(() =>
+        updateDoc(caseRef, {
           pharmacistCompleted: true,
-          status: isIncomplete ? "incomplete" : "completed",
+          inPharmacistPendingReview: false,
+          status: "pharmacist_incomplete",
           pharmacistCompletedAt: timestamp,
           pharmacistCompletedBy: currentUser.uid,
           pharmacistCompletedByName: currentUser.displayName || "Nurse",
-          version: (caseData.version || 0) + 1,
-        };
+          version: currentVersion + 1,
+          isIncomplete: true,
+        })
+      );
+      
+      // Update pharmacist status based on their new case load
+      const pharmacistId = caseData.pharmacistId;
+      if (pharmacistId) {
+        await updatePharmacistStatusIfNeeded(pharmacistId);
+      }
+      
+    } catch (err) {
+      console.error("Error updating case after retries:", err);
+      setError("Failed to update case after multiple attempts. Please try again.");
+      return;
+    }
 
-        // Only add isIncomplete and incompleteReason if it's true
-        if (isIncomplete) {
-          updateData.isIncomplete = true;
-          updateData.incompleteReason = reason; // Add the reason
-        }
+    setCurrentCase(null);
+    
+  } catch (err) {
+    console.error("Error completing case:", err);
+    setError("Failed to mark case as incomplete");
+  }
+};
 
-        try {
-          await retryOperation(() => updateDoc(caseRef, updateData));
-        } catch (err) {
-          console.error("Error updating case after retries:", err);
-          setError(
-            "Failed to update case after multiple attempts. Please try again."
-          );
-          throw err; // Rethrow to be caught by the outer try/catch
-        }
+  const handleComplete = async () => {
+  try {
+    const { caseId, type, isIncomplete, reason } = confirmComplete;
+
+    // Validate that a reason is provided when marking as incomplete
+    if (isIncomplete && !reason.trim()) {
+      setError("Please provide a reason for marking the case as incomplete.");
+      return;
+    }
+
+    const caseRef = doc(firestore, "cases", caseId);
+    const timestamp = new Date();
+
+    // Get the current case data to verify workflow state
+    const caseSnap = await getDoc(caseRef);
+    if (!caseSnap.exists()) {
+      throw new Error("Case not found");
+    }
+
+    const caseData = caseSnap.data();
+
+    if (type === "doctor") {
+      const updateData = {
+        doctorCompleted: true,
+        status: isIncomplete ? "doctor_incomplete" : "doctor_completed",
+        doctorCompletedAt: timestamp,
+        doctorCompletedBy: currentUser.uid,
+        doctorCompletedByName: currentUser.displayName || "Nurse",
+        // Always set inPharmacistPendingReview based on complete/incomplete status
+        inPharmacistPendingReview: !isIncomplete,
+        version: (caseData.version || 0) + 1,
+      };
+
+      // Only add isIncomplete and incompleteReason if it's true
+      if (isIncomplete) {
+        updateData.isIncomplete = true;
+        updateData.incompleteReason = reason;
       }
 
-      setConfirmComplete({
-        open: false,
-        caseId: null,
-        type: null,
-        caseData: null,
-        isIncomplete: false,
-        reason: "",
-      });
-    } catch (err) {
-      console.error("Error completing case:", err);
-      setError("Failed to complete case");
-      setConfirmComplete({
-        open: false,
-        caseId: null,
-        type: null,
-        caseData: null,
-        isIncomplete: false,
-        reason: "",
-      });
-    }
-  };
+      try {
+        await retryOperation(() => updateDoc(caseRef, updateData));
+        
+        // Update doctor status based on their new case load
+        const doctorId = caseData.assignedDoctors?.primary;
+        if (doctorId) {
+          await updateDoctorStatusIfNeeded(doctorId);
+        }
+        
+      } catch (err) {
+        console.error("Error updating case after retries:", err);
+        setError("Failed to update case after multiple attempts. Please try again.");
+        throw err;
+      }
+      
+    } else if (type === "pharmacist") {
+      // Extra validation: Cannot complete pharmacist part if doctor hasn't completed
+      if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
+        setError("The doctor must complete this case before the pharmacist can be marked as complete.");
+        setConfirmComplete({
+          open: false,
+          caseId: null,
+          type: null,
+          caseData: null,
+          isIncomplete: false,
+          reason: "",
+        });
+        return;
+      }
 
+      // Cannot complete if case is marked as incomplete by doctor
+      if (caseData.isIncomplete) {
+        setError("This case has been marked as incomplete by the doctor and cannot be completed.");
+        setConfirmComplete({
+          open: false,
+          caseId: null,
+          type: null,
+          caseData: null,
+          isIncomplete: false,
+          reason: "",
+        });
+        return;
+      }
+
+      // Cannot complete if already completed
+      if (caseData.pharmacistCompleted) {
+        setError("This case has already been completed by a pharmacist.");
+        setConfirmComplete({
+          open: false,
+          caseId: null,
+          type: null,
+          caseData: null,
+          isIncomplete: false,
+          reason: "",
+        });
+        return;
+      }
+
+      const updateData = {
+        pharmacistCompleted: true,
+        status: isIncomplete ? "pharmacist_incomplete" : "completed",
+        pharmacistCompletedAt: timestamp,
+        pharmacistCompletedBy: currentUser.uid,
+        pharmacistCompletedByName: currentUser.displayName || "Nurse",
+        version: (caseData.version || 0) + 1,
+      };
+
+      // Only add isIncomplete and incompleteReason if it's true
+      if (isIncomplete) {
+        updateData.isIncomplete = true;
+        updateData.incompleteReason = reason;
+      }
+
+      try {
+        await retryOperation(() => updateDoc(caseRef, updateData));
+        
+        // Update pharmacist status based on their new case load
+        const pharmacistId = caseData.pharmacistId;
+        if (pharmacistId) {
+          await updatePharmacistStatusIfNeeded(pharmacistId);
+        }
+        
+      } catch (err) {
+        console.error("Error updating case after retries:", err);
+        setError("Failed to update case after multiple attempts. Please try again.");
+        throw err;
+      }
+    }
+
+    setConfirmComplete({
+      open: false,
+      caseId: null,
+      type: null,
+      caseData: null,
+      isIncomplete: false,
+      reason: "",
+    });
+    
+  } catch (err) {
+    console.error("Error completing case:", err);
+    setError("Failed to complete case");
+    setConfirmComplete({
+      open: false,
+      caseId: null,
+      type: null,
+      caseData: null,
+      isIncomplete: false,
+      reason: "",
+    });
+  }
+};
   // Add a function to open the dialog for incomplete cases
   const openIncompleteDialog = (caseId, type, caseData) => {
     setConfirmComplete({

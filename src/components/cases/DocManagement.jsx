@@ -103,6 +103,42 @@ const DoctorCaseManagement = ({ currentUser }) => {
 
     throw lastError;
   };
+  useEffect(() => {
+    // Auto-update doctor status based on case load
+    const handleAutoStatusUpdate = async () => {
+      try {
+        // Only auto-update if status changes are needed
+        if (activeCases.length >= 10 && doctorStatus.status === "available") {
+          // Mark as busy when case load is high
+          console.log(
+            "Auto-updating status to busy - case count:",
+            activeCases.length
+          );
+          await updateDoctorStatus(
+            "busy",
+            "Automatically marked as busy due to high case load"
+          );
+        } else if (activeCases.length < 10 && doctorStatus.status === "busy") {
+          // Mark as available when case load decreases
+          console.log(
+            "Auto-updating status to available - case count:",
+            activeCases.length
+          );
+          await updateDoctorStatus(
+            "available",
+            "Automatically marked as available due to reduced case load"
+          );
+        }
+      } catch (err) {
+        console.error("Error in auto status update:", err);
+      }
+    };
+
+    // Only run auto-update if we have valid data and avoid infinite loops
+    if (activeCases.length !== undefined && doctorStatus.status && !loading) {
+      handleAutoStatusUpdate();
+    }
+  }, [activeCases.length, doctorStatus.status, loading]);
 
   useEffect(() => {
     const fetchDoctorStatus = async () => {
@@ -245,7 +281,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
       if (typeof unsubscribeStatus === "function") unsubscribeStatus();
       if (typeof unsubscribeCases === "function") unsubscribeCases();
     };
-  }, [currentUser.uid, doctorStatus.status]);
+  }, [currentUser.uid]);
 
   const handleStartConsultation = (caseItem) => {
     setCurrentCase(caseItem);
@@ -258,7 +294,6 @@ const DoctorCaseManagement = ({ currentUser }) => {
     try {
       const timestamp = new Date();
       const caseRef = doc(firestore, "cases", caseItem.id);
-
 
       const caseSnap = await getDoc(caseRef);
 
@@ -273,27 +308,27 @@ const DoctorCaseManagement = ({ currentUser }) => {
       }
 
       const updateData = {
-        doctorJoined: timestamp
+        doctorJoined: timestamp,
       };
 
-      if(caseData.batchCode){
-          const casesQuery = query(
-                    collection(firestore, "cases"),
-                    where("batchCode", "==", caseData.batchCode)
-          );
-          const batchSnapshot = await getDocs(casesQuery);
-          
-          batchSnapshot.forEach(async (doc) => {
-            const batchCaseRef = doc.ref;
-            await retryOperation(() => updateDoc(batchCaseRef, updateData));
-          });
+      if (caseData.batchCode) {
+        const casesQuery = query(
+          collection(firestore, "cases"),
+          where("batchCode", "==", caseData.batchCode)
+        );
+        const batchSnapshot = await getDocs(casesQuery);
+
+        batchSnapshot.forEach(async (doc) => {
+          const batchCaseRef = doc.ref;
+          await retryOperation(() => updateDoc(batchCaseRef, updateData));
+        });
       } else {
         await retryOperation(() => updateDoc(caseRef, updateData));
       }
     } catch {
-      console.error("Error setting doctor joining time: ", err)
+      console.error("Error setting doctor joining time: ", err);
     }
-  }
+  };
 
   const handleCompleteCase = async (caseId, isIncomplete = false) => {
     if (!caseId) return;
@@ -425,13 +460,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
       setIsMarkingIncomplete(false);
       setIncompleteReason(""); // Reset reason
 
-      // Update doctor status if case count decreases
-      if (activeCases.length < 10 && doctorStatus.status === "busy") {
-        updateDoctorStatus(
-          "available",
-          "Automatically marked as available due to reduced case load"
-        );
-      }
+      
     } catch (err) {
       console.error("Error completing case:", err);
       setError("Failed to complete case");
@@ -1101,7 +1130,9 @@ const DoctorCaseManagement = ({ currentUser }) => {
                                 caseItem.chiefComplaint
                               )}
                             </TableCell>
-                            <TableCell>{caseItem.clinicCode ?? caseItem.clinicName}</TableCell>
+                            <TableCell>
+                              {caseItem.clinicCode ?? caseItem.clinicName}
+                            </TableCell>
                             <TableCell>
                               <Badge
                                 variant={
@@ -1463,7 +1494,8 @@ const DoctorCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-blue-100 text-blue-800"
-                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
+                              : caseItem.status === "doctor_incomplete" ||
+                                caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }

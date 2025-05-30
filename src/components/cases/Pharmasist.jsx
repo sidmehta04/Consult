@@ -54,6 +54,7 @@ import {
   where,
   onSnapshot,
   updateDoc,
+  getDocs
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import { format } from "date-fns";
@@ -103,6 +104,36 @@ const PharmacistCaseManagement = ({ currentUser }) => {
 
     throw lastError;
   };
+  useEffect(() => {
+  // Auto-update pharmacist status based on case load
+  const handleAutoStatusUpdate = async () => {
+    try {
+      // Only auto-update if status changes are needed
+      if (activeCases.length >= 10 && pharmacistStatus.status === "available") {
+        // Mark as busy when case load is high
+        console.log("Auto-updating pharmacist status to busy - case count:", activeCases.length);
+        await updatePharmacistStatus(
+          "busy", 
+          "Automatically marked as busy due to high case load"
+        );
+      } else if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
+        // Mark as available when case load decreases
+        console.log("Auto-updating pharmacist status to available - case count:", activeCases.length);
+        await updatePharmacistStatus(
+          "available", 
+          "Automatically marked as available due to reduced case load"
+        );
+      }
+    } catch (err) {
+      console.error("Error in pharmacist auto status update:", err);
+    }
+  };
+
+  // Only run auto-update if we have valid data and avoid infinite loops
+  if (activeCases.length !== undefined && pharmacistStatus.status && !loading) {
+    handleAutoStatusUpdate();
+  }
+}, [activeCases.length, pharmacistStatus.status, loading]);
 
   const setPharmacistJoined = async (caseItem) => {
     //console.log(caseItem);
@@ -376,7 +407,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       if (typeof unsubscribeStatus === "function") unsubscribeStatus();
       if (typeof unsubscribeCases === "function") unsubscribeCases();
     };
-  }, [currentUser.uid, pharmacistStatus.status]);
+  }, [currentUser.uid]);
   const handleStartReview = (caseItem) => {
     setCurrentCase(caseItem);
   };
@@ -450,13 +481,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       setCurrentCase(null);
       setCompletingCase(false);
 
-      // Status update logic remains the same
-      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
-        updatePharmacistStatus(
-          "available",
-          "Automatically marked as available due to reduced case load"
-        );
-      }
+      
     } catch (err) {
       console.error("Error completing case:", err);
       setError("Failed to complete case");
