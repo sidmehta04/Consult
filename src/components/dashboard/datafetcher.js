@@ -7,11 +7,13 @@ import {
   getDoc,
   orderBy,
   limit,
+  getCountFromServer,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 export const fetchCounts = async (partnerName, clinicMapping, query) => {
   const snapshot = await getDocs(query);
+  const counts = await getCountFromServer(query)
   var count = 0;
   snapshot.forEach((doc) => {
     if (partnerName) {
@@ -174,7 +176,9 @@ export const fetchTabData = async (
     const processedCaseIds = new Set();
     const uniquePartners = new Set();
     const uniqueClinics = new Set();
+    const uniqueDoctors = new Set();
 
+    console.log(filters)
     querySnapshot.forEach((doc) => {
       const caseId = doc.id;
 
@@ -200,6 +204,7 @@ export const fetchTabData = async (
         if (caseData.clinicCode || caseData.clinicName) {
           uniqueClinics.add(caseData.clinicCode || caseData.clinicName);
         }
+        if (caseData.assignedDoctors.primaryName) uniqueDoctors.add(caseData.assignedDoctors.primaryName);
 
         // Process case data
         cases.push({
@@ -228,6 +233,7 @@ export const fetchTabData = async (
       cases: enrichedCases,
       uniquePartners: Array.from(uniquePartners),
       uniqueClinics: Array.from(uniqueClinics),
+      uniqueDoctors: Array.from(uniqueDoctors),
       pagination: {
         page: pagination.page,
         pageSize,
@@ -241,6 +247,7 @@ export const fetchTabData = async (
       cases: [],
       uniquePartners: [],
       uniqueClinics: [],
+      uniqueDoctors: [],
       pagination: {
         page: pagination.page || 1,
         pageSize: pagination.pageSize || 50, // Increased from 20 to 50
@@ -280,7 +287,7 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
   }
 
   // Partner filter
-  if (filters.partner && clinicMapping.get(caseData.clinicId).partnerName !== filters.partner) {
+  if (filters.partner && !filters.partner.includes(clinicMapping.get(caseData.clinicId).partnerName)) {
     return false;
   }
 

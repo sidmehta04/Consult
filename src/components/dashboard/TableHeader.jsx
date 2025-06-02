@@ -17,6 +17,7 @@ const TableHeader = ({
   partnerFilter,
   dateRange,
   clinicOptions,
+  doctorOptions,
   partnerOptions,
   handleFilterApply,
   handleSingleFilterReset,
@@ -94,15 +95,15 @@ const TableHeader = ({
           <span>Partner</span>
           <Popover
             open={activeColumnFilter === "partner"}
-            onOpenChange={(open) =>
+            onOpenChange={(open) => {
               setActiveColumnFilter(open ? "partner" : null)
-            }
+            }}
           >
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                 <Filter
                   className={`h-3.5 w-3.5 ${
-                    partnerFilter !== "all" ? "text-blue-500" : ""
+                    partnerFilter.length > 0 ? "text-blue-500" : ""
                   }`}
                 />
               </Button>
@@ -121,31 +122,27 @@ const TableHeader = ({
                   </Button>
                 </div>
                 <div className="max-h-48 overflow-y-auto">
-                  <RadioGroup
-                    value={partnerFilter}
-                    onValueChange={(value) =>
-                      handleFilterApply("partner", value)
-                    }
-                  >
-                    <div className="flex items-center space-x-2 mb-2">
-                      <RadioGroupItem value="all" id="partner-all" />
-                      <Label htmlFor="partner-all">All Partners</Label>
+                  {partnerOptions.map((option) => (
+                    <div
+                      key={option.value}
+                      className="flex items-center space-x-2 mb-2"
+                    >
+                      <input
+                        type="checkbox"
+                        id={`partner-${option.value}`}
+                        checked={partnerFilter.includes(option.value)}
+                        onChange={(e) => {
+                          const updatedFilter = e.target.checked
+                            ? [...partnerFilter, option.value]
+                            : partnerFilter.filter((item) => item !== option.value);
+                          handleFilterApply("partner", updatedFilter);
+                        }}
+                      />
+                      <Label htmlFor={`partner-${option.value}`}>
+                        {option.label}
+                      </Label>
                     </div>
-                    {partnerOptions.map((option) => (
-                      <div
-                        key={option.value}
-                        className="flex items-center space-x-2 mb-2"
-                      >
-                        <RadioGroupItem
-                          value={option.value}
-                          id={`partner-${option.value}`}
-                        />
-                        <Label htmlFor={`partner-${option.value}`}>
-                          {option.label}
-                        </Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
+                  ))}
                 </div>
               </div>
             </PopoverContent>
@@ -161,7 +158,7 @@ const TableHeader = ({
           </Button>
         </div>
       </th>
-
+      {/*
       <th className="p-3 text-left font-medium min-w-[220px]">
         <div className="flex items-center justify-between gap-1">
           <span>Doctor Joined At</span>
@@ -197,7 +194,7 @@ const TableHeader = ({
           </Button>
         </div>
       </th>
-
+      */}
       {/* Doctor TAT Column */}
       <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">

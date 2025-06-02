@@ -281,6 +281,7 @@ const CasesTable = ({
             </td>
             <td className="p-3">{caseItem.partnerName || "N/A"}</td>
             <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
+            {/*
             <td className="p-3">
               {caseItem.doctorJoined? 
                 `${formatDate(caseItem.doctorJoined)} ${formatTime(
@@ -309,6 +310,7 @@ const CasesTable = ({
                   )}`
                 : "Pending"}
             </td>
+            */}
             {/* Timeline columns - Doctor TAT */}
             <td className="p-3 whitespace-nowrap">
               {isIncompleteCase(caseItem) ? (

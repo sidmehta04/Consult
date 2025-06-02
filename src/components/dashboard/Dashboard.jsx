@@ -56,7 +56,7 @@ const Dashboard = ({ currentUser }) => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueFilter, setQueueFilter] = useState("all");
   const [partnersList, setPartnersList] = useState("");
-  const [partnerFilter, setPartnerFilter] = useState("all");
+  const [partnerFilter, setPartnerFilter] = useState([]); // Change from string to array
   const [clinicFilter, setClinicFilter] = useState("all");
   const [activeColumnFilter, setActiveColumnFilter] = useState(null);
   const [resetTimestamp, setResetTimestamp] = useState(Date.now());
@@ -353,7 +353,7 @@ const Dashboard = ({ currentUser }) => {
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 50 },
+          { page: 1, pageSize: 2000 },
           clinicMapping
         );
 
@@ -417,7 +417,7 @@ const Dashboard = ({ currentUser }) => {
       let newFilters = { // Collect changes to pass to loadTabData
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter !== "all" ? partnerFilter : null,
+        partner: partnerFilter.length > 0 ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
@@ -427,7 +427,7 @@ const Dashboard = ({ currentUser }) => {
       switch (filterType) {
         case "status": setStatusFilter("all"); newFilters.status = null; break;
         case "queue": setQueueFilter("all"); newFilters.queue = null; break;
-        case "partner": setPartnerFilter("all"); newFilters.partner = null; break;
+        case "partner": setPartnerFilter([]); newFilters.partner = null; break;
         case "clinic": setClinicFilter("all"); newFilters.clinic = null; break;
         case "date": setDateRange({ from: null, to: null }); newFilters.dateFrom = null; newFilters.dateTo = null; break;
         case "search": setSearchTerm(""); newFilters.searchTerm = null; break;
@@ -443,11 +443,10 @@ const Dashboard = ({ currentUser }) => {
 
   // Handle filter changes
   const handleFilterApply = useCallback((filterType, value) => {
-    //console.log(filterType, value)
     let updatedFilters = { // Prepare the filters object for loadTabData
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter !== "all" ? partnerFilter : null,
+        partner: partnerFilter.length > 0 ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
@@ -457,12 +456,13 @@ const Dashboard = ({ currentUser }) => {
     switch (filterType) {
       case "status": setStatusFilter(value); updatedFilters.status = value === "all" ? null : value; break;
       case "queue": setQueueFilter(value); updatedFilters.queue = value === "all" ? null : value; break;
-      case "partner": setPartnerFilter(value); updatedFilters.partner = value === "all" ? null : value; break;
+      case "partner": setPartnerFilter(value); updatedFilters.partner = value.length === 0 ? null : value; break;
       case "clinic": setClinicFilter(value); updatedFilters.clinic = value === "all" ? null : value; break;
       case "date": setDateRange(value); updatedFilters.dateFrom = value.from; updatedFilters.dateTo = value.to; break;
       default: break;
     }
-    setActiveColumnFilter(null);
+    if (filterType !== "partner") setActiveColumnFilter(null);
+    
     if (activeTab) {
       loadTabData(activeTab, updatedFilters);
     }
@@ -518,7 +518,9 @@ const Dashboard = ({ currentUser }) => {
     loadTabData(newTabName, currentFiltersForNewTab);
   }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping]); // Dependencies for reading current filters
 
+  console.log(tableData)
   const clinicOptions = tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [];
+  const doctorOptions = tableData?.uniqueDoctors?.map((clinic) => ({ value: clinic, label: clinic })) || [];
   //const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
 
   // --- RENDER LOGIC ---
@@ -624,6 +626,7 @@ const Dashboard = ({ currentUser }) => {
                     partnerFilter={partnerFilter}
                     dateRange={dateRange}
                     clinicOptions={clinicOptions}
+                    doctorOptions={doctorOptions}
                     partnerOptions={partnersList}
                     handleFilterApply={handleFilterApply}
                     handleSingleFilterReset={handleSingleFilterReset}
