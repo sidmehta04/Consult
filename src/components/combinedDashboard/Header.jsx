@@ -7,28 +7,37 @@ const DashboardHeader = ({
   setDoctorPharmacist, 
   refreshInterval, 
   setRefreshInterval, 
-  onRefresh 
+  onRefresh,
+  showCaseTransfer = false
 }) => {
   const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1)
+  
   return (
     <div className="flex justify-between items-center flex-wrap gap-4">
-      <h2 className="text-2xl font-bold text-gray-800">{role} Dashboard</h2>
+      <h2 className="text-2xl font-bold text-gray-800">
+        {viewMode === "cases" ? "Case Transfer Management" : `${role} Dashboard`}
+      </h2>
       
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex border rounded overflow-hidden">
-          <button 
-            onClick={() => setDoctorPharmacist("doctor")} 
-            className={`px-3 py-1 text-sm ${doctorPharmacist === "doctor" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
-          >
-            Doctors
-          </button>
-          <button 
-            onClick={() => setDoctorPharmacist("pharmacist")} 
-            className={`px-3 py-1 text-sm ${doctorPharmacist === "pharmacist" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
-          >
-            Pharmacists
-          </button>
-        </div>
+        {/* Doctor/Pharmacist Toggle - only show when not in cases view */}
+        {viewMode !== "cases" && (
+          <div className="flex border rounded overflow-hidden">
+            <button 
+              onClick={() => setDoctorPharmacist("doctor")} 
+              className={`px-3 py-1 text-sm ${doctorPharmacist === "doctor" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+            >
+              Doctors
+            </button>
+            <button 
+              onClick={() => setDoctorPharmacist("pharmacist")} 
+              className={`px-3 py-1 text-sm ${doctorPharmacist === "pharmacist" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+            >
+              Pharmacists
+            </button>
+          </div>
+        )}
+
+        {/* View Mode Toggle */}
         <div className="flex border rounded overflow-hidden">
           <button 
             onClick={() => setViewMode("table")} 
@@ -42,28 +51,42 @@ const DashboardHeader = ({
           >
             Card View
           </button>
+          {/* Case Transfer option - only show for team leaders */}
+          {showCaseTransfer && (
+            <button 
+              onClick={() => setViewMode("cases")} 
+              className={`px-3 py-1 text-sm ${viewMode === "cases" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+            >
+              Transfer Cases
+            </button>
+          )}
         </div>
         
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-500">Auto-refresh:</span>
-          <select 
-            className="border rounded p-1 text-sm"
-            value={refreshInterval}
-            onChange={(e) => setRefreshInterval(Number(e.target.value))}
-          >
-            <option value={15000}>15 seconds</option>
-            <option value={30000}>30 seconds</option>
-            <option value={60000}>1 minute</option>
-            <option value={300000}>5 minutes</option>
-          </select>
-        </div>
-        
-        <button 
-          onClick={onRefresh}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm"
-        >
-          Refresh Now
-        </button>
+        {/* Auto-refresh controls - only show when not in cases view */}
+        {viewMode !== "cases" && (
+          <>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-500">Auto-refresh:</span>
+              <select 
+                className="border rounded p-1 text-sm"
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+              >
+                <option value={15000}>15 seconds</option>
+                <option value={30000}>30 seconds</option>
+                <option value={60000}>1 minute</option>
+                <option value={300000}>5 minutes</option>
+              </select>
+            </div>
+            
+            <button 
+              onClick={onRefresh}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm"
+            >
+              Refresh Now
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
