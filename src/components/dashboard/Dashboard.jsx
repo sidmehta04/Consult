@@ -15,6 +15,7 @@ import {
   where,
   limit,
   orderBy,
+  getCountFromServer,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
@@ -58,6 +59,7 @@ const Dashboard = ({ currentUser }) => {
   const [partnersList, setPartnersList] = useState("");
   const [partnerFilter, setPartnerFilter] = useState([]); // Change from string to array
   const [clinicFilter, setClinicFilter] = useState("all");
+  const [doctorFilter, setDoctorFilter] = useState("all");
   const [activeColumnFilter, setActiveColumnFilter] = useState(null);
   const [resetTimestamp, setResetTimestamp] = useState(Date.now());
   const [refresh, setRefresh] = useState(false);
@@ -151,6 +153,7 @@ const Dashboard = ({ currentUser }) => {
 
 
               let initialQueryParam;
+
               switch(currentUser.role){
                 case "superAdmin": case "zonalHead": case "drManager": case "teamLeader":
                   break;
@@ -164,34 +167,65 @@ const Dashboard = ({ currentUser }) => {
                   initialQueryParam = where("createdBy", "==", currentUser.uid);
                   break;
               }
+
               const casesRef = collection(firestore, "cases");
+              
+              // Helper to build dynamic query filters
+              const withPartner = (filters) => {
+                return partnerName != null ? [where("partnerName", "==", partnerName), ...filters] : filters;
+              };
+
               const [
-                totalCount, completedCount, incompleteCount, docPendingCount, pharmPendingCount, todayCount, todayCompleted, todayIncomplete
+                totalCount,
+                completedCount,
+                incompleteCount,
+                docPendingCount,
+                pharmPendingCount,
+                todayCount,
+                todayCompleted,
+                todayIncomplete
               ] = await Promise.all([
-                fetchCounts(partnerName, clinicMapping, query(casesRef)),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("status", "==", "completed"))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("isIncomplete", "==", true))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("doctorCompleted", "==", false))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("doctorCompleted", "==", true), where("pharmacistCompleted", "==", false), where("isIncomplete", "==", false))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("createdAt", ">=", today), where("createdAt", "<", tomorrow))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("status", "==", "completed"), where("createdAt", ">=", today), where("createdAt", "<", tomorrow))),
-                fetchCounts(partnerName, clinicMapping, query(casesRef, initialQueryParam, where("isIncomplete", "==", true), where("createdAt", ">=", today), where("createdAt", "<", tomorrow)))
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("status", "==", "completed")]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("isIncomplete", "==", true)]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("doctorCompleted", "==", false)]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+                  where("doctorCompleted", "==", true),
+                  where("pharmacistCompleted", "==", false),
+                  where("isIncomplete", "==", false)
+                ]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+                  where("createdAt", ">=", today),
+                  where("createdAt", "<", tomorrow)
+                ]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+                  where("status", "==", "completed"),
+                  where("createdAt", ">=", today),
+                  where("createdAt", "<", tomorrow)
+                ]))),
+                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+                  where("isIncomplete", "==", true),
+                  where("createdAt", ">=", today),
+                  where("createdAt", "<", tomorrow)
+                ])))
               ]);
 
               if (!isMounted) return;
 
-              const pendingCases = docPendingCount.count + pharmPendingCount.count;
+              
+
+              const pendingCases = docPendingCount.data().count + pharmPendingCount.data().count;
 
               setSummaryCounts({
-                totalCases: totalCount.count, 
+                totalCases: totalCount.data().count, 
                 pendingCases: pendingCases,
-                completedCases: completedCount.count, 
-                doctorPendingCases: docPendingCount.count,
-                pharmacistPendingCases: pharmPendingCount.count, 
-                incompleteCases: incompleteCount.count, 
-                todayCases: todayCount.count,
-                todayCompleted: todayCompleted.count, 
-                todayIncomplete: todayIncomplete.count,
+                completedCases: completedCount.data().count, 
+                doctorPendingCases: docPendingCount.data().count,
+                pharmacistPendingCases: pharmPendingCount.data().count, 
+                incompleteCases: incompleteCount.data().count, 
+                todayCases: todayCount.data().count,
+                todayCompleted: todayCompleted.data().count, 
+                todayIncomplete: todayIncomplete.data().count,
               });
               initialLoadCompleteRef.current = true;
               
@@ -343,11 +377,12 @@ const Dashboard = ({ currentUser }) => {
           queue: filters.queue !== undefined ? filters.queue : (queueFilter !== "all" ? queueFilter : null),
           partner: filters.partner !== undefined ? filters.partner : (partnerFilter !== "all" ? partnerFilter : null),
           clinic: filters.clinic !== undefined ? filters.clinic : (clinicFilter !== "all" ? clinicFilter : null),
+          doctor: filters.doctor !== undefined ? filters.doctor : (doctorFilter !== "all" ? doctorFilter : null),
           dateFrom: filters.dateFrom !== undefined ? filters.dateFrom : dateRange.from,
           dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
           searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
         };
-        //console.log(activeFilters);
+        console.log(activeFilters.partner);
         const tabData = await fetchTabData(
           currentUser.uid,
           currentUser.role,
@@ -361,6 +396,7 @@ const Dashboard = ({ currentUser }) => {
           cases: tabData.cases,
           uniquePartners: tabData.uniquePartners,
           uniqueClinics: tabData.uniqueClinics,
+          uniqueDoctors: tabData.uniqueDoctors,
           pagination: tabData.pagination,
         });
         setShowTable(true);
@@ -390,7 +426,7 @@ const Dashboard = ({ currentUser }) => {
     // setFetchingData(true); // Let loadTabData handle this
 
     const emptyFilters = {
-      status: null, queue: null, partner: null, clinic: null,
+      status: null, queue: null, partner: null, clinic: null, doctor: null,
       dateFrom: null, dateTo: null, searchTerm: null,
     };
 
@@ -419,6 +455,7 @@ const Dashboard = ({ currentUser }) => {
         queue: queueFilter !== "all" ? queueFilter : null,
         partner: partnerFilter.length > 0 ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
         searchTerm: searchTerm || null,
@@ -429,6 +466,7 @@ const Dashboard = ({ currentUser }) => {
         case "queue": setQueueFilter("all"); newFilters.queue = null; break;
         case "partner": setPartnerFilter([]); newFilters.partner = null; break;
         case "clinic": setClinicFilter("all"); newFilters.clinic = null; break;
+        case "doctor": setDoctorFilter("all"); newFilters.clinic = null; break;
         case "date": setDateRange({ from: null, to: null }); newFilters.dateFrom = null; newFilters.dateTo = null; break;
         case "search": setSearchTerm(""); newFilters.searchTerm = null; break;
         default: break;
@@ -448,6 +486,7 @@ const Dashboard = ({ currentUser }) => {
         queue: queueFilter !== "all" ? queueFilter : null,
         partner: partnerFilter.length > 0 ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
         searchTerm: searchTerm || null,
@@ -458,6 +497,7 @@ const Dashboard = ({ currentUser }) => {
       case "queue": setQueueFilter(value); updatedFilters.queue = value === "all" ? null : value; break;
       case "partner": setPartnerFilter(value); updatedFilters.partner = value.length === 0 ? null : value; break;
       case "clinic": setClinicFilter(value); updatedFilters.clinic = value === "all" ? null : value; break;
+      case "doctor": setDoctorFilter(value); updatedFilters.doctor = value === "all" ? null : value; break;
       case "date": setDateRange(value); updatedFilters.dateFrom = value.from; updatedFilters.dateTo = value.to; break;
       default: break;
     }
@@ -478,6 +518,7 @@ const Dashboard = ({ currentUser }) => {
             queue: queueFilter !== "all" ? queueFilter : null,
             partner: partnerFilter !== "all" ? partnerFilter : null,
             clinic: clinicFilter !== "all" ? clinicFilter : null,
+            doctor: doctorFilter !== "all" ? doctorFilter : null,
             dateFrom: dateRange.from,
             dateTo: dateRange.to,
             searchTerm: "", // explicitly empty
@@ -494,6 +535,7 @@ const Dashboard = ({ currentUser }) => {
         queue: queueFilter !== "all" ? queueFilter : null,
         partner: partnerFilter !== "all" ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
         searchTerm: value, // Use the submitted value directly
@@ -512,13 +554,14 @@ const Dashboard = ({ currentUser }) => {
         queue: queueFilter !== "all" ? queueFilter : null,
         partner: partnerFilter !== "all" ? partnerFilter : null,
         clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
         searchTerm: searchTerm || null,
       };
 
     loadTabData(newTabName, currentFiltersForNewTab);
   }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping]); // Dependencies for reading current filters
 
-  console.log(tableData)
+  //console.log(tableData)
   const clinicOptions = tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [];
   const doctorOptions = tableData?.uniqueDoctors?.map((clinic) => ({ value: clinic, label: clinic })) || [];
   //const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
@@ -611,8 +654,68 @@ const Dashboard = ({ currentUser }) => {
 
       {!activeTab ? (
         <EmptyStateMessage />
-      ) : fetchingData ? (
-        <Card><CardContent className="p-6"><div className="flex justify-center py-8"><div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div></CardContent></Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse">
+                <thead>
+                  <TableHeader
+                    activeColumnFilter={activeColumnFilter}
+                    setActiveColumnFilter={setActiveColumnFilter}
+                    clinicFilter={clinicFilter}
+                    partnerFilter={partnerFilter}
+                    doctorFilter={doctorFilter}
+                    dateRange={dateRange}
+                    clinicOptions={clinicOptions}
+                    doctorOptions={doctorOptions}
+                    partnerOptions={partnersList}
+                    handleFilterApply={handleFilterApply}
+                    handleSingleFilterReset={handleSingleFilterReset}
+                  />
+                </thead>
+                {fetchingData ? (
+                  <tbody>
+                    <tr>
+                      <td colSpan = "9">
+                        <div className="flex justify-center py-8">
+                          <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent">
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                ) : (
+                  <tbody>
+                    {tableData?.cases && tableData.cases.length > 0 ? (
+                      <CasesTable
+                        data={tableData.cases}
+                        loading={false}
+                        userRole={currentUser.role}
+                        currentUser={currentUser}
+                        showHeader={false}
+                        pagination={tableData.pagination}
+                      />
+                    ) : (
+                      <NoResultsMessage userRole={currentUser.role} />
+                    )}
+                  </tbody>
+                )}
+                </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/*fetchingData ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex justify-center py-8">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent">
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -650,7 +753,7 @@ const Dashboard = ({ currentUser }) => {
             </div>
           </CardContent>
         </Card>
-      )}
+      )*/}
 
       {currentUser.role !== "superAdmin" && currentUser.role !== "zonalHead" && (
         <RoleBasedAccessMessage userRole={currentUser.role} />

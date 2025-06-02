@@ -15,6 +15,7 @@ const TableHeader = ({
   setActiveColumnFilter,
   clinicFilter,
   partnerFilter,
+  doctorFilter,
   dateRange,
   clinicOptions,
   doctorOptions,
@@ -150,6 +151,71 @@ const TableHeader = ({
         </div>
       </th>
 
+      <th className="p-3 text-left font-medium min-w-[140px]">
+        <div className="flex items-center justify-between gap-1">
+          <span>Doctor</span>
+          <Popover
+            open={activeColumnFilter === "doctor"}
+            onOpenChange={(open) =>
+              setActiveColumnFilter(open ? "doctor" : null)
+            }
+          >
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Filter
+                  className={`h-3.5 w-3.5 ${
+                    doctorFilter !== "all" ? "text-blue-500" : ""
+                  }`}
+                />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-60 p-3" align="start">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-sm">Filter by Doctor Name</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => handleSingleFilterReset("doctor")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <RadioGroup
+                    value={doctorFilter}
+                    onValueChange={(value) =>
+                      handleFilterApply("doctor", value)
+                    }
+                  >
+                    <div className="flex items-center space-x-2 mb-2">
+                      <RadioGroupItem value="all" id="clinic-all" />
+                      <Label htmlFor="clinic-all">All Doctors</Label>
+                    </div>
+                    {doctorOptions.map((option) => (
+                      <div
+                        key={option.value}
+                        className="flex items-center space-x-2 mb-2"
+                      >
+                        <RadioGroupItem
+                          value={option.value}
+                          id={`clinic-${option.value}`}
+                        />
+                        <Label htmlFor={`clinic-${option.value}`}>
+                          {option.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </th>
+
+      {/*
       <th className="p-3 text-left font-medium min-w-[160px]">
         <div className="flex items-center justify-between gap-1">
           <span>Doctor</span>
@@ -158,6 +224,7 @@ const TableHeader = ({
           </Button>
         </div>
       </th>
+      */}
       {/*
       <th className="p-3 text-left font-medium min-w-[220px]">
         <div className="flex items-center justify-between gap-1">
