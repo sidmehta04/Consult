@@ -54,7 +54,7 @@ const Dashboard = ({ currentUser }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueFilter, setQueueFilter] = useState("all");
-  const [partnersList, setPartnersList] = useState("");
+  const [partnersList, setPartnersList] = useState([]);
   const [partnerFilter, setPartnerFilter] = useState([]);
   const [clinicFilter, setClinicFilter] = useState("all");
   const [doctorFilter, setDoctorFilter] = useState("all");
@@ -110,12 +110,52 @@ const Dashboard = ({ currentUser }) => {
   }, [setupClinicData]);
 
   const handlePartnerChange = useCallback((selectedOption) => {
-    setPartnerName(selectedOption ? selectedOption.value : null);
-  }, []);
+    const newPartnerName = selectedOption ? selectedOption.value : null;
+    setPartnerName(newPartnerName);
+    
+    // Clear the current listener and cache when partner changes
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+    recentCasesCacheRef.current.clear();
+    initialLoadCompleteRef.current = false;
+    listenerCachePopulatedRef.current = false;
+    
+    // Reset counts to trigger reload with new partner filter
+    setCountsLoaded(false);
+    setSummaryCounts({
+      totalCases: 0, pendingCases: 0, completedCases: 0, doctorPendingCases: 0,
+      pharmacistPendingCases: 0, incompleteCases: 0, todayCases: 0,
+      todayCompleted: 0, todayIncomplete: 0,
+    });
+    
+    // If there's an active tab, reload the data with new partner filter
+    if (activeTab) {
+      const currentFilters = {
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: newPartnerName,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: searchTerm || null,
+      };
+      loadTabData(activeTab, currentFilters);
+    }
+  }, [activeTab, statusFilter, queueFilter, clinicFilter, doctorFilter, dateRange, searchTerm]);
 
   // OPTIMIZATION 4: Lazy load summary counts - only when user explicitly requests or after initial render
   const loadSummaryCounts = useCallback(async () => {
+    // Add firestore check here
     if (!currentUser?.uid || !currentUser?.role || !firestore || !clinicMapping) {
+      console.log("Missing requirements for loadSummaryCounts:", {
+        uid: !!currentUser?.uid,
+        role: !!currentUser?.role,
+        firestore: !!firestore,
+        clinicMapping: !!clinicMapping
+      });
       return;
     }
 
@@ -148,13 +188,14 @@ const Dashboard = ({ currentUser }) => {
       const casesRef = collection(firestore, "cases");
 
       const withPartner = (filters) => {
-        return partnerName != null ? [where("partnerName", "==", partnerName), ...filters] : filters;
+        const baseFilters = initialQueryParam ? [initialQueryParam, ...filters] : filters;
+        return partnerName ? [where("partnerName", "==", partnerName), ...baseFilters] : baseFilters;
       };
 
       // OPTIMIZATION 5: Run only essential counts first, defer others
       const essentialQueries = [
-        getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([]))),
-        getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("status", "==", "completed")])))
+        getCountFromServer(query(casesRef, ...withPartner([]))),
+        getCountFromServer(query(casesRef, ...withPartner([where("status", "==", "completed")])))
       ];
 
       const [totalCount, completedCount] = await Promise.all(essentialQueries);
@@ -178,23 +219,23 @@ const Dashboard = ({ currentUser }) => {
             todayCompleted,
             todayIncomplete
           ] = await Promise.all([
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("isIncomplete", "==", true)]))),
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("doctorCompleted", "==", false)]))),
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+            getCountFromServer(query(casesRef, ...withPartner([where("isIncomplete", "==", true)]))),
+            getCountFromServer(query(casesRef, ...withPartner([where("doctorCompleted", "==", false)]))),
+            getCountFromServer(query(casesRef, ...withPartner([
               where("doctorCompleted", "==", true),
               where("pharmacistCompleted", "==", false),
               where("isIncomplete", "==", false)
             ]))),
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+            getCountFromServer(query(casesRef, ...withPartner([
               where("createdAt", ">=", today),
               where("createdAt", "<", tomorrow)
             ]))),
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+            getCountFromServer(query(casesRef, ...withPartner([
               where("status", "==", "completed"),
               where("createdAt", ">=", today),
               where("createdAt", "<", tomorrow)
             ]))),
-            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+            getCountFromServer(query(casesRef, ...withPartner([
               where("isIncomplete", "==", true),
               where("createdAt", ">=", today),
               where("createdAt", "<", tomorrow)
@@ -237,6 +278,34 @@ const Dashboard = ({ currentUser }) => {
     }
   }, [countsLoaded, clinicMapping, loadSummaryCounts]);
 
+  // Add effect to reload counts when partner changes
+  useEffect(() => {
+    if (countsLoaded && clinicMapping) {
+      loadSummaryCounts();
+    }
+  }, [partnerName, loadSummaryCounts, countsLoaded, clinicMapping]);
+
+  // Auto-load summary cards when clinicMapping becomes available
+  useEffect(() => {
+    if (clinicMapping && !countsLoaded) {
+      setCountsLoaded(true);
+      loadSummaryCounts();
+    }
+  }, [clinicMapping, countsLoaded, loadSummaryCounts]);
+
+  // Handle partner change for summary cards
+  useEffect(() => {
+    if (clinicMapping && partnerName !== null) {
+      // When partner changes, reload the counts
+      setTimeout(() => {
+        if (!countsLoaded) {
+          setCountsLoaded(true);
+        }
+        loadSummaryCounts();
+      }, 100);
+    }
+  }, [partnerName, clinicMapping, loadSummaryCounts, countsLoaded]);
+
   // OPTIMIZATION 8: Memoized helper to update global counts
   const applyCountChanges = useCallback((singleCaseContribution, operation) => {
     setSummaryCounts(prevGlobalCounts => {
@@ -254,27 +323,36 @@ const Dashboard = ({ currentUser }) => {
 
   // OPTIMIZATION 9: Setup real-time listener only when needed
   const setupRealtimeListener = useCallback(() => {
+    // Add comprehensive checks before setting up listener
     if (!currentUser?.uid || !currentUser?.role || !firestore || unsubscribeRef.current) {
+      console.log("Cannot setup listener - missing requirements:", {
+        uid: !!currentUser?.uid,
+        role: !!currentUser?.role,
+        firestore: !!firestore,
+        alreadyExists: !!unsubscribeRef.current
+      });
       return;
     }
 
     try {
       let listenerQuery;
+      const baseQuery = collection(firestore, "cases");
+      
       switch (currentUser.role) {
         case "superAdmin":
         case "zonalHead":
         case "drManager":
         case "teamLeader":
-          listenerQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(200)); // Reduced from 1000 to 100
+          listenerQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(200));
           break;
         case "doctor":
-          listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
         case "pharmacist":
-          listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
         default:
-          listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
       }
 
@@ -342,7 +420,6 @@ const Dashboard = ({ currentUser }) => {
 
   const handleRefresh = useCallback(async () => {
     setRefresh(!refresh);
-
     loadTabData();
   });
 
@@ -366,7 +443,7 @@ const Dashboard = ({ currentUser }) => {
         const activeFilters = {
           status: filters.status !== undefined ? filters.status : (statusFilter !== "all" ? statusFilter : null),
           queue: filters.queue !== undefined ? filters.queue : (queueFilter !== "all" ? queueFilter : null),
-          partner: filters.partner !== undefined ? filters.partner : (partnerFilter !== "all" ? partnerFilter : null),
+          partner: filters.partner !== undefined ? filters.partner : (partnerName || (partnerFilter !== "all" ? partnerFilter : null)),
           clinic: filters.clinic !== undefined ? filters.clinic : (clinicFilter !== "all" ? clinicFilter : null),
           doctor: filters.doctor !== undefined ? filters.doctor : (doctorFilter !== "all" ? doctorFilter : null),
           dateFrom: filters.dateFrom !== undefined ? filters.dateFrom : dateRange.from,
@@ -398,7 +475,7 @@ const Dashboard = ({ currentUser }) => {
         setFetchingData(false);
       }
     },
-    [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm, clinicMapping]
+    [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm, clinicMapping]
   );
 
   // OPTIMIZATION 11: Memoize filter handlers
@@ -427,7 +504,7 @@ const Dashboard = ({ currentUser }) => {
       let newFilters = {
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter.length > 0 ? partnerFilter : null,
+        partner: partnerName || (partnerFilter.length > 0 ? partnerFilter : null),
         clinic: clinicFilter !== "all" ? clinicFilter : null,
         doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
@@ -450,14 +527,14 @@ const Dashboard = ({ currentUser }) => {
         loadTabData(activeTab, newFilters);
       }
     },
-    [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm]
+    [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm]
   );
 
   const handleFilterApply = useCallback((filterType, value) => {
     let updatedFilters = {
       status: statusFilter !== "all" ? statusFilter : null,
       queue: queueFilter !== "all" ? queueFilter : null,
-      partner: partnerFilter.length > 0 ? partnerFilter : null,
+      partner: partnerName || (partnerFilter.length > 0 ? partnerFilter : null),
       clinic: clinicFilter !== "all" ? clinicFilter : null,
       doctor: doctorFilter !== "all" ? doctorFilter : null,
       dateFrom: dateRange.from,
@@ -479,7 +556,7 @@ const Dashboard = ({ currentUser }) => {
     if (activeTab) {
       loadTabData(activeTab, updatedFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm]);
 
   const handleSearchChange = useCallback((value) => {
     setSearchTerm(value);
@@ -487,7 +564,7 @@ const Dashboard = ({ currentUser }) => {
       const currentFilters = {
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter !== "all" ? partnerFilter : null,
+        partner: partnerName || (partnerFilter !== "all" ? partnerFilter : null),
         clinic: clinicFilter !== "all" ? clinicFilter : null,
         doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
@@ -496,7 +573,7 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, currentFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange]);
 
   const handleSearchSubmit = useCallback((value) => {
     setSearchTerm(value);
@@ -504,7 +581,7 @@ const Dashboard = ({ currentUser }) => {
       const updatedFilters = {
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter !== "all" ? partnerFilter : null,
+        partner: partnerName || (partnerFilter !== "all" ? partnerFilter : null),
         clinic: clinicFilter !== "all" ? clinicFilter : null,
         doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
@@ -513,7 +590,7 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, updatedFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange]);
 
   const handleTabChange = useCallback((newTabName) => {
     if (newTabName === activeTab) return;
@@ -524,22 +601,22 @@ const Dashboard = ({ currentUser }) => {
     // Trigger counts loading if not already loaded
     triggerCountsLoad();
     
-    // Setup real-time listener if not already setup
-    if (!unsubscribeRef.current) {
+    // Setup real-time listener if not already setup and firestore is available
+    if (!unsubscribeRef.current && firestore) {
       setupRealtimeListener();
     }
 
     const currentFiltersForNewTab = {
       status: statusFilter !== "all" ? statusFilter : null,
       queue: queueFilter !== "all" ? queueFilter : null,
-      partner: partnerFilter !== "all" ? partnerFilter : null,
+      partner: partnerName || (partnerFilter !== "all" ? partnerFilter : null),
       clinic: clinicFilter !== "all" ? clinicFilter : null,
       doctor: doctorFilter !== "all" ? doctorFilter : null,
       searchTerm: searchTerm || null,
     };
 
     loadTabData(newTabName, currentFiltersForNewTab);
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping, triggerCountsLoad, setupRealtimeListener]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, searchTerm, clinicMapping, triggerCountsLoad, setupRealtimeListener]);
 
   // OPTIMIZATION 12: Memoize clinic and doctor options
   const clinicOptions = useMemo(() => 
@@ -614,6 +691,7 @@ const Dashboard = ({ currentUser }) => {
                 options={partnersList}
                 isClearable
                 placeholder="Filter by Partner"
+                value={partnerName ? { value: partnerName, label: partnerName } : null}
                 onChange={handlePartnerChange}
               />
             </div>
