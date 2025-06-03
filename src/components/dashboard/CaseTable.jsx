@@ -337,7 +337,11 @@ const CasesTable = ({
                 <span className="text-amber-600">In progress</span>
               )}
             </td>
-            <td className="p-3">{formatDate(caseItem.createdAt)}</td>
+            <td className="p-3">
+              {formatTime(caseItem.createdAt)}
+              {"; "}
+              {formatDate(caseItem.createdAt)}
+            </td>
             <td className="p-0">
               <div className="flex items-center justify-center h-full">
                 {isAllDigits(caseItem.contactInfo) ? (

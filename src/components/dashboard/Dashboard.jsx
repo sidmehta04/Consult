@@ -340,14 +340,11 @@ const Dashboard = ({ currentUser }) => {
     }
   }, [tableData?.cases]);
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefresh(!refresh);
-    if (activeTab) {
-      loadTabData();
-    } else {
-      triggerCountsLoad(); // Refresh counts
-    }
-  }, [refresh, activeTab]);
+
+    loadTabData();
+  });
 
   // OPTIMIZATION 10: Debounced auto-refresh
   useEffect(() => {
@@ -382,7 +379,7 @@ const Dashboard = ({ currentUser }) => {
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 1000 }, // Reduced from 2000
+          { page: 1, pageSize: 2000 },
           clinicMapping
         );
 
@@ -629,7 +626,6 @@ const Dashboard = ({ currentUser }) => {
         loading={loadingCounts}
         onLoadCounts={triggerCountsLoad} // Allow manual trigger
       />
-      
       <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
 
       {activeTab && (
