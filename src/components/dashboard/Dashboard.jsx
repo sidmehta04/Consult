@@ -265,16 +265,16 @@ const Dashboard = ({ currentUser }) => {
         case "zonalHead":
         case "drManager":
         case "teamLeader":
-          listenerQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(100)); // Reduced from 1000 to 100
+          listenerQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(200)); // Reduced from 1000 to 100
           break;
         case "doctor":
-          listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
         case "pharmacist":
-          listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
         default:
-          listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
           break;
       }
 
@@ -379,7 +379,7 @@ const Dashboard = ({ currentUser }) => {
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 2000 },
+          { page: 1, pageSize: 200 },
           clinicMapping
         );
 
