@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef} from "react";
-import Select from "react-select"; // Import react-select
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import Select from "react-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Download, ShieldAlert } from "lucide-react";
@@ -34,13 +34,11 @@ import {
 import {
   calculateCaseContribution,
   fetchTabData,
-  fetchCounts,
   getClinicMapping,
 } from "./datafetcher";
 
 const Dashboard = ({ currentUser }) => {
-
-  const [loading, setLoading] = useState(false);//change this
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fetchingData, setFetchingData] = useState(false);
 
@@ -57,30 +55,33 @@ const Dashboard = ({ currentUser }) => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueFilter, setQueueFilter] = useState("all");
   const [partnersList, setPartnersList] = useState("");
-  const [partnerFilter, setPartnerFilter] = useState([]); // Change from string to array
+  const [partnerFilter, setPartnerFilter] = useState([]);
   const [clinicFilter, setClinicFilter] = useState("all");
   const [doctorFilter, setDoctorFilter] = useState("all");
   const [activeColumnFilter, setActiveColumnFilter] = useState(null);
   const [resetTimestamp, setResetTimestamp] = useState(Date.now());
   const [refresh, setRefresh] = useState(false);
+  
 
-  const [summaryCounts, setSummaryCounts] = useState(null);
-  const [loadingCounts, setLoadingCounts] = useState(null);
+  // OPTIMIZATION 1: Use lazy loading for summary counts
+  const [summaryCounts, setSummaryCounts] = useState({
+    totalCases: 0, pendingCases: 0, completedCases: 0, doctorPendingCases: 0,
+    pharmacistPendingCases: 0, incompleteCases: 0, todayCases: 0,
+    todayCompleted: 0, todayIncomplete: 0,
+  });
+  const [loadingCounts, setLoadingCounts] = useState(false);
 
   const [clinicMapping, setClinicMapping] = useState(null);
 
   const unsubscribeRef = useRef(null);
   const recentCasesCacheRef = useRef(new Map());
   const initialLoadCompleteRef = useRef(false);
-  // To ensure first listener snapshot populates cache without affecting counts already set by full load
   const listenerCachePopulatedRef = useRef(false);
 
-
-  //Set some helper data on component mount
-  useEffect(() => {
-    async function fetchClinicMapping() {
+  // OPTIMIZATION 2: Memoize clinic mapping and partners setup
+  const setupClinicData = useCallback(async () => {
+    try {
       const [mapping, partnerNames] = await getClinicMapping();
-      //console.log(mapping)
       setClinicMapping(mapping);
 
       const formattedPartners = partnerNames.map(partner => ({
@@ -89,246 +90,241 @@ const Dashboard = ({ currentUser }) => {
       }));
 
       setPartnersList(formattedPartners);
+
+      if (["ro"].includes(currentUser?.role) && currentUser?.uid) {
+        setPartnerName(currentUser.partnerName);
+        setPartnersList([{
+          value: currentUser.partnerName,
+          label: currentUser.partnerName
+        }]);
+      }
+    } catch (error) {
+      console.error("Error setting up clinic data:", error);
+      setError("Failed to load clinic data");
     }
-    fetchClinicMapping();
+  }, [currentUser?.role, currentUser?.uid, currentUser?.partnerName]);
 
-    if(["ro"].includes(currentUser?.role) && currentUser?.uid){
-      console.log("ro, partnerName=", currentUser.partnerName);
-      setPartnerName(currentUser.partnerName);
-      setPartnersList([{
-        value: currentUser.partnerName,
-        label: currentUser.partnerName
-      }])
-    }
+  // OPTIMIZATION 3: Setup clinic data once on mount
+  useEffect(() => {
+    setupClinicData();
+  }, [setupClinicData]);
 
-  }, [currentUser, currentUser?.uid, currentUser?.role])
-
-  const handlePartnerChange = (selectedOption) => {
+  const handlePartnerChange = useCallback((selectedOption) => {
     setPartnerName(selectedOption ? selectedOption.value : null);
-  };
-
-  //Summary
-  // Memoized helper to update global counts
-  const applyCountChanges = useCallback((singleCaseContribution, operation) => {
-      setSummaryCounts(prevGlobalCounts => {
-          const newGlobalCounts = { ...prevGlobalCounts };
-          const factor = operation === 'add' ? 1 : -1;
-          for (const key in singleCaseContribution) {
-              newGlobalCounts[key] = (newGlobalCounts[key] || 0) + (factor * singleCaseContribution[key]);
-          }
-            // Recalculate explicitly summed fields if their components changed
-          if (singleCaseContribution.doctorPendingCases !== undefined || singleCaseContribution.pharmacistPendingCases !== undefined) {
-              newGlobalCounts.pendingCases = (newGlobalCounts.doctorPendingCases || 0) + (newGlobalCounts.pharmacistPendingCases || 0);
-          }
-          return newGlobalCounts;
-      });
   }, []);
 
-  useEffect(() => {
-      if (!currentUser?.uid || !currentUser?.role || !firestore) {
-          setLoadingCounts(false);
-          return;
+  // OPTIMIZATION 4: Lazy load summary counts - only when user explicitly requests or after initial render
+  const loadSummaryCounts = useCallback(async () => {
+    if (!currentUser?.uid || !currentUser?.role || !firestore || !clinicMapping) {
+      return;
+    }
+
+    setLoadingCounts(true);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      let initialQueryParam;
+
+      switch (currentUser.role) {
+        case "superAdmin":
+        case "zonalHead":
+        case "drManager":
+        case "teamLeader":
+          break;
+        case "doctor":
+          initialQueryParam = where("assignedDoctors.primary", "==", currentUser.uid);
+          break;
+        case "pharmacist":
+          initialQueryParam = where("pharmacistId", "==", currentUser.uid);
+          break;
+        default:
+          initialQueryParam = where("createdBy", "==", currentUser.uid);
+          break;
       }
 
-      let isMounted = true;
-      initialLoadCompleteRef.current = false;
-      listenerCachePopulatedRef.current = false; // Reset for new uid/role
-      recentCasesCacheRef.current.clear(); // Clear cache for new uid/role
-      // Reset counts to default when uid/role changes before new load
-      setSummaryCounts({
-          totalCases: 0, pendingCases: 0, completedCases: 0, doctorPendingCases: 0,
-          pharmacistPendingCases: 0, incompleteCases: 0, todayCases: 0,
-          todayCompleted: 0, todayIncomplete: 0,
+      const casesRef = collection(firestore, "cases");
+
+      const withPartner = (filters) => {
+        return partnerName != null ? [where("partnerName", "==", partnerName), ...filters] : filters;
+      };
+
+      // OPTIMIZATION 5: Run only essential counts first, defer others
+      const essentialQueries = [
+        getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([]))),
+        getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("status", "==", "completed")])))
+      ];
+
+      const [totalCount, completedCount] = await Promise.all(essentialQueries);
+
+      // Set essential counts immediately
+      setSummaryCounts(prev => ({
+        ...prev,
+        totalCases: totalCount.data().count,
+        completedCases: completedCount.data().count,
+      }));
+      setLoadingCounts(false);
+
+      // OPTIMIZATION 6: Load remaining counts in background
+      setTimeout(async () => {
+        try {
+          const [
+            incompleteCount,
+            docPendingCount,
+            pharmPendingCount,
+            todayCount,
+            todayCompleted,
+            todayIncomplete
+          ] = await Promise.all([
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("isIncomplete", "==", true)]))),
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("doctorCompleted", "==", false)]))),
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+              where("doctorCompleted", "==", true),
+              where("pharmacistCompleted", "==", false),
+              where("isIncomplete", "==", false)
+            ]))),
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ]))),
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+              where("status", "==", "completed"),
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ]))),
+            getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
+              where("isIncomplete", "==", true),
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ])))
+          ]);
+
+          const pendingCases = docPendingCount.data().count + pharmPendingCount.data().count;
+
+          setSummaryCounts({
+            totalCases: totalCount.data().count,
+            pendingCases: pendingCases,
+            completedCases: completedCount.data().count,
+            doctorPendingCases: docPendingCount.data().count,
+            pharmacistPendingCases: pharmPendingCount.data().count,
+            incompleteCases: incompleteCount.data().count,
+            todayCases: todayCount.data().count,
+            todayCompleted: todayCompleted.data().count,
+            todayIncomplete: todayIncomplete.data().count,
+          });
+        } catch (backgroundError) {
+          console.error("Background count loading failed:", backgroundError);
+        }
+      }, 100); // Load in background after 100ms
+
+    } catch (e) {
+      console.error("Initial Load Error:", e);
+      setError("Failed to load summary data.");
+      setLoadingCounts(false);
+    }
+  }, [currentUser, partnerName, clinicMapping]);
+
+  // OPTIMIZATION 7: Only load counts when clinicMapping is ready and user requests it
+  const [countsLoaded, setCountsLoaded] = useState(false);
+
+  // Trigger count loading only when explicitly needed
+  const triggerCountsLoad = useCallback(() => {
+    if (!countsLoaded && clinicMapping) {
+      setCountsLoaded(true);
+      loadSummaryCounts();
+    }
+  }, [countsLoaded, clinicMapping, loadSummaryCounts]);
+
+  // OPTIMIZATION 8: Memoized helper to update global counts
+  const applyCountChanges = useCallback((singleCaseContribution, operation) => {
+    setSummaryCounts(prevGlobalCounts => {
+      const newGlobalCounts = { ...prevGlobalCounts };
+      const factor = operation === 'add' ? 1 : -1;
+      for (const key in singleCaseContribution) {
+        newGlobalCounts[key] = (newGlobalCounts[key] || 0) + (factor * singleCaseContribution[key]);
+      }
+      if (singleCaseContribution.doctorPendingCases !== undefined || singleCaseContribution.pharmacistPendingCases !== undefined) {
+        newGlobalCounts.pendingCases = (newGlobalCounts.doctorPendingCases || 0) + (newGlobalCounts.pharmacistPendingCases || 0);
+      }
+      return newGlobalCounts;
+    });
+  }, []);
+
+  // OPTIMIZATION 9: Setup real-time listener only when needed
+  const setupRealtimeListener = useCallback(() => {
+    if (!currentUser?.uid || !currentUser?.role || !firestore || unsubscribeRef.current) {
+      return;
+    }
+
+    try {
+      let listenerQuery;
+      switch (currentUser.role) {
+        case "superAdmin":
+        case "zonalHead":
+        case "drManager":
+        case "teamLeader":
+          listenerQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(100)); // Reduced from 1000 to 100
+          break;
+        case "doctor":
+          listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          break;
+        case "pharmacist":
+          listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          break;
+        default:
+          listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(100));
+          break;
+      }
+
+      unsubscribeRef.current = onSnapshot(listenerQuery, (snapshot) => {
+        if (!initialLoadCompleteRef.current) {
+          // First snapshot - just populate cache
+          snapshot.docs.forEach(doc => {
+            recentCasesCacheRef.current.set(doc.id, doc.data());
+          });
+          listenerCachePopulatedRef.current = true;
+          initialLoadCompleteRef.current = true;
+          return;
+        }
+
+        // Process changes for real-time updates
+        const snapTodayDate = new Date();
+        snapTodayDate.setHours(0, 0, 0, 0);
+        const snapTomorrowDate = new Date(snapTodayDate);
+        snapTomorrowDate.setDate(snapTomorrowDate.getDate() + 1);
+        const snapTodayEpoch = Math.floor(snapTodayDate.getTime() / 1000);
+        const snapTomorrowEpoch = Math.floor(snapTomorrowDate.getTime() / 1000);
+
+        snapshot.docChanges().forEach((change) => {
+          const docId = change.doc.id;
+          const newCaseData = change.doc.exists() ? change.doc.data() : null;
+          const oldCaseDataFromCache = recentCasesCacheRef.current.get(docId);
+
+          if (change.type === "added" && newCaseData && !oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
+            recentCasesCacheRef.current.set(docId, newCaseData);
+          } else if (change.type === "modified" && newCaseData && oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
+            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
+            recentCasesCacheRef.current.set(docId, newCaseData);
+          } else if (change.type === "removed" && oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
+            recentCasesCacheRef.current.delete(docId);
+          }
+        });
+      }, (err) => {
+        console.error("Listener Error:", err);
+        setError("Real-time updates failed.");
       });
+    } catch (error) {
+      console.error("Error setting up listener:", error);
+    }
+  }, [currentUser, applyCountChanges, partnerName, clinicMapping]);
 
-
-      const loadData = async () => {
-          setLoadingCounts(true);
-          setError(null);
-
-          try {
-              // --- Step 1: Initial Full Load ---
-              const today = new Date(); today.setHours(0, 0, 0, 0);
-              const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-
-
-              let initialQueryParam;
-
-              switch(currentUser.role){
-                case "superAdmin": case "zonalHead": case "drManager": case "teamLeader":
-                  break;
-                case "doctor":
-                  initialQueryParam = where("assignedDoctors.primary", "==", currentUser.uid);
-                  break;
-                case "pharmacist":
-                  initialQueryParam = where("pharmacistId", "==", currentUser.uid);
-                  break;
-                default:
-                  initialQueryParam = where("createdBy", "==", currentUser.uid);
-                  break;
-              }
-
-              const casesRef = collection(firestore, "cases");
-              
-              // Helper to build dynamic query filters
-              const withPartner = (filters) => {
-                return partnerName != null ? [where("partnerName", "==", partnerName), ...filters] : filters;
-              };
-
-              const [
-                totalCount,
-                completedCount,
-                incompleteCount,
-                docPendingCount,
-                pharmPendingCount,
-                todayCount,
-                todayCompleted,
-                todayIncomplete
-              ] = await Promise.all([
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("status", "==", "completed")]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("isIncomplete", "==", true)]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([where("doctorCompleted", "==", false)]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
-                  where("doctorCompleted", "==", true),
-                  where("pharmacistCompleted", "==", false),
-                  where("isIncomplete", "==", false)
-                ]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
-                  where("createdAt", ">=", today),
-                  where("createdAt", "<", tomorrow)
-                ]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
-                  where("status", "==", "completed"),
-                  where("createdAt", ">=", today),
-                  where("createdAt", "<", tomorrow)
-                ]))),
-                getCountFromServer(query(casesRef, initialQueryParam, ...withPartner([
-                  where("isIncomplete", "==", true),
-                  where("createdAt", ">=", today),
-                  where("createdAt", "<", tomorrow)
-                ])))
-              ]);
-
-              if (!isMounted) return;
-
-              
-
-              const pendingCases = docPendingCount.data().count + pharmPendingCount.data().count;
-
-              setSummaryCounts({
-                totalCases: totalCount.data().count, 
-                pendingCases: pendingCases,
-                completedCases: completedCount.data().count, 
-                doctorPendingCases: docPendingCount.data().count,
-                pharmacistPendingCases: pharmPendingCount.data().count, 
-                incompleteCases: incompleteCount.data().count, 
-                todayCases: todayCount.data().count,
-                todayCompleted: todayCompleted.data().count, 
-                todayIncomplete: todayIncomplete.data().count,
-              });
-              initialLoadCompleteRef.current = true;
-              
-
-              // --- Step 2: Setup Real-time Listener for Recent 1000 ---
-              let listenerQuery; // Define based on role, WITH limit(1000)
-              switch(currentUser.role){
-                case "superAdmin": case "zonalHead": case "drManager": case "TeamLeader":
-                  listenerQuery = query(collection(firestore, "cases"), orderBy("createdAt", "desc"), limit(1000));
-                  break;
-                case "doctor":
-                  listenerQuery = query(collection(firestore, "cases"), where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-                  break;
-                case "pharmacist":
-                  listenerQuery = query(collection(firestore, "cases"), where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-                  break;
-                default:
-                  listenerQuery = query(collection(firestore, "cases"), where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-                  break;
-              }
-
-              unsubscribeRef.current = onSnapshot(listenerQuery, (snapshot) => {
-                  if (!isMounted || !initialLoadCompleteRef.current) return; // Process only if initial load done and component mounted
-
-                  const snapTodayDate = new Date(); snapTodayDate.setHours(0, 0, 0, 0);
-                  const snapTomorrowDate = new Date(snapTodayDate); snapTomorrowDate.setDate(snapTomorrowDate.getDate() + 1);
-                  const snapTodayEpoch = Math.floor(snapTodayDate.getTime() / 1000);
-                  const snapTomorrowEpoch = Math.floor(snapTomorrowDate.getTime() / 1000);
-
-                  // First snapshot from listener is used to populate the cache
-                  if (!listenerCachePopulatedRef.current) {
-                      snapshot.docs.forEach(doc => {
-                          recentCasesCacheRef.current.set(doc.id, doc.data());
-                      });
-                      listenerCachePopulatedRef.current = true;
-                      if(isMounted) setLoadingCounts(false); // Initial data + first listener pass complete
-                      return; // Don't process docChanges for this first cache population
-                  }
-
-                  snapshot.docChanges().forEach((change) => {
-                      const docId = change.doc.id;
-                      const newCaseData = change.doc.exists() ? change.doc.data() : null;
-                      const oldCaseDataFromCache = recentCasesCacheRef.current.get(docId);
-
-                      if (change.type === "added") {
-                          if (newCaseData && !oldCaseDataFromCache) { // New to the 1000-window cache
-                              // This means it's either a brand new document OR an existing doc that just entered the 1000-window.
-                              // Since the initial load already counted all existing docs,
-                              // we only add to global counts if it's TRULY new to the system.
-                              // A common simplification: If it's new to the cache, assume it's a net new addition to overall counts.
-                              // This can lead to slight overcounting if an old doc scrolls into the 1000 window
-                              // *unless* the "removed" logic for items scrolling out is perfect.
-                              // For now, let's assume "added" to this listener window when not in its cache = new to be counted.
-                              applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
-                              recentCasesCacheRef.current.set(docId, newCaseData);
-                          }
-                      } else if (change.type === "modified") {
-                          if (newCaseData && oldCaseDataFromCache) {
-                              applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
-                              applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
-                              recentCasesCacheRef.current.set(docId, newCaseData);
-                          } else if (newCaseData) { // Modified but wasn't in cache (entered window and modified)
-                              applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
-                              recentCasesCacheRef.current.set(docId, newCaseData);
-                          }
-                      } else if (change.type === "removed") {
-                          if (oldCaseDataFromCache) {
-                              applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
-                              recentCasesCacheRef.current.delete(docId);
-                          }
-                      }
-                  });
-                    if(isMounted && snapshot.docChanges().length > 0) setLoadingCounts(false); // Stop loading if there were changes
-              }, (err) => {
-                  if (!isMounted) return;
-                  console.error("Listener Error:", err);
-                  setError("Real-time updates failed.");
-                  setLoadingCounts(false);
-              });
-
-          } catch (e) {
-              if (!isMounted) return;
-              console.error("Initial Load Error:", e);
-              setError("Failed to load initial summary data.");
-              setLoadingCounts(false);
-          }
-      };
-
-      loadData();
-
-      return () => {
-          isMounted = false;
-          if (unsubscribeRef.current) {
-              unsubscribeRef.current();
-          }
-          initialLoadCompleteRef.current = false; // Reset on cleanup
-          listenerCachePopulatedRef.current = false;
-      };
-  }, [currentUser, calculateCaseContribution, applyCountChanges, partnerName, clinicMapping, refresh]); // Ensure all stable dependencies are listed
-
-  // --- FUNCS ---
   // Handle excel export
-  const handleExcelExport = () => {
+  const handleExcelExport = useCallback(() => {
     if (!tableData?.cases || tableData.cases.length === 0) {
       alert("No data available to export.");
       return;
@@ -342,35 +338,33 @@ const Dashboard = ({ currentUser }) => {
       console.error("Error exporting to Excel:", err);
       alert("Failed to export data. Please try again.");
     }
-  };
+  }, [tableData?.cases]);
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(() => {
     setRefresh(!refresh);
-
-    loadTabData();
-  });
-
-
-  useEffect(() => {
-    if(refreshInterval == 0){
-      return;
+    if (activeTab) {
+      loadTabData();
+    } else {
+      triggerCountsLoad(); // Refresh counts
     }
-    const interval = setInterval(async () => {
-      handleRefresh();
-    }, refreshInterval);
+  }, [refresh, activeTab]);
 
+  // OPTIMIZATION 10: Debounced auto-refresh
+  useEffect(() => {
+    if (refreshInterval === 0) return;
+    
+    const interval = setInterval(handleRefresh, refreshInterval);
     return () => clearInterval(interval);
-  }, [currentUser, refreshInterval, clinicMapping]);
+  }, [refreshInterval, handleRefresh]);
 
   // Load specific tab data when requested
   const loadTabData = useCallback(
     async (tabName, filters = {}) => {
-      //console.log(filters);
-      if (!currentUser?.role || !currentUser?.uid) { // Removed fetchingData from guard, handled by button state
-          return;
+      if (!currentUser?.role || !currentUser?.uid || !clinicMapping) {
+        return;
       }
-      //console.log(`Loading tab data for: ${tabName} with filters:`, filters);
-      setFetchingData(true); // Set fetching true for tab data
+      
+      setFetchingData(true);
       try {
         const activeFilters = {
           status: filters.status !== undefined ? filters.status : (statusFilter !== "all" ? statusFilter : null),
@@ -382,13 +376,13 @@ const Dashboard = ({ currentUser }) => {
           dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
           searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
         };
-        console.log(activeFilters.partner);
+
         const tabData = await fetchTabData(
           currentUser.uid,
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 2000 },
+          { page: 1, pageSize: 1000 }, // Reduced from 2000
           clinicMapping
         );
 
@@ -407,24 +401,11 @@ const Dashboard = ({ currentUser }) => {
         setFetchingData(false);
       }
     },
-    [
-      currentUser?.uid,
-      currentUser?.role,
-      statusFilter,
-      queueFilter,
-      partnerFilter,
-      clinicFilter,
-      dateRange,
-      searchTerm,
-      clinicMapping,
-    ]
+    [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm, clinicMapping]
   );
 
-  // Handle filter reset
+  // OPTIMIZATION 11: Memoize filter handlers
   const handleFilterReset = useCallback(() => {
-    //console.log("Resetting filters...");
-    // setFetchingData(true); // Let loadTabData handle this
-
     const emptyFilters = {
       status: null, queue: null, partner: null, clinic: null, doctor: null,
       dateFrom: null, dateTo: null, searchTerm: null,
@@ -440,17 +421,13 @@ const Dashboard = ({ currentUser }) => {
     setResetTimestamp(Date.now());
 
     if (activeTab) {
-      // No need to call fetchTabData directly, call loadTabData
       loadTabData(activeTab, emptyFilters);
-    } else {
-      // setFetchingData(false); // Not strictly needed if not set true above
     }
-  }, [activeTab, loadTabData]); // Dependencies: activeTab and loadTabData
+  }, [activeTab, loadTabData]);
 
-  // Handle individual filter reset
   const handleSingleFilterReset = useCallback(
     (filterType) => {
-      let newFilters = { // Collect changes to pass to loadTabData
+      let newFilters = {
         status: statusFilter !== "all" ? statusFilter : null,
         queue: queueFilter !== "all" ? queueFilter : null,
         partner: partnerFilter.length > 0 ? partnerFilter : null,
@@ -466,7 +443,7 @@ const Dashboard = ({ currentUser }) => {
         case "queue": setQueueFilter("all"); newFilters.queue = null; break;
         case "partner": setPartnerFilter([]); newFilters.partner = null; break;
         case "clinic": setClinicFilter("all"); newFilters.clinic = null; break;
-        case "doctor": setDoctorFilter("all"); newFilters.clinic = null; break;
+        case "doctor": setDoctorFilter("all"); newFilters.doctor = null; break;
         case "date": setDateRange({ from: null, to: null }); newFilters.dateFrom = null; newFilters.dateTo = null; break;
         case "search": setSearchTerm(""); newFilters.searchTerm = null; break;
         default: break;
@@ -476,20 +453,19 @@ const Dashboard = ({ currentUser }) => {
         loadTabData(activeTab, newFilters);
       }
     },
-    [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm] // Include all filters it reads before potentially changing
+    [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm]
   );
 
-  // Handle filter changes
   const handleFilterApply = useCallback((filterType, value) => {
-    let updatedFilters = { // Prepare the filters object for loadTabData
-        status: statusFilter !== "all" ? statusFilter : null,
-        queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter.length > 0 ? partnerFilter : null,
-        clinic: clinicFilter !== "all" ? clinicFilter : null,
-        doctor: doctorFilter !== "all" ? doctorFilter : null,
-        dateFrom: dateRange.from,
-        dateTo: dateRange.to,
-        searchTerm: searchTerm || null,
+    let updatedFilters = {
+      status: statusFilter !== "all" ? statusFilter : null,
+      queue: queueFilter !== "all" ? queueFilter : null,
+      partner: partnerFilter.length > 0 ? partnerFilter : null,
+      clinic: clinicFilter !== "all" ? clinicFilter : null,
+      doctor: doctorFilter !== "all" ? doctorFilter : null,
+      dateFrom: dateRange.from,
+      dateTo: dateRange.to,
+      searchTerm: searchTerm || null,
     };
 
     switch (filterType) {
@@ -508,27 +484,25 @@ const Dashboard = ({ currentUser }) => {
     }
   }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange, searchTerm]);
 
-
-  const handleSearchChange = (value) => { // Not a useCallback as it just sets state
+  const handleSearchChange = useCallback((value) => {
     setSearchTerm(value);
-    // If value is empty, clear search immediately by reloading tab data with no search term
     if (value === "" && activeTab) {
-        const currentFilters = {
-            status: statusFilter !== "all" ? statusFilter : null,
-            queue: queueFilter !== "all" ? queueFilter : null,
-            partner: partnerFilter !== "all" ? partnerFilter : null,
-            clinic: clinicFilter !== "all" ? clinicFilter : null,
-            doctor: doctorFilter !== "all" ? doctorFilter : null,
-            dateFrom: dateRange.from,
-            dateTo: dateRange.to,
-            searchTerm: "", // explicitly empty
-        };
-        loadTabData(activeTab, currentFilters);
+      const currentFilters = {
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerFilter !== "all" ? partnerFilter : null,
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: "",
+      };
+      loadTabData(activeTab, currentFilters);
     }
-  };
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]);
 
-  const handleSearchSubmit = useCallback((value) => { // value is the new search term
-    setSearchTerm(value); // Update state
+  const handleSearchSubmit = useCallback((value) => {
+    setSearchTerm(value);
     if (activeTab) {
       const updatedFilters = {
         status: statusFilter !== "all" ? statusFilter : null,
@@ -538,59 +512,76 @@ const Dashboard = ({ currentUser }) => {
         doctor: doctorFilter !== "all" ? doctorFilter : null,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
-        searchTerm: value, // Use the submitted value directly
+        searchTerm: value,
       };
       loadTabData(activeTab, updatedFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]); // searchTerm removed as 'value' is used
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, dateRange]);
 
   const handleTabChange = useCallback((newTabName) => {
     if (newTabName === activeTab) return;
-    if (!clinicMapping) return; // Prevent loading if mapping not ready
+    if (!clinicMapping) return;
 
     setActiveTab(newTabName);
+    
+    // Trigger counts loading if not already loaded
+    triggerCountsLoad();
+    
+    // Setup real-time listener if not already setup
+    if (!unsubscribeRef.current) {
+      setupRealtimeListener();
+    }
+
     const currentFiltersForNewTab = {
-        status: statusFilter !== "all" ? statusFilter : null,
-        queue: queueFilter !== "all" ? queueFilter : null,
-        partner: partnerFilter !== "all" ? partnerFilter : null,
-        clinic: clinicFilter !== "all" ? clinicFilter : null,
-        doctor: doctorFilter !== "all" ? doctorFilter : null,
-        searchTerm: searchTerm || null,
-      };
+      status: statusFilter !== "all" ? statusFilter : null,
+      queue: queueFilter !== "all" ? queueFilter : null,
+      partner: partnerFilter !== "all" ? partnerFilter : null,
+      clinic: clinicFilter !== "all" ? clinicFilter : null,
+      doctor: doctorFilter !== "all" ? doctorFilter : null,
+      searchTerm: searchTerm || null,
+    };
 
     loadTabData(newTabName, currentFiltersForNewTab);
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping]); // Dependencies for reading current filters
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerFilter, clinicFilter, searchTerm, clinicMapping, triggerCountsLoad, setupRealtimeListener]);
 
-  //console.log(tableData)
-  const clinicOptions = tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [];
-  const doctorOptions = tableData?.uniqueDoctors?.map((clinic) => ({ value: clinic, label: clinic })) || [];
-  //const partnerOptions = tableData?.uniquePartners?.map((partner) => ({ value: partner, label: partner })) || [];
+  // OPTIMIZATION 12: Memoize clinic and doctor options
+  const clinicOptions = useMemo(() => 
+    tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [], 
+    [tableData?.uniqueClinics]
+  );
+  
+  const doctorOptions = useMemo(() => 
+    tableData?.uniqueDoctors?.map((doctor) => ({ value: doctor, label: doctor })) || [], 
+    [tableData?.uniqueDoctors]
+  );
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, []);
 
   // --- RENDER LOGIC ---
   if (!currentUser?.role) {
     return <Alert variant="destructive" className="mb-6"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>User Role Not Recognised</AlertDescription></Alert>;
   }
-  // Show initial loading for summary if not yet loaded and no other error
-  if (loading && !summaryCounts && !error) {
+
+  if (loading && !clinicMapping && !error) {
     return <div className="flex justify-center items-center h-64"><div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div>;
   }
-  if (error) { // General error for other operations
-     return <Alert variant="destructive" className="mb-6"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>{error}</AlertDescription></Alert>;
+
+  if (error) {
+    return <Alert variant="destructive" className="mb-6"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
-  return(
+  return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          {/*currentUser.role !== 'superAdmin' && (
-            <div className="text-xs text-gray-500 flex items-center">
-              <ShieldAlert className="h-3 w-3 mr-1 text-blue-500" />
-              Showing cases based on your role access
-            </div>
-          )*/}
-            
-          
           {["superAdmin", "zonalHead"].includes(currentUser.role) && (
             <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={!tableData?.cases || tableData.cases.length === 0}>
               <Download className="h-4 w-4 mr-2" />
@@ -601,13 +592,13 @@ const Dashboard = ({ currentUser }) => {
             {currentUser.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ""}
           </Badge>
           <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-500"> Auto-refresh:</span>
+            <span className="text-sm text-gray-500">Auto-refresh:</span>
             <select
               className="border rounded p-1 text-sm"
               value={refreshInterval}
               onChange={(e) => setRefreshInterval(Number(e.target.value))}
             >
-              <option value={0}>Off</option> {/* Added Off option */}
+              <option value={0}>Off</option>
               <option value={30000}>30 seconds</option>
               <option value={60000}>1 minute</option>
               <option value={300000}>5 minutes</option>
@@ -627,19 +618,18 @@ const Dashboard = ({ currentUser }) => {
                 isClearable
                 placeholder="Filter by Partner"
                 onChange={handlePartnerChange}
-                //value={partnersList.find(option => option.value === selectedPartner || null)}
               />
             </div>
           )}
-          
-
         </div>
       </div>
 
       <DashboardSummaryCards
         data={summaryCounts}
         loading={loadingCounts}
+        onLoadCounts={triggerCountsLoad} // Allow manual trigger
       />
+      
       <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
 
       {activeTab && (
@@ -648,7 +638,7 @@ const Dashboard = ({ currentUser }) => {
           onSearchChange={handleSearchChange}
           onSearchSubmit={handleSearchSubmit}
           onFilterReset={handleFilterReset}
-          key={resetTimestamp} // Force re-render of FilterBar on reset
+          key={resetTimestamp}
         />
       )}
 
@@ -677,10 +667,9 @@ const Dashboard = ({ currentUser }) => {
                 {fetchingData ? (
                   <tbody>
                     <tr>
-                      <td colSpan = "9">
+                      <td colSpan="9">
                         <div className="flex justify-center py-8">
-                          <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent">
-                          </div>
+                          <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
                         </div>
                       </td>
                     </tr>
@@ -701,66 +690,17 @@ const Dashboard = ({ currentUser }) => {
                     )}
                   </tbody>
                 )}
-                </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
-      {/*fetchingData ? (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent">
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse">
-                <thead>
-                  <TableHeader
-                    activeColumnFilter={activeColumnFilter}
-                    setActiveColumnFilter={setActiveColumnFilter}
-                    clinicFilter={clinicFilter}
-                    partnerFilter={partnerFilter}
-                    dateRange={dateRange}
-                    clinicOptions={clinicOptions}
-                    doctorOptions={doctorOptions}
-                    partnerOptions={partnersList}
-                    handleFilterApply={handleFilterApply}
-                    handleSingleFilterReset={handleSingleFilterReset}
-                  />
-                </thead>
-                <tbody>
-                  {tableData?.cases && tableData.cases.length > 0 ? (
-                    <CasesTable
-                      data={tableData.cases}
-                      loading={false}
-                      userRole={currentUser.role}
-                      currentUser={currentUser}
-                      showHeader={false}
-                      pagination={tableData.pagination}
-                    />
-                  ) : (
-                    <NoResultsMessage userRole={currentUser.role} />
-                  )}
-                </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
-      )*/}
+      )}
 
       {currentUser.role !== "superAdmin" && currentUser.role !== "zonalHead" && (
         <RoleBasedAccessMessage userRole={currentUser.role} />
       )}
     </div>
   );
-
 };
 
 export default Dashboard;
