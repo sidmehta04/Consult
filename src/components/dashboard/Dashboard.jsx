@@ -394,7 +394,7 @@ const Dashboard = ({ currentUser }) => {
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 2000 },
+          { page: 1, pageSize: 200 },
           clinicMapping
         );
 
