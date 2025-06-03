@@ -7,11 +7,15 @@ import {
   getDoc,
   orderBy,
   limit,
+  getCountFromServer,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 export const fetchCounts = async (partnerName, clinicMapping, query) => {
   const snapshot = await getDocs(query);
+  const countsObj = await getCountFromServer(query);
+  const counts = countsObj.data().count;
+
   var count = 0;
   snapshot.forEach((doc) => {
     if (partnerName) {
@@ -31,6 +35,7 @@ export const fetchCounts = async (partnerName, clinicMapping, query) => {
       }
     }
   });
+  //console.log(counts, count)
   return {count: count};
 }
 
@@ -174,7 +179,9 @@ export const fetchTabData = async (
     const processedCaseIds = new Set();
     const uniquePartners = new Set();
     const uniqueClinics = new Set();
+    const uniqueDoctors = new Set();
 
+    //console.log(Object.keys(filters).length)
     querySnapshot.forEach((doc) => {
       const caseId = doc.id;
 
@@ -200,6 +207,7 @@ export const fetchTabData = async (
         if (caseData.clinicCode || caseData.clinicName) {
           uniqueClinics.add(caseData.clinicCode || caseData.clinicName);
         }
+        if (caseData.assignedDoctors.primaryName) uniqueDoctors.add(caseData.assignedDoctors.primaryName);
 
         // Process case data
         cases.push({
@@ -228,6 +236,7 @@ export const fetchTabData = async (
       cases: enrichedCases,
       uniquePartners: Array.from(uniquePartners),
       uniqueClinics: Array.from(uniqueClinics),
+      uniqueDoctors: Array.from(uniqueDoctors),
       pagination: {
         page: pagination.page,
         pageSize,
@@ -241,6 +250,7 @@ export const fetchTabData = async (
       cases: [],
       uniquePartners: [],
       uniqueClinics: [],
+      uniqueDoctors: [],
       pagination: {
         page: pagination.page || 1,
         pageSize: pagination.pageSize || 50, // Increased from 20 to 50
@@ -277,10 +287,9 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
       caseData.status !== "pharmacist_incomplete"
     )
       return false;
-  }
-
-  // Partner filter
-  if (filters.partner && clinicMapping.get(caseData.clinicId).partnerName !== filters.partner) {
+  } 
+  
+  if (filters.partner?.length > 0 && !filters.partner.includes(clinicMapping.get(caseData.clinicId).partnerName)) {
     return false;
   }
 
@@ -288,6 +297,12 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
   if (filters.clinic) {
     const clinicCode = caseData.clinicCode || caseData.clinicName;
     if (clinicCode !== filters.clinic) return false;
+  }
+
+  // Doctor filter
+  if (filters.doctor) {
+    const doctorName = caseData.assignedDoctors.primaryName;
+    if (doctorName !== filters.doctor) return false;
   }
 
   // Date range filter - only apply if explicitly provided
@@ -308,11 +323,10 @@ const shouldIncludeCase = (caseData, filters, clinicMapping) => {
       toDate.setHours(23, 59, 59, 999); // End of the day
       if (caseDate > toDate) return false;
     }
+
+    return true;
   }
 
-  // EMR number search - improved handling
-
-  // TODO: over here handle array
   if (filters.searchTerm && filters.searchTerm.trim() !== "") {
     const searchTerm = filters.searchTerm.toLowerCase().trim();
 

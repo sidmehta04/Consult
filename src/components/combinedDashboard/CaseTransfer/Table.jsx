@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Select from "react-select"; // Import react-select
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
+  //Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -519,6 +520,42 @@ const CaseTransferTable = ({
                   Select New Doctor
                 </Label>
                 <Select
+                  id="doctor-select"
+                  options={doctors
+                    .filter((doctor) => doctor.isAvailable && doctor.caseCount < 10)
+                    .map((doctor) => ({
+                      value: doctor.id,
+                      label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
+                    }))}
+                  value={
+                    transferDialog.selectedDoctorId
+                      ? doctors
+                          .filter((doctor) => doctor.id === transferDialog.selectedDoctorId)
+                          .map((doctor) => ({
+                            value: doctor.id,
+                            label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
+                          }))[0]
+                      : null
+                  }
+                  onChange={(selectedOption) =>
+                    setTransferDialog((prev) => ({
+                      ...prev,
+                      selectedDoctorId: selectedOption.value,
+                    }))
+                  }
+                  placeholder="Search and select a doctor..."
+                  isSearchable
+                />
+                <p className="text-xs text-gray-500">
+                  Only available doctors with less than 10 cases are shown.
+                </p>
+              </div>
+              {/*
+              <div className="space-y-2">
+                <Label htmlFor="doctor-select" className="text-sm font-medium">
+                  Select New Doctor
+                </Label>
+                <Select
                   value={transferDialog.selectedDoctorId}
                   onValueChange={(value) =>
                     setTransferDialog((prev) => ({
@@ -559,6 +596,7 @@ const CaseTransferTable = ({
                   Only available doctors with less than 10 cases are shown.
                 </p>
               </div>
+              */}
 
               {/* Selected Doctor Info */}
               {transferDialog.selectedDoctorId && (
