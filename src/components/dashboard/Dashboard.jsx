@@ -478,7 +478,7 @@ const Dashboard = ({ currentUser }) => {
     [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm, clinicMapping]
   );
 
-  // OPTIMIZATION 11: Memoize filter handlers
+  // OPTIMIZATION 11: Memoize filters
   const handleFilterReset = useCallback(() => {
     const emptyFilters = {
       status: null, queue: null, partner: null, clinic: null, doctor: null,
