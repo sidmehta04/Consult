@@ -95,7 +95,6 @@ const CaseTransferMain = ({ currentUser }) => {
               doctorCompletedAt: caseData.doctorCompletedAt?.toDate() || null,
               pharmacistCompletedAt: caseData.pharmacistCompletedAt?.toDate() || null,
               clinicCode: caseData.clinicCode || "N/A",
-              clinicCode: caseData.clinicCode || "N/A",
             });
           });
           doctorLoaded = true;
