@@ -345,7 +345,13 @@ const Dashboard = ({ currentUser }) => {
   };
 
   const handleRefresh = useCallback(async () => {
-    setRefresh(!refresh);
+    //setRefresh(!refresh);
+
+    //loadTabData();
+  });
+
+  const handleTabRefresh = useCallback(async () => {
+    //setRefresh(!refresh);
 
     loadTabData();
   });
@@ -640,7 +646,7 @@ const Dashboard = ({ currentUser }) => {
         data={summaryCounts}
         loading={loadingCounts}
       />
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} handleTableRefresh={handleTabRefresh} />
 
       {activeTab && (
         <FilterBar

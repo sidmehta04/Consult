@@ -1,9 +1,9 @@
 // components/TabNavigation.jsx
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { FileText, Calendar, CheckCircle, AlertTriangle } from "lucide-react";
+import { FileText, Calendar, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
 
-const TabNavigation = ({ activeTab, onTabChange }) => {
+const TabNavigation = ({ activeTab, onTabChange, handleTableRefresh }) => {
   return (
     <div className="flex overflow-x-auto pb-2 -mb-2">
       <Button
@@ -40,11 +40,20 @@ const TabNavigation = ({ activeTab, onTabChange }) => {
       </Button>
       <Button
         variant={activeTab === "incomplete" ? "default" : "outline"}
-        className="flex items-center"
+        className="mr-2 flex items-center"
         onClick={() => onTabChange("incomplete")}
       >
         <AlertTriangle className="h-4 w-4 mr-2" />
         Incomplete
+      </Button>
+
+      <Button
+        variant={"outline"}
+        className="flex items-center"
+        onClick={handleTableRefresh}
+      >
+        <RefreshCw className="h-4 w-4 mr-2" />
+        Refresh
       </Button>
     </div>
   );
