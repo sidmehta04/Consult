@@ -343,16 +343,16 @@ const Dashboard = ({ currentUser }) => {
         case "zonalHead":
         case "drManager":
         case "teamLeader":
-          listenerQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(1000));
           break;
         case "doctor":
-          listenerQuery = query(baseQuery, where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
           break;
         case "pharmacist":
-          listenerQuery = query(baseQuery, where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
           break;
         default:
-          listenerQuery = query(baseQuery, where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(200));
+          listenerQuery = query(baseQuery, where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
           break;
       }
 
@@ -456,7 +456,7 @@ const Dashboard = ({ currentUser }) => {
           currentUser.role,
           tabName,
           activeFilters,
-          { page: 1, pageSize: 200 },
+          { page: 1, pageSize: 1000 },
           clinicMapping
         );
 

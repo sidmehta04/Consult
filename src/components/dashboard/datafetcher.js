@@ -123,7 +123,7 @@ export const fetchTabData = async (
     }
 
     // Add pagination
-    const pageSize = Math.min(pagination.pageSize || 50, 200); // Cap at 100 for performance
+    const pageSize = Math.min(pagination.pageSize || 50, 1000); // Cap at 100 for performance
     if (pagination.lastDoc && pagination.page > 1) {
       queryConstraints.push(startAfter(pagination.lastDoc));
     }
