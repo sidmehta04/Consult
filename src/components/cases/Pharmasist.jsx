@@ -1125,6 +1125,9 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                   <ClipboardList className="h-5 w-5 text-green-600 mr-2" />
                   Cases Pending Pharmacist Review
                 </CardTitle>
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                  Reminder: Remember to start recording when joining the case
+                </Badge>
               </CardHeader>
 
               <CardContent className="p-0">

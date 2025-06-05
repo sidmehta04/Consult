@@ -420,7 +420,19 @@ const Dashboard = ({ currentUser }) => {
 
   const handleRefresh = useCallback(async () => {
     setRefresh(!refresh);
-    loadTabData();
+    if (activeTab) {
+      const currentFilters = {
+        status: statusFilter !== "all" ? statusFilter : null,
+        queue: queueFilter !== "all" ? queueFilter : null,
+        partner: partnerName || (partnerFilter.length > 0 ? partnerFilter : null),
+        clinic: clinicFilter !== "all" ? clinicFilter : null,
+        doctor: doctorFilter !== "all" ? doctorFilter : null,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        searchTerm: searchTerm || null,
+      };
+      loadTabData(activeTab, currentFilters);
+    }
   });
 
   // OPTIMIZATION 10: Debounced auto-refresh

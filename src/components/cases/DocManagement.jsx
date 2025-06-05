@@ -1008,9 +1008,6 @@ const DoctorCaseManagement = ({ currentUser }) => {
                   <ClipboardList className="h-5 w-5 text-blue-600 mr-2" />
                   Active Cases
                 </CardTitle>
-                <Badge className="bg-amber-100 text-amber-800 border-amber-200">
-                  Reminder: Remember to start recording when joining the case
-                </Badge>
               </CardHeader>
 
               <CardContent className="p-0">
