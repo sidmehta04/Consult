@@ -249,7 +249,6 @@ const DoctorHierarchyCard = ({ currentUser, selectedClinic }) => {
   };
 
   // Save doctor hierarchy
-  // Save doctor hierarchy
 const saveHierarchy = async () => {
   try {
     setSaving(true);
