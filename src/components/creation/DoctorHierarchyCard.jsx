@@ -249,47 +249,59 @@ const DoctorHierarchyCard = ({ currentUser, selectedClinic }) => {
   };
 
   // Save doctor hierarchy
-  const saveHierarchy = async () => {
-    try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
-      
-      // Update the clinic's assigned doctors
-      const clinicRef = doc(firestore, "users", clinicUid);
+  // Save doctor hierarchy
+const saveHierarchy = async () => {
+  try {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    
+    // Update the clinic's assigned doctors
+    const clinicRef = doc(firestore, "users", clinicUid);
 
-      const clinicSnapshot = await getDoc(clinicRef);
-      const clinicData = clinicSnapshot.data()
-      
-      clinicData.assignedDoctors = {
-          ...assignedDoctors.reduce((acc, pharm) => {
-            const positionKey = getPositionName(pharm.position).toLowerCase();
-            acc[positionKey] = pharm.id;
-            acc[`${positionKey}Name`] = pharm.name;
-            return acc;
-          }, {}),
-          assignToAnyDoctor: clinicData.assignedDoctors?.assignToAnyDoctor,
-        }
+    const clinicSnapshot = await getDoc(clinicRef);
+    const clinicData = clinicSnapshot.data();
+    
+    // Create the new assignedDoctors object with proper undefined handling
+    const newAssignedDoctors = {
+      ...assignedDoctors.reduce((acc, doctor) => {
+        const positionKey = getPositionName(doctor.position).toLowerCase();
+        acc[positionKey] = doctor.id;
+        acc[`${positionKey}Name`] = doctor.name;
+        return acc;
+      }, {})
+    };
 
-      await setDoc(clinicRef, clinicData, {merge: false})
-
-      // Also update each doctor's assigned clinics
-      for (const doctor of assignedDoctors) {
-        const doctorRef = doc(firestore, "users", doctor.id);
-
-        await setDoc(doctorRef, {
-          [`assignedClinics.${clinicUid}`]: true
-        }, { merge: true });
-      }
-
-      setSuccess("Doctor hierarchy updated successfully.");
-    } catch (err) {
-      console.error("Error saving hierarchy:", err);
-      setError("Failed to save doctor hierarchy. Please try again.");
-    } finally {
-      setSaving(false);
+    // Only add assignToAnyDoctor if it exists and is not undefined
+    if (clinicData.assignedDoctors?.assignToAnyDoctor !== undefined) {
+      newAssignedDoctors.assignToAnyDoctor = clinicData.assignedDoctors.assignToAnyDoctor;
     }
-  };
+
+    // Update the clinic data
+    const updatedClinicData = {
+      ...clinicData,
+      assignedDoctors: newAssignedDoctors
+    };
+
+    await setDoc(clinicRef, updatedClinicData, { merge: false });
+
+    // Also update each doctor's assigned clinics
+    for (const doctor of assignedDoctors) {
+      const doctorRef = doc(firestore, "users", doctor.id);
+
+      await setDoc(doctorRef, {
+        [`assignedClinics.${clinicUid}`]: true
+      }, { merge: true });
+    }
+
+    setSuccess("Doctor hierarchy updated successfully.");
+  } catch (err) {
+    console.error("Error saving hierarchy:", err);
+    setError("Failed to save doctor hierarchy. Please try again.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const getAvailableDoctorsForSelect = () => {
     return availableDoctors.filter(
