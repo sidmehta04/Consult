@@ -704,7 +704,7 @@ const Dashboard = ({ currentUser }) => {
         loading={loadingCounts}
         onLoadCounts={triggerCountsLoad} // Allow manual trigger
       />
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} handleTableRefresh={handleRefresh} />
 
       {activeTab && (
         <FilterBar

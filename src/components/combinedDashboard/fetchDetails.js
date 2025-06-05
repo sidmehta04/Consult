@@ -178,13 +178,13 @@ const promises = doctorsList.map(async (doctor) => {
         }
 
         // Count by status
-        if (caseData.isIncomplete || caseData.status === "doctor_incomplete" || caseData.status === "pharmacist_incomplete") {
+        if (caseData.isIncomplete || caseData.status === "doctor_incomplete") {
             if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
                 doctorMetrics.incompleteCases += caseData.emrNumbers.length;
             } else {
                 doctorMetrics.incompleteCases++;
             }
-        } else if (caseData.doctorCompleted) {
+        } else if (caseData.doctorCompleted  || caseData.status === "pharmacist_incomplete") {
             if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
                 doctorMetrics.completedCases += caseData.emrNumbers.length;
             } else {
