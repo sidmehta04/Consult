@@ -143,7 +143,7 @@ export const fetchTabData = async (
       const caseData = { ...docSnap.data(), id: docSnap.id };
 
       // Apply client-side filters efficiently
-      if (shouldIncludeCase(caseData, filters, clinicMapping)) {
+      if (shouldIncludeCase(userRole, caseData, filters, clinicMapping)) {
         // Collect unique values
         if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
         if (caseData.clinicCode || caseData.clinicName) {
@@ -203,14 +203,23 @@ export const fetchTabData = async (
 };
 
 // OPTIMIZATION 7: More efficient filter checking
-const shouldIncludeCase = (caseData, filters, clinicMapping) => {
+const shouldIncludeCase = (userRole, caseData, filters, clinicMapping) => {
   if (!filters || Object.keys(filters).length === 0) return true;
 
   // Status filter
   if (filters.status) {
-    const isIncomplete = caseData.isIncomplete || 
-                        caseData.status === "doctor_incomplete" || 
-                        caseData.status === "pharmacist_incomplete";
+    let isIncomplete = false;
+
+    switch (userRole) {
+      case "doctor":
+        isIncomplete = caseData.status === "doctor_incomplete";
+        break; 
+      case "pharmacist": 
+        isIncomplete = caseData.status === "pharmacist_incomplete";
+        break;
+      default:
+        isIncomplete = caseData.isIncomplete;
+    }
     
     switch (filters.status) {
       case "completed":
