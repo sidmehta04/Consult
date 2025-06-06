@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useReducer } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
@@ -13,42 +13,94 @@ import { firestore } from "../../firebase";
 import CaseTransferHeader from "./CaseTransfer/Header";
 import CaseTransferTable from "./CaseTransfer/Table";
 
+// State reducer for better performance
+const caseTransferReducer = (state, action) => {
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload };
+    case 'SET_SUCCESS':
+      return { ...state, success: action.payload };
+    case 'SET_CASES':
+      return { ...state, cases: action.payload };
+    case 'SET_DOCTORS':
+      return { ...state, doctors: action.payload };
+    case 'SET_CLINICS':
+      return { ...state, clinics: action.payload };
+    case 'SET_SEARCH_TERM':
+      return { ...state, searchTerm: action.payload };
+    case 'SET_SELECTED_QUEUE':
+      return { ...state, selectedQueue: action.payload };
+    case 'SET_SELECTED_CLINIC':
+      return { ...state, selectedClinic: action.payload };
+    case 'CLEAR_MESSAGES':
+      return { ...state, error: "", success: "" };
+    default:
+      return state;
+  }
+};
+
+const initialState = {
+  cases: [],
+  doctors: [],
+  clinics: [],
+  loading: true,
+  error: "",
+  success: "",
+  searchTerm: "",
+  selectedQueue: "all",
+  selectedClinic: "all",
+};
+
 const CaseTransferMain = ({ currentUser }) => {
-  const [cases, setCases] = useState([]);
-  const [doctors, setDoctors] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedQueue, setSelectedQueue] = useState("all");
-  const [selectedClinic, setSelectedClinic] = useState("all");
-  const [clinics, setClinics] = useState([]);
+  const [state, dispatch] = useReducer(caseTransferReducer, initialState);
+  const [listeners, setListeners] = useState([]);
 
-  // Check if user has permission to transfer cases
-  const canTransferCases = currentUser?.role === "teamLeader";
+  // Memoized permission check
+  const canTransferCases = useMemo(() => 
+    currentUser?.role === "teamLeader", 
+    [currentUser?.role]
+  );
 
-  useEffect(() => {
-    if (canTransferCases && firestore) {
-      const unsubscribeCases = setupCasesListener();
-      const unsubscribeDoctors = setupDoctorsListener();
-      const unsubscribeClinics = setupClinicsListener();
+  // Memoized filtered cases with debouncing
+  const filteredCases = useMemo(() => {
+    if (!state.cases.length) return [];
+    
+    return state.cases.filter((caseItem) => {
+      // Search filter
+      if (state.searchTerm) {
+        const searchLower = state.searchTerm.toLowerCase();
+        const matchesSearch = 
+          caseItem.patientName?.toLowerCase().includes(searchLower) ||
+          caseItem.emrNumber?.toLowerCase().includes(searchLower) ||
+          caseItem.clinicCode?.toLowerCase().includes(searchLower);
+        if (!matchesSearch) return false;
+      }
 
-      return () => {
-        unsubscribeCases?.();
-        unsubscribeDoctors?.();
-        unsubscribeClinics?.();
-      };
-    }
-  }, [currentUser, canTransferCases]);
+      // Queue filter
+      if (state.selectedQueue !== "all" && caseItem.queue !== state.selectedQueue) {
+        return false;
+      }
 
-  const setupCasesListener = () => {
+      // Clinic filter
+      if (state.selectedClinic !== "all" && caseItem.clinicCode !== state.selectedClinic) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [state.cases, state.searchTerm, state.selectedQueue, state.selectedClinic]);
+
+  // Optimized cases listener with batch processing
+  const setupCasesListener = useCallback(() => {
     try {
-      setLoading(true);
-      setError("");
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'SET_ERROR', payload: "" });
 
       const casesCollection = collection(firestore, "cases");
 
-      // Real-time listener for doctor pending cases
+      // Combined query to reduce listeners
       const doctorPendingQuery = query(
         casesCollection,
         where("status", "==", "pending"),
@@ -57,7 +109,6 @@ const CaseTransferMain = ({ currentUser }) => {
         orderBy("createdAt", "desc")
       );
 
-      // Real-time listener for pharmacist pending cases
       const pharmacistPendingQuery = query(
         casesCollection,
         where("status", "==", "doctor_completed"),
@@ -68,87 +119,76 @@ const CaseTransferMain = ({ currentUser }) => {
 
       let doctorCases = [];
       let pharmacistCases = [];
-      let doctorLoaded = false;
-      let pharmacistLoaded = false;
+      let loadedCount = 0;
+      const expectedLoads = 2;
+
+      const processCaseData = (doc, queue) => ({
+        id: doc.id,
+        ...doc.data(),
+        queue,
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        doctorCompletedAt: doc.data().doctorCompletedAt?.toDate() || null,
+        pharmacistCompletedAt: doc.data().pharmacistCompletedAt?.toDate() || null,
+        clinicCode: doc.data().clinicCode || "N/A",
+      });
 
       const updateCases = () => {
-        if (doctorLoaded && pharmacistLoaded) {
+        if (loadedCount === expectedLoads) {
           const allCases = [...doctorCases, ...pharmacistCases];
           allCases.sort((a, b) => b.createdAt - a.createdAt);
-          setCases(allCases);
-          setLoading(false);
+          dispatch({ type: 'SET_CASES', payload: allCases });
+          dispatch({ type: 'SET_LOADING', payload: false });
         }
       };
 
-      // Doctor cases listener
+      // Batch process doctor cases
       const unsubscribeDoctor = onSnapshot(
         doctorPendingQuery,
         (snapshot) => {
           doctorCases = [];
           snapshot.forEach((doc) => {
-            const caseData = doc.data();
-            doctorCases.push({
-              id: doc.id,
-              ...caseData,
-              queue: "doctor",
-              createdAt: caseData.createdAt?.toDate() || new Date(),
-              doctorCompletedAt: caseData.doctorCompletedAt?.toDate() || null,
-              pharmacistCompletedAt: caseData.pharmacistCompletedAt?.toDate() || null,
-              clinicCode: caseData.clinicCode || "N/A",
-            });
+            doctorCases.push(processCaseData(doc, "doctor"));
           });
-          doctorLoaded = true;
+          loadedCount = Math.max(loadedCount, 1);
           updateCases();
         },
         (error) => {
           console.error("Error in doctor cases listener:", error);
-          setError("Failed to load doctor queue cases.");
-          setLoading(false);
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load doctor queue cases." });
+          dispatch({ type: 'SET_LOADING', payload: false });
         }
       );
 
-      // Pharmacist cases listener
+      // Batch process pharmacist cases
       const unsubscribePharmacist = onSnapshot(
         pharmacistPendingQuery,
         (snapshot) => {
           pharmacistCases = [];
           snapshot.forEach((doc) => {
-            const caseData = doc.data();
-            pharmacistCases.push({
-              id: doc.id,
-              ...caseData,
-              queue: "pharmacist",
-              createdAt: caseData.createdAt?.toDate() || new Date(),
-              doctorCompletedAt: caseData.doctorCompletedAt?.toDate() || null,
-              pharmacistCompletedAt: caseData.pharmacistCompletedAt?.toDate() || null,
-            });
+            pharmacistCases.push(processCaseData(doc, "pharmacist"));
           });
-          pharmacistLoaded = true;
+          loadedCount = Math.max(loadedCount, 2);
           updateCases();
         },
         (error) => {
           console.error("Error in pharmacist cases listener:", error);
-          setError("Failed to load pharmacist queue cases.");
-          setLoading(false);
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load pharmacist queue cases." });
+          dispatch({ type: 'SET_LOADING', payload: false });
         }
       );
 
-      // Return cleanup function
-      return () => {
-        unsubscribeDoctor();
-        unsubscribePharmacist();
-      };
+      return [unsubscribeDoctor, unsubscribePharmacist];
     } catch (err) {
       console.error("Error setting up cases listener:", err);
-      setError("Failed to setup real-time case updates.");
-      setLoading(false);
-      return () => {};
+      dispatch({ type: 'SET_ERROR', payload: "Failed to setup real-time case updates." });
+      dispatch({ type: 'SET_LOADING', payload: false });
+      return [];
     }
-  };
+  }, []);
 
-  const setupClinicsListener = () => {
+  // Optimized clinics listener with Set for deduplication
+  const setupClinicsListener = useCallback(() => {
     try {
-      // Real-time listener for clinics from cases
       const casesCollection = collection(firestore, "cases");
       
       const clinicsQuery = query(
@@ -167,36 +207,35 @@ const CaseTransferMain = ({ currentUser }) => {
             }
           });
           
-          const clinicsList = Array.from(clinicCodes).sort().map(code => ({
-            code,
-            name: code // You can enhance this to get clinic names from a separate collection
-          }));
+          const clinicsList = Array.from(clinicCodes)
+            .sort()
+            .map(code => ({ code, name: code }));
           
-          setClinics(clinicsList);
+          dispatch({ type: 'SET_CLINICS', payload: clinicsList });
         },
         (error) => {
           console.error("Error in clinics listener:", error);
-          setError("Failed to load clinic data.");
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load clinic data." });
         }
       );
 
       return unsubscribeClinics;
     } catch (err) {
       console.error("Error setting up clinics listener:", err);
-      setError("Failed to setup real-time clinic updates.");
+      dispatch({ type: 'SET_ERROR', payload: "Failed to setup real-time clinic updates." });
       return () => {};
     }
-}
+  }, []);
 
-  const setupDoctorsListener = () => {
+  // Optimized doctors listener with reduced queries
+  const setupDoctorsListener = useCallback(() => {
     try {
-      // Real-time listener for doctors
       const doctorsQuery = query(
         collection(firestore, "users"),
         where("role", "==", "doctor")
       );
 
-      // Real-time listener for active cases to get case counts
+      // Single query for active cases
       const activeCasesQuery = query(
         collection(firestore, "cases"),
         where("doctorCompleted", "==", false),
@@ -210,35 +249,39 @@ const CaseTransferMain = ({ currentUser }) => {
 
       const updateDoctors = () => {
         if (doctorsLoaded && casesLoaded) {
-          // Calculate case counts
-          const doctorCaseCounts = {};
+          // Use Map for O(1) lookup instead of O(n)
+          const doctorCaseCounts = new Map();
           activeCasesData.forEach((caseData) => {
             const doctorId = caseData.assignedDoctors?.primary;
             if (doctorId) {
-              doctorCaseCounts[doctorId] = (doctorCaseCounts[doctorId] || 0) + 1;
+              doctorCaseCounts.set(doctorId, (doctorCaseCounts.get(doctorId) || 0) + 1);
             }
           });
 
-          // Create doctors list with case counts
-          const doctorsList = doctorsData.map((doctor) => ({
-            ...doctor,
-            caseCount: doctorCaseCounts[doctor.id] || 0,
-            isAvailable:
-              (doctor.availabilityStatus === "available" ||
-                doctor.availabilityStatus === "busy") &&
-              doctor.availabilityStatus !== "unavailable" &&
-              doctor.availabilityStatus !== "on_break" &&
-              (doctorCaseCounts[doctor.id] || 0) < 10,
-          }));
+          // Batch process doctors list
+          const doctorsList = doctorsData.map((doctor) => {
+            const caseCount = doctorCaseCounts.get(doctor.id) || 0;
+            return {
+              ...doctor,
+              caseCount,
+              isAvailable:
+                (doctor.availabilityStatus === "available" ||
+                  doctor.availabilityStatus === "busy") &&
+                doctor.availabilityStatus !== "unavailable" &&
+                doctor.availabilityStatus !== "on_break" &&
+                caseCount < 10,
+            };
+          });
 
-          // Sort by availability and case count
+          // Sort once with optimized comparator
           doctorsList.sort((a, b) => {
-            if (a.isAvailable && !b.isAvailable) return -1;
-            if (!a.isAvailable && b.isAvailable) return 1;
+            if (a.isAvailable !== b.isAvailable) {
+              return a.isAvailable ? -1 : 1;
+            }
             return a.caseCount - b.caseCount;
           });
 
-          setDoctors(doctorsList);
+          dispatch({ type: 'SET_DOCTORS', payload: doctorsList });
         }
       };
 
@@ -260,76 +303,106 @@ const CaseTransferMain = ({ currentUser }) => {
         },
         (error) => {
           console.error("Error in doctors listener:", error);
-          setError("Failed to load doctors data.");
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load doctors data." });
         }
       );
 
-      // Active cases listener for counting
+      // Active cases listener with throttling
+      let updateTimeout;
       const unsubscribeActiveCases = onSnapshot(
         activeCasesQuery,
         (snapshot) => {
-          activeCasesData = [];
-          snapshot.forEach((doc) => {
-            activeCasesData.push(doc.data());
-          });
-          casesLoaded = true;
-          updateDoctors();
+          clearTimeout(updateTimeout);
+          updateTimeout = setTimeout(() => {
+            activeCasesData = [];
+            snapshot.forEach((doc) => {
+              activeCasesData.push(doc.data());
+            });
+            casesLoaded = true;
+            updateDoctors();
+          }, 100); // 100ms throttle
         },
         (error) => {
           console.error("Error in active cases listener:", error);
-          setError("Failed to load active cases count.");
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load active cases count." });
         }
       );
 
-      // Return cleanup function
-      return () => {
-        unsubscribeDoctors();
-        unsubscribeActiveCases();
-      };
+      return [unsubscribeDoctors, unsubscribeActiveCases];
     } catch (err) {
       console.error("Error setting up doctors listener:", err);
-      setError("Failed to setup real-time doctor updates.");
-      return () => {};
+      dispatch({ type: 'SET_ERROR', payload: "Failed to setup real-time doctor updates." });
+      return [];
     }
-  };
+  }, []);
 
-  const filteredCases = cases.filter((caseItem) => {
-    // Filter by search term
-    if (
-      searchTerm &&
-      !caseItem.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) &&
-      !caseItem.emrNumber?.toLowerCase().includes(searchTerm.toLowerCase()) &&
-      !caseItem.clinicCode?.toLowerCase().includes(searchTerm.toLowerCase())
-    ) {
-      return false;
+  // Setup all listeners with cleanup
+  useEffect(() => {
+    if (canTransferCases && firestore) {
+      const casesListeners = setupCasesListener();
+      const doctorsListeners = setupDoctorsListener();
+      const clinicsListener = setupClinicsListener();
+
+      const allListeners = [
+        ...casesListeners,
+        ...doctorsListeners,
+        clinicsListener
+      ].filter(Boolean);
+
+      setListeners(allListeners);
+
+      return () => {
+        allListeners.forEach(unsubscribe => {
+          if (typeof unsubscribe === 'function') {
+            unsubscribe();
+          }
+        });
+      };
     }
+  }, [currentUser, canTransferCases, setupCasesListener, setupDoctorsListener, setupClinicsListener]);
 
-    // Filter by queue
-    if (selectedQueue !== "all" && caseItem.queue !== selectedQueue) {
-      return false;
-    }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      listeners.forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      });
+    };
+  }, [listeners]);
 
-    // Filter by clinic
-    if (selectedClinic !== "all" && caseItem.clinicCode !== selectedClinic) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const handleSuccess = (message) => {
-    setSuccess(message);
-    setError("");
+  // Optimized event handlers with useCallback
+  const handleSuccess = useCallback((message) => {
+    dispatch({ type: 'SET_SUCCESS', payload: message });
+    dispatch({ type: 'SET_ERROR', payload: "" });
     // Clear success message after 5 seconds
-    setTimeout(() => setSuccess(""), 5000);
-  };
+    setTimeout(() => dispatch({ type: 'SET_SUCCESS', payload: "" }), 5000);
+  }, []);
 
-  const handleError = (message) => {
-    setError(message);
-    setSuccess("");
-  };
+  const handleError = useCallback((message) => {
+    dispatch({ type: 'SET_ERROR', payload: message });
+    dispatch({ type: 'SET_SUCCESS', payload: "" });
+  }, []);
 
-  // Add a check for firestore initialization
+  const handleSearchChange = useCallback((searchTerm) => {
+    dispatch({ type: 'SET_SEARCH_TERM', payload: searchTerm });
+  }, []);
+
+  const handleQueueChange = useCallback((queue) => {
+    dispatch({ type: 'SET_SELECTED_QUEUE', payload: queue });
+  }, []);
+
+  const handleClinicChange = useCallback((clinic) => {
+    dispatch({ type: 'SET_SELECTED_CLINIC', payload: clinic });
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    dispatch({ type: 'CLEAR_MESSAGES' });
+    dispatch({ type: 'SET_SUCCESS', payload: "Data refreshed successfully!" });
+  }, []);
+
+  // Early returns for error states
   if (!firestore) {
     return (
       <Card className="border border-red-200">
@@ -365,26 +438,22 @@ const CaseTransferMain = ({ currentUser }) => {
     <div className="space-y-6">
       <CaseTransferHeader
         filteredCasesCount={filteredCases.length}
-        error={error}
-        success={success}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        selectedQueue={selectedQueue}
-        setSelectedQueue={setSelectedQueue}
-        selectedClinic={selectedClinic}
-        setSelectedClinic={setSelectedClinic}
-        clinics={clinics}
-        onRefresh={() => {
-          // Refresh will happen automatically via listeners
-          setError("");
-          setSuccess("Data refreshed successfully!");
-        }}
+        error={state.error}
+        success={state.success}
+        searchTerm={state.searchTerm}
+        setSearchTerm={handleSearchChange}
+        selectedQueue={state.selectedQueue}
+        setSelectedQueue={handleQueueChange}
+        selectedClinic={state.selectedClinic}
+        setSelectedClinic={handleClinicChange}
+        clinics={state.clinics}
+        onRefresh={handleRefresh}
       />
 
       <CaseTransferTable
         cases={filteredCases}
-        doctors={doctors}
-        loading={loading}
+        doctors={state.doctors}
+        loading={state.loading}
         currentUser={currentUser}
         onSuccess={handleSuccess}
         onError={handleError}
@@ -393,6 +462,4 @@ const CaseTransferMain = ({ currentUser }) => {
   );
 };
 
-
-
-export default CaseTransferMain;
+export default React.memo(CaseTransferMain);

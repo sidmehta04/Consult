@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useReducer, lazy, Suspense } from "react";
 import { 
     collection, 
     query, 
@@ -28,182 +28,354 @@ import DashboardHeader from "./Header";
 import DashboardSummary from "./DashboardSummary";
 import DoctorTable from "./Table";
 import DoctorCardsGrid from "./Card";
-import CaseTransferMain from "./CaseTransfer";
 
+// Lazy load the CaseTransferMain component for better performance
+const CaseTransferMain = lazy(() => import("./CaseTransfer"));
+
+// Loading component for case transfer module
+const CaseTransferLoader = () => (
+  <div className="flex justify-center items-center py-12 border rounded-lg bg-white">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-gray-600">Loading case transfer module...</p>
+      <p className="text-sm text-gray-500 mt-2">Please wait while we initialize the transfer system...</p>
+    </div>
+  </div>
+);
+
+// State reducer for better state management
+const dashboardReducer = (state, action) => {
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_REFRESHING':
+      return { ...state, isRefreshing: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload, isLoading: false };
+    case 'SET_DOCTORS':
+      return { ...state, doctors: action.payload, isLoading: false, error: null };
+    case 'SET_PHARMACISTS':
+      return { ...state, pharmacists: action.payload, isLoading: false, error: null };
+    case 'SET_REALTIME_DATA':
+      return { ...state, realtimeData: action.payload };
+    case 'SET_PARTNER_NAMES':
+      return { ...state, partnerNames: action.payload };
+    case 'SET_SELECTED_DOCTOR':
+      return { ...state, selectedDoctor: action.payload };
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.payload };
+    case 'SET_DOCTOR_PHARMACIST':
+      return { ...state, doctorPharmacist: action.payload };
+    case 'SET_SELECTED_PARTNER':
+      return { ...state, selectedPartner: action.payload };
+    case 'SET_REFRESH_INTERVAL':
+      return { ...state, refreshInterval: action.payload };
+    case 'CLEAR_ERROR':
+      return { ...state, error: null };
+    default:
+      return state;
+  }
+};
+
+const initialState = {
+  doctors: [],
+  pharmacists: [],
+  isLoading: true,
+  isRefreshing: false,
+  error: null,
+  refreshInterval: 30000, // Increased from 15s to 30s for better performance
+  realtimeData: {},
+  selectedDoctor: null,
+  viewMode: "table",
+  doctorPharmacist: "doctor",
+  partnerNames: [],
+  selectedPartner: null,
+};
 
 const CombinedDashboard = ({ currentUser }) => {
-  const [doctors, setDoctors] = useState([]);
-  const [pharmacists, setPharmacists] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [refreshInterval, setRefreshInterval] = useState(15000); // 15 seconds refresh by default
-  const [realtimeData, setRealtimeData] = useState({});
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [viewMode, setViewMode] = useState("table"); // table, cards, or cases
-  const [doctorPharmacist, setDoctorPharmacist] = useState("doctor");
-  const [partnerNames, setPartnerNames] = useState([]);
-  const [selectedPartner, setSelectedPartner] = useState(null);
+  const [state, dispatch] = useReducer(dashboardReducer, initialState);
+  const [realtimeListeners, setRealtimeListeners] = useState([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // Check if current user can transfer cases
-  const canTransferCases = currentUser.role === "teamLeader";
+  // Memoized values
+  const canTransferCases = useMemo(() => 
+    currentUser?.role === "teamLeader", 
+    [currentUser?.role]
+  );
 
-  const loadDoctorData = async (doctorPharmacist) => {
+  const currentData = useMemo(() => {
+    return state.doctorPharmacist === "doctor" ? state.doctors : state.pharmacists;
+  }, [state.doctorPharmacist, state.doctors, state.pharmacists]);
+
+  const hasPermission = useMemo(() => 
+    currentUser?.role && ["zonalHead", "teamLeader", "drManager"].includes(currentUser.role),
+    [currentUser?.role]
+  );
+
+  // Optimized availability status update with batching
+  const updateAvailabilityStatus = useCallback(async () => {
     try {
-      setIsLoading(true);
-      
-      const fetchedData = await fetchData(currentUser.uid, doctorPharmacist);
-      const displayData = fetchedData.docList;
-      setPartnerNames(fetchedData.partnerNames);
-      
-      if (displayData.length === 0) {
-        console.log(`No ${doctorPharmacist}s found in hierarchy. Check role relationships.`);
-      }
-      
-      if (doctorPharmacist === "doctor") {
-        const rtData = await fetchRealtimeData();
-        setRealtimeData(rtData);
-        const enrichedWithShifts = enrichDoctorsWithShiftData(displayData, rtData);
-        const fullyEnrichedDoctors = await enrichDoctorsWithCaseData(enrichedWithShifts);
-        setDoctors(fullyEnrichedDoctors);
-      } else if (doctorPharmacist === "pharmacist") {
-        const enrichedWithShifts = enrichPharmacistsWithShiftData(displayData);
-        const fullyEnrichedPharmacists = await enrichPharmacistsWithCaseData(enrichedWithShifts);
-        setPharmacists(fullyEnrichedPharmacists);
-      }
+      if (currentData.length === 0) return;
 
-      setIsLoading(false);
-
-    } catch (err) {
-      console.error(`Error loading ${doctorPharmacist} dashboard:`, err);
-      setError(`Failed to load ${doctorPharmacist} data. Please try again later.`);
-      setIsLoading(false);
-    }
-  };
-
-  const updateAvailabilityStatus = async () => {
-    try {
-      if (doctorPharmacist === "doctor") {
-        const updatePromises = doctors.map(async (doctor) => {
-          const userRef = doc(firestore, "users", doctor.id);
-          const snapshot = await getDoc(userRef);
+      const userIds = currentData.map(item => item.id);
+      
+      // Batch requests to avoid overwhelming Firestore
+      const batchSize = 10;
+      const updatedData = [...currentData];
+      
+      for (let i = 0; i < userIds.length; i += batchSize) {
+        const batch = userIds.slice(i, i + batchSize);
+        const snapshots = await Promise.all(
+          batch.map(id => getDoc(doc(firestore, "users", id)))
+        );
+        
+        snapshots.forEach((snapshot, batchIndex) => {
+          const actualIndex = i + batchIndex;
           if (snapshot.exists()) {
             const userData = snapshot.data();
-            doctor.availabilityStatus = userData.availabilityStatus;
-            doctor.availabilityHistory = userData.availabilityHistory;
+            updatedData[actualIndex] = {
+              ...updatedData[actualIndex],
+              availabilityStatus: userData.availabilityStatus,
+              availabilityHistory: userData.availabilityHistory
+            };
           }
         });
-        await Promise.all(updatePromises);
-      } else if (doctorPharmacist === "pharmacist") {
-        const updatePromises = pharmacists.map(async (pharmacist) => {
-          const userRef = doc(firestore, "users", pharmacist.id);
-          const snapshot = await getDoc(userRef);
-          if (snapshot.exists()) {
-            const userData = snapshot.data();
-            pharmacist.availabilityStatus = userData.availabilityStatus;
-            pharmacist.availabilityHistory = userData.availabilityHistory;
-          }
-        });
-        await Promise.all(updatePromises);
+      }
+
+      // Update state based on current type
+      if (state.doctorPharmacist === "doctor") {
+        dispatch({ type: 'SET_DOCTORS', payload: updatedData });
+      } else {
+        dispatch({ type: 'SET_PHARMACISTS', payload: updatedData });
       }
     } catch (err) {
       console.error("Error fetching availability data:", err);
     }
-  };
+  }, [currentData, state.doctorPharmacist]);
 
-  // Handle refresh button click
-  const handleRefresh = async () => {
-    if ((doctorPharmacist === "doctor" && doctors.length > 0) || (doctorPharmacist === "pharmacist" && pharmacists.length > 0)) {
-      try {
+  // Optimized data loading function
+  const loadDoctorData = useCallback(async (doctorPharmacist) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
+      
+      const fetchedData = await fetchData(currentUser.uid, doctorPharmacist);
+      const displayData = fetchedData.docList;
+      
+      dispatch({ type: 'SET_PARTNER_NAMES', payload: fetchedData.partnerNames });
+      
+      if (displayData.length === 0) {
+        console.log(`No ${doctorPharmacist}s found in hierarchy. Check role relationships.`);
         if (doctorPharmacist === "doctor") {
-          await updateAvailabilityStatus();
-          const updatedDoctors = await enrichDoctorsWithCaseData(doctors);
-          setDoctors(updatedDoctors);
-        } else if (doctorPharmacist === "pharmacist") {
-          await updateAvailabilityStatus();
-          const updatedPharmacists = await enrichPharmacistsWithCaseData(pharmacists);
-          setPharmacists(updatedPharmacists);
+          dispatch({ type: 'SET_DOCTORS', payload: [] });
+        } else {
+          dispatch({ type: 'SET_PHARMACISTS', payload: [] });
+        }
+        return;
+      }
+      
+      if (doctorPharmacist === "doctor") {
+        const rtData = await fetchRealtimeData();
+        dispatch({ type: 'SET_REALTIME_DATA', payload: rtData });
+        
+        const enrichedWithShifts = enrichDoctorsWithShiftData(displayData, rtData);
+        const fullyEnrichedDoctors = await enrichDoctorsWithCaseData(enrichedWithShifts);
+        dispatch({ type: 'SET_DOCTORS', payload: fullyEnrichedDoctors });
+      } else if (doctorPharmacist === "pharmacist") {
+        const enrichedWithShifts = enrichPharmacistsWithShiftData(displayData);
+        const fullyEnrichedPharmacists = await enrichPharmacistsWithCaseData(enrichedWithShifts);
+        dispatch({ type: 'SET_PHARMACISTS', payload: fullyEnrichedPharmacists });
+      }
+
+    } catch (err) {
+      console.error(`Error loading ${doctorPharmacist} dashboard:`, err);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: `Failed to load ${doctorPharmacist} data. Please try again later.` 
+      });
+    }
+  }, [currentUser?.uid]);
+
+  // Optimized refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (currentData.length > 0) {
+      try {
+        dispatch({ type: 'SET_REFRESHING', payload: true });
+        
+        await updateAvailabilityStatus();
+        
+        if (state.doctorPharmacist === "doctor") {
+          const updatedDoctors = await enrichDoctorsWithCaseData(state.doctors);
+          dispatch({ type: 'SET_DOCTORS', payload: updatedDoctors });
+        } else {
+          const updatedPharmacists = await enrichPharmacistsWithCaseData(state.pharmacists);
+          dispatch({ type: 'SET_PHARMACISTS', payload: updatedPharmacists });
         }
       } catch (err) {
-        console.error(`Error refreshing ${doctorPharmacist} data:`, err);
+        console.error(`Error refreshing ${state.doctorPharmacist} data:`, err);
+        dispatch({ 
+          type: 'SET_ERROR', 
+          payload: `Failed to refresh ${state.doctorPharmacist} data.` 
+        });
+      } finally {
+        dispatch({ type: 'SET_REFRESHING', payload: false });
       }
     } else {
       // If no data loaded yet, try complete refresh
-      loadDoctorData(doctorPharmacist);
+      await loadDoctorData(state.doctorPharmacist);
     }
-  };
+  }, [currentData.length, state.doctorPharmacist, state.doctors, state.pharmacists, updateAvailabilityStatus, loadDoctorData]);
 
+  // Effect for initial data loading and doctor/pharmacist switching
   useEffect(() => {
-    if (doctorPharmacist === "doctor" && doctors.length === 0) {
-      loadDoctorData(doctorPharmacist);
-    } else if (doctorPharmacist === "pharmacist" && pharmacists.length === 0) {
-      loadDoctorData(doctorPharmacist);
+    if (currentData.length === 0 && state.viewMode !== "cases") {
+      loadDoctorData(state.doctorPharmacist);
     }
-    handleRefresh();
-  }, [doctorPharmacist]);
+  }, [state.doctorPharmacist, currentData.length, loadDoctorData, state.viewMode]);
 
+  // Effect for permission checking
   useEffect(() => {
     if (!currentUser || !currentUser.uid || !currentUser.role) {
-      setError("User information not available");
-      setIsLoading(false);
+      dispatch({ type: 'SET_ERROR', payload: "User information not available" });
       return;
     }
 
-    // Only allow specific roles to access this dashboard
-    if (!["zonalHead", "teamLeader", "drManager"].includes(currentUser.role)) {
-      setError("You don't have permission to access this dashboard");
-      setIsLoading(false);
+    if (!hasPermission) {
+      dispatch({ type: 'SET_ERROR', payload: "You don't have permission to access this dashboard" });
       return;
     }
 
-    // Set up real-time updates for doctor status
-    const doctorStatusListeners = [];
-    
-    // Cleanup function to unsubscribe from all listeners
-    return () => {
-      doctorStatusListeners.forEach(unsubscribe => unsubscribe());
-    };
-  }, [currentUser]);
+    // Clear any existing error if user has permission
+    if (state.error && hasPermission) {
+      dispatch({ type: 'CLEAR_ERROR' });
+    }
+  }, [currentUser, hasPermission, state.error]);
 
-  // Set up periodic refresh
+  // Effect for real-time listeners setup
   useEffect(() => {
-    const interval = setInterval(async () => {
-      if (currentUser && 
-          ["zonalHead", "teamLeader", "drManager"].includes(currentUser.role) && 
-          ((doctorPharmacist === "doctor" && doctors.length > 0) || 
-           (doctorPharmacist === "pharmacist" && pharmacists.length > 0)) &&
-          viewMode !== "cases") { // Don't auto-refresh when in case transfer view
+    if (!hasPermission || currentData.length === 0 || state.viewMode === "cases") return;
+
+    // Clean up existing listeners
+    realtimeListeners.forEach(unsubscribe => unsubscribe());
+    
+    // Set up new listeners for real-time status updates
+    const newListeners = currentData.map(item => {
+      const userRef = doc(firestore, "users", item.id);
+      return onSnapshot(userRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const userData = snapshot.data();
+          
+          // Update the specific item in state
+          const updatedData = currentData.map(dataItem => 
+            dataItem.id === item.id 
+              ? { 
+                  ...dataItem, 
+                  availabilityStatus: userData.availabilityStatus,
+                  availabilityHistory: userData.availabilityHistory 
+                }
+              : dataItem
+          );
+          
+          if (state.doctorPharmacist === "doctor") {
+            dispatch({ type: 'SET_DOCTORS', payload: updatedData });
+          } else {
+            dispatch({ type: 'SET_PHARMACISTS', payload: updatedData });
+          }
+        }
+      }, (error) => {
+        console.error("Real-time listener error:", error);
+      });
+    });
+
+    setRealtimeListeners(newListeners);
+
+    return () => {
+      newListeners.forEach(unsubscribe => unsubscribe());
+    };
+  }, [hasPermission, currentData.length, state.doctorPharmacist, state.viewMode]);
+
+  // Effect for periodic refresh (reduced frequency)
+  useEffect(() => {
+    if (!hasPermission || currentData.length === 0 || state.viewMode === "cases") {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (!state.isLoading && !state.isRefreshing) {
         handleRefresh();
       }
-    }, refreshInterval);
+    }, state.refreshInterval);
 
     return () => clearInterval(interval);
-  }, [doctors, pharmacists, currentUser, refreshInterval, doctorPharmacist, viewMode]);
+  }, [hasPermission, currentData.length, state.viewMode, state.refreshInterval, state.isLoading, state.isRefreshing, handleRefresh]);
 
+  // Cleanup effect
   useEffect(() => {
-    // Handle partner selection changes if needed
-  }, [selectedPartner]);
+    return () => {
+      realtimeListeners.forEach(unsubscribe => unsubscribe());
+    };
+  }, [realtimeListeners]);
 
-  // View a doctor's detailed information
-  const viewDoctorDetails = (doctor) => {
-    setSelectedDoctor(doctor);
-  };
+  // Optimized event handlers
+  const viewDoctorDetails = useCallback((doctor) => {
+    dispatch({ type: 'SET_SELECTED_DOCTOR', payload: doctor });
+  }, []);
 
-  const handlePartnerChange = (partner) => {
-    setSelectedPartner(partner);
-  };
+  const handlePartnerChange = useCallback((partner) => {
+    dispatch({ type: 'SET_SELECTED_PARTNER', payload: partner });
+  }, []);
 
-  // Handle view mode changes
-  const handleViewModeChange = (newViewMode) => {
-    setViewMode(newViewMode);
+  // Optimized view mode change with transition handling
+  const handleViewModeChange = useCallback((newViewMode) => {
+    if (newViewMode === state.viewMode) return;
     
-    // If switching to cases view, ensure we have the latest data
-    if (newViewMode === "cases" && canTransferCases) {
-      // The CaseTransferMain will handle its own data loading
-      console.log("Switching to case transfer view");
+    // Handle case transfer with transition state
+    if (newViewMode === "cases") {
+      setIsTransitioning(true);
+      
+      // Use requestAnimationFrame for smooth transition
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          dispatch({ type: 'SET_VIEW_MODE', payload: newViewMode });
+          setIsTransitioning(false);
+        }, 50); // Minimal delay to show loading state
+      });
+    } else {
+      // Immediate transition for other views
+      dispatch({ type: 'SET_VIEW_MODE', payload: newViewMode });
+      
+      // Load data if switching back from cases view
+      if (state.viewMode === "cases" && currentData.length === 0) {
+        loadDoctorData(state.doctorPharmacist);
+      }
     }
-  };
+  }, [state.viewMode, currentData.length, state.doctorPharmacist, loadDoctorData]);
 
-  if (isLoading) {
+  const handleDoctorPharmacistChange = useCallback((newType) => {
+    if (newType !== state.doctorPharmacist) {
+      dispatch({ type: 'SET_DOCTOR_PHARMACIST', payload: newType });
+    }
+  }, [state.doctorPharmacist]);
+
+  const handleRefreshIntervalChange = useCallback((newInterval) => {
+    if (newInterval !== state.refreshInterval) {
+      dispatch({ type: 'SET_REFRESH_INTERVAL', payload: newInterval });
+    }
+  }, [state.refreshInterval]);
+
+  const handleCloseDetails = useCallback(() => {
+    dispatch({ type: 'SET_SELECTED_DOCTOR', payload: null });
+  }, []);
+
+  // Preload case transfer component on hover (optional optimization)
+  const handleCaseTransferHover = useCallback(() => {
+    if (canTransferCases) {
+      import("./CaseTransfer");
+    }
+  }, [canTransferCases]);
+
+  // Loading state
+  if (state.isLoading && state.viewMode !== "cases") {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -212,14 +384,15 @@ const CombinedDashboard = ({ currentUser }) => {
     );
   }
 
-  if (error) {
+  // Error state
+  if (state.error) {
     return (
       <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
         <strong className="font-bold">Error: </strong>
-        <span className="block sm:inline">{error}</span>
+        <span className="block sm:inline">{state.error}</span>
         <button 
           onClick={() => window.location.reload()} 
-          className="mt-2 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+          className="mt-2 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
         >
           Reload Page
         </button>
@@ -231,20 +404,25 @@ const CombinedDashboard = ({ currentUser }) => {
     <div className="space-y-6">
       {/* Header with control buttons */}
       <DashboardHeader 
-        viewMode={viewMode}
+        viewMode={state.viewMode}
         setViewMode={handleViewModeChange}
-        doctorPharmacist={doctorPharmacist}
-        setDoctorPharmacist={setDoctorPharmacist}
-        refreshInterval={refreshInterval}
-        setRefreshInterval={setRefreshInterval}
+        doctorPharmacist={state.doctorPharmacist}
+        setDoctorPharmacist={handleDoctorPharmacistChange}
+        refreshInterval={state.refreshInterval}
+        setRefreshInterval={handleRefreshIntervalChange}
         onRefresh={handleRefresh}
         showCaseTransfer={canTransferCases}
+        isRefreshing={state.isRefreshing}
+        isTransitioning={isTransitioning}
+        onCaseTransferHover={handleCaseTransferHover}
       />
 
       {/* Show Case Transfer Component if selected and user has permission */}
-      {viewMode === "cases" && canTransferCases ? (
-        <CaseTransferMain currentUser={currentUser} />
-      ) : viewMode === "cases" && !canTransferCases ? (
+      {state.viewMode === "cases" && canTransferCases ? (
+        <Suspense fallback={<CaseTransferLoader />}>
+          <CaseTransferMain currentUser={currentUser} />
+        </Suspense>
+      ) : state.viewMode === "cases" && !canTransferCases ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <div className="text-yellow-800">
             <h3 className="text-lg font-medium mb-2">Access Restricted</h3>
@@ -258,40 +436,43 @@ const CombinedDashboard = ({ currentUser }) => {
         <>
           {/* Summary Cards */}
           <DashboardSummary 
-            doctorPharmacist={doctorPharmacist} 
-            doctors={doctorPharmacist === "doctor" ? doctors : pharmacists} 
+            doctorPharmacist={state.doctorPharmacist} 
+            doctors={currentData}
+            isRefreshing={state.isRefreshing}
           />
           
           {/* Main Content */}
-          {(doctorPharmacist === "doctor" && doctors.length === 0) || 
-           (doctorPharmacist === "pharmacist" && pharmacists.length === 0) ? (
+          {currentData.length === 0 ? (
             <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-lg text-center">
               <p className="text-yellow-700 font-medium mb-2">
-                No {doctorPharmacist}s found in your hierarchy
+                No {state.doctorPharmacist}s found in your hierarchy
               </p>
               <p className="text-yellow-600 text-sm mb-3">
-                This might happen if there are no {doctorPharmacist}s reporting to you or assigned to clinics in your hierarchy.
+                This might happen if there are no {state.doctorPharmacist}s reporting to you or assigned to clinics in your hierarchy.
               </p>
               <button 
                 onClick={handleRefresh}
-                className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+                disabled={state.isRefreshing}
+                className="bg-blue-500 hover:bg-blue-700 disabled:bg-blue-300 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
               >
-                Refresh Now
+                {state.isRefreshing ? 'Refreshing...' : 'Refresh Now'}
               </button>
             </div>
           ) : (
             /* Table or Card View based on mode */
-            viewMode === "table" ? (
+            state.viewMode === "table" ? (
               <DoctorTable
-                doctorPharmacist={doctorPharmacist} 
-                doctors={doctorPharmacist === "doctor" ? doctors : pharmacists} 
+                doctorPharmacist={state.doctorPharmacist} 
+                doctors={currentData} 
                 onViewDoctorDetails={viewDoctorDetails}
-                partnerNames={partnerNames}
+                partnerNames={state.partnerNames}
+                isRefreshing={state.isRefreshing}
               />
-            ) : viewMode === "cards" ? (
+            ) : state.viewMode === "cards" ? (
               <DoctorCardsGrid 
-                doctors={doctorPharmacist === "doctor" ? doctors : pharmacists} 
-                onViewDoctorDetails={viewDoctorDetails} 
+                doctors={currentData} 
+                onViewDoctorDetails={viewDoctorDetails}
+                isRefreshing={state.isRefreshing}
               />
             ) : null
           )}
@@ -299,24 +480,25 @@ const CombinedDashboard = ({ currentUser }) => {
       )}
       
       {/* Doctor Detail Modal */}
-      {selectedDoctor && (
+      {state.selectedDoctor && (
         <DoctorDetailView 
-          doctorPharmacist={doctorPharmacist} 
-          doctor={selectedDoctor} 
-          onClose={() => setSelectedDoctor(null)} 
+          doctorPharmacist={state.doctorPharmacist} 
+          doctor={state.selectedDoctor} 
+          onClose={handleCloseDetails} 
         />
       )}
 
       {/* Debug Information (remove in production) */}
       {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-100 p-2 rounded text-xs text-gray-600">
-          <strong>Debug:</strong> Role: {currentUser.role} | View: {viewMode} | 
-          Type: {doctorPharmacist} | Can Transfer: {canTransferCases ? 'Yes' : 'No'} | 
-          Data Count: {doctorPharmacist === "doctor" ? doctors.length : pharmacists.length}
+          <strong>Debug:</strong> Role: {currentUser?.role} | View: {state.viewMode} | 
+          Type: {state.doctorPharmacist} | Can Transfer: {canTransferCases ? 'Yes' : 'No'} | 
+          Data Count: {currentData.length} | Refreshing: {state.isRefreshing ? 'Yes' : 'No'} |
+          Transitioning: {isTransitioning ? 'Yes' : 'No'}
         </div>
       )}
     </div>
   );
 };
 
-export default CombinedDashboard;
+export default React.memo(CombinedDashboard);

@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
+import { Loader2 } from "lucide-react";
 
 const DashboardHeader = ({ 
   viewMode, 
@@ -8,56 +9,136 @@ const DashboardHeader = ({
   refreshInterval, 
   setRefreshInterval, 
   onRefresh,
-  showCaseTransfer = false
+  showCaseTransfer = false,
+  isRefreshing = false
 }) => {
-  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1)
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  
+  const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
+  
+  // Optimized view mode handler with loading state
+  const handleViewModeChange = useCallback(async (newViewMode) => {
+    if (newViewMode === viewMode) return;
+    
+    // Show loading state for case transfer
+    if (newViewMode === "cases") {
+      setIsTransitioning(true);
+      
+      // Use requestAnimationFrame to ensure UI updates
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          setViewMode(newViewMode);
+          setIsTransitioning(false);
+        }, 50); // Minimal delay to show loading state
+      });
+    } else {
+      // Immediate transition for other views
+      setViewMode(newViewMode);
+    }
+  }, [viewMode, setViewMode]);
+
+  // Optimized doctor/pharmacist toggle
+  const handleDoctorPharmacistChange = useCallback((type) => {
+    if (type !== doctorPharmacist) {
+      setDoctorPharmacist(type);
+    }
+  }, [doctorPharmacist, setDoctorPharmacist]);
+
+  // Optimized refresh interval change
+  const handleRefreshIntervalChange = useCallback((e) => {
+    const newInterval = Number(e.target.value);
+    if (newInterval !== refreshInterval) {
+      setRefreshInterval(newInterval);
+    }
+  }, [refreshInterval, setRefreshInterval]);
   
   return (
     <div className="flex justify-between items-center flex-wrap gap-4">
-      <h2 className="text-2xl font-bold text-gray-800">
-        {viewMode === "cases" ? "Case Transfer Management" : `${role} Dashboard`}
-      </h2>
+      <div className="flex items-center">
+        <h2 className="text-2xl font-bold text-gray-800">
+          {viewMode === "cases" ? "Case Transfer Management" : `${role} Dashboard`}
+        </h2>
+        {/* Show loading indicator during transition */}
+        {isTransitioning && (
+          <div className="ml-3 flex items-center text-blue-600">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm">Loading...</span>
+          </div>
+        )}
+      </div>
       
       <div className="flex flex-wrap gap-2 items-center">
         {/* Doctor/Pharmacist Toggle - only show when not in cases view */}
         {viewMode !== "cases" && (
           <div className="flex border rounded overflow-hidden">
             <button 
-              onClick={() => setDoctorPharmacist("doctor")} 
-              className={`px-3 py-1 text-sm ${doctorPharmacist === "doctor" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+              onClick={() => handleDoctorPharmacistChange("doctor")}
+              disabled={isRefreshing}
+              className={`px-3 py-1 text-sm transition-colors duration-200 ${
+                doctorPharmacist === "doctor" 
+                  ? "bg-blue-500 text-white" 
+                  : "bg-gray-100 hover:bg-gray-200"
+              } ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               Doctors
             </button>
             <button 
-              onClick={() => setDoctorPharmacist("pharmacist")} 
-              className={`px-3 py-1 text-sm ${doctorPharmacist === "pharmacist" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+              onClick={() => handleDoctorPharmacistChange("pharmacist")}
+              disabled={isRefreshing}
+              className={`px-3 py-1 text-sm transition-colors duration-200 ${
+                doctorPharmacist === "pharmacist" 
+                  ? "bg-blue-500 text-white" 
+                  : "bg-gray-100 hover:bg-gray-200"
+              } ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               Pharmacists
             </button>
           </div>
         )}
 
-        {/* View Mode Toggle */}
+        {/* View Mode Toggle with optimized transitions */}
         <div className="flex border rounded overflow-hidden">
           <button 
-            onClick={() => setViewMode("table")} 
-            className={`px-3 py-1 text-sm ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+            onClick={() => handleViewModeChange("table")}
+            disabled={isTransitioning}
+            className={`px-3 py-1 text-sm transition-colors duration-200 ${
+              viewMode === "table" 
+                ? "bg-blue-500 text-white" 
+                : "bg-gray-100 hover:bg-gray-200"
+            } ${isTransitioning ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             Table View
           </button>
           <button 
-            onClick={() => setViewMode("cards")} 
-            className={`px-3 py-1 text-sm ${viewMode === "cards" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+            onClick={() => handleViewModeChange("cards")}
+            disabled={isTransitioning}
+            className={`px-3 py-1 text-sm transition-colors duration-200 ${
+              viewMode === "cards" 
+                ? "bg-blue-500 text-white" 
+                : "bg-gray-100 hover:bg-gray-200"
+            } ${isTransitioning ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             Card View
           </button>
           {/* Case Transfer option - only show for team leaders */}
           {showCaseTransfer && (
             <button 
-              onClick={() => setViewMode("cases")} 
-              className={`px-3 py-1 text-sm ${viewMode === "cases" ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+              onClick={() => handleViewModeChange("cases")}
+              disabled={isTransitioning}
+              className={`px-3 py-1 text-sm transition-colors duration-200 relative ${
+                viewMode === "cases" 
+                  ? "bg-blue-500 text-white" 
+                  : "bg-gray-100 hover:bg-gray-200"
+              } ${isTransitioning ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              Transfer Cases
+              {isTransitioning && viewMode !== "cases" ? (
+                <div className="flex items-center">
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  Loading...
+                </div>
+              ) : (
+                "Transfer Cases"
+              )}
             </button>
           )}
         </div>
@@ -68,9 +149,10 @@ const DashboardHeader = ({
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-500">Auto-refresh:</span>
               <select 
-                className="border rounded p-1 text-sm"
+                className="border rounded p-1 text-sm transition-colors duration-200 hover:border-blue-300 focus:border-blue-500 focus:outline-none"
                 value={refreshInterval}
-                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                onChange={handleRefreshIntervalChange}
+                disabled={isRefreshing}
               >
                 <option value={15000}>15 seconds</option>
                 <option value={30000}>30 seconds</option>
@@ -81,9 +163,19 @@ const DashboardHeader = ({
             
             <button 
               onClick={onRefresh}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm"
+              disabled={isRefreshing}
+              className={`bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm transition-colors duration-200 flex items-center ${
+                isRefreshing ? "opacity-50 cursor-not-allowed" : ""
+              }`}
             >
-              Refresh Now
+              {isRefreshing ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  Refreshing...
+                </>
+              ) : (
+                "Refresh Now"
+              )}
             </button>
           </>
         )}
@@ -92,4 +184,4 @@ const DashboardHeader = ({
   );
 };
 
-export default DashboardHeader;
+export default React.memo(DashboardHeader);

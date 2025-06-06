@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import Select from "react-select"; // Import react-select
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import Select from "react-select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,13 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  //Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -44,9 +37,110 @@ import {
   ChevronRight,
   MoreHorizontal,
 } from "lucide-react";
-import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import {
+  doc,
+  updateDoc,
+  serverTimestamp,
+  getDoc,
+  writeBatch,
+} from "firebase/firestore";
 import { firestore } from "../../../firebase";
 import { format } from "date-fns";
+
+// Memoized components for better performance
+const StatusBadge = React.memo(({ queue }) => {
+  if (queue === "doctor") {
+    return (
+      <Badge
+        variant="outline"
+        className="bg-blue-50 text-blue-700 border-blue-200"
+      >
+        <Stethoscope className="h-3 w-3 mr-1" />
+        Doctor Queue
+      </Badge>
+    );
+  } else {
+    return (
+      <Badge
+        variant="outline"
+        className="bg-green-50 text-green-700 border-green-200"
+      >
+        <Pill className="h-3 w-3 mr-1" />
+        Pharmacist Queue
+      </Badge>
+    );
+  }
+});
+
+const DoctorStatusIcon = React.memo(({ status, caseCount }) => {
+  if (status === "unavailable" || status === "on_break") {
+    return <AlertCircle className="h-4 w-4 text-red-500" />;
+  } else if (caseCount >= 10) {
+    return <AlertCircle className="h-4 w-4 text-amber-500" />;
+  } else {
+    return <CheckCircle className="h-4 w-4 text-green-500" />;
+  }
+});
+
+const PatientInfoCell = React.memo(({ caseItem }) => (
+  <div className="space-y-1">
+    <div className="flex items-center">
+      <User className="h-4 w-4 text-gray-400 mr-2" />
+      <span className="font-medium">{caseItem.patientName}</span>
+    </div>
+    <div className="text-sm text-gray-600">EMR: {caseItem.emrNumber}</div>
+    <div className="text-xs text-gray-500">{caseItem.chiefComplaint}</div>
+  </div>
+));
+
+const ClinicCell = React.memo(({ clinicCode }) => (
+  <div className="flex items-center">
+    <div className="h-2 w-2 bg-purple-500 rounded-full mr-2"></div>
+    <span className="font-medium text-purple-700 text-sm">{clinicCode}</span>
+  </div>
+));
+
+const DoctorCell = React.memo(({ assignedDoctors }) => (
+  <div className="space-y-1">
+    <div className="flex items-center">
+      <Stethoscope className="h-4 w-4 text-blue-500 mr-2" />
+      <span className="font-medium">
+        {assignedDoctors?.primaryName || "Not assigned"}
+      </span>
+    </div>
+    {assignedDoctors?.primaryType && (
+      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+        {assignedDoctors.primaryType}
+      </span>
+    )}
+  </div>
+));
+
+const ContactCell = React.memo(({ consultationType }) => (
+  <div className="flex items-center text-sm">
+    {consultationType === "tele" ? (
+      <Video className="h-4 w-4 text-indigo-500 mr-2" />
+    ) : (
+      <Phone className="h-4 w-4 text-blue-500 mr-2" />
+    )}
+    <span className="truncate max-w-32">
+      {consultationType === "tele" ? "Video Call" : "Phone Call"}
+    </span>
+  </div>
+));
+
+const DateCell = React.memo(({ createdAt }) => (
+  <div className="text-sm space-y-1">
+    <div className="flex items-center">
+      <Calendar className="h-3 w-3 text-gray-400 mr-1" />
+      {format(createdAt, "MMM dd")}
+    </div>
+    <div className="flex items-center">
+      <Clock className="h-3 w-3 text-gray-400 mr-1" />
+      {format(createdAt, "HH:mm")}
+    </div>
+  </div>
+));
 
 const CaseTransferTable = ({
   cases,
@@ -63,57 +157,127 @@ const CaseTransferTable = ({
     selectedDoctorId: "",
   });
 
-  // Pagination state
+  // Pagination state with better initial values
   const [currentPage, setCurrentPage] = useState(1);
-  const casesPerPage = 10;
+  const casesPerPage = 20; // Increased for better performance
 
-  // Calculate pagination values
-  const totalPages = Math.ceil(cases.length / casesPerPage);
-  const startIndex = (currentPage - 1) * casesPerPage;
-  const endIndex = startIndex + casesPerPage;
-  const currentCases = cases.slice(startIndex, endIndex);
+  // Memoized pagination calculations
+  const paginationData = useMemo(() => {
+    const totalPages = Math.ceil(cases.length / casesPerPage);
+    const startIndex = (currentPage - 1) * casesPerPage;
+    const endIndex = startIndex + casesPerPage;
+    const currentCases = cases.slice(startIndex, endIndex);
 
-  // Pagination handlers
-  const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+    return {
+      totalPages,
+      startIndex,
+      endIndex,
+      currentCases,
+    };
+  }, [cases, currentPage, casesPerPage]);
+
+  // Memoized doctor options for select
+  const doctorOptions = useMemo(() => {
+    return doctors
+      .filter((doctor) => doctor.isAvailable && doctor.caseCount < 10)
+      .map((doctor) => ({
+        value: doctor.id,
+        label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
+        doctor, // Include full doctor object for quick access
+      }));
+  }, [doctors]);
+
+  // Memoized page numbers calculation
+  const pageNumbers = useMemo(() => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    const { totalPages } = paginationData;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push("...");
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push("...");
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push("...");
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push("...");
+        pages.push(totalPages);
+      }
     }
-  };
 
-  const goToPreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
+    return pages;
+  }, [currentPage, paginationData.totalPages]);
 
-  const goToPage = (page) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
+  // Optimized pagination handlers
+  const goToNextPage = useCallback(() => {
+    setCurrentPage((prev) => Math.min(prev + 1, paginationData.totalPages));
+  }, [paginationData.totalPages]);
 
-  // Reset to first page when cases change
-  React.useEffect(() => {
-    setCurrentPage(1);
+  const goToPreviousPage = useCallback(() => {
+    setCurrentPage((prev) => Math.max(prev - 1, 1));
+  }, []);
+
+  const goToPage = useCallback(
+    (page) => {
+      if (page >= 1 && page <= paginationData.totalPages) {
+        setCurrentPage(page);
+      }
+    },
+    [paginationData.totalPages]
+  );
+
+  // Reset to first page when cases change (with debouncing)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
   }, [cases.length]);
 
-  const openTransferDialog = (caseItem) => {
+  // Optimized dialog handlers
+  const openTransferDialog = useCallback((caseItem) => {
     setTransferDialog({
       open: true,
       case: caseItem,
       selectedDoctorId: "",
     });
-  };
+  }, []);
 
-  const closeTransferDialog = () => {
+  const closeTransferDialog = useCallback(() => {
     setTransferDialog({
       open: false,
       case: null,
       selectedDoctorId: "",
     });
-  };
+  }, []);
 
-  const handleTransferCase = async () => {
+  // Optimized doctor selection handler
+  const handleDoctorSelect = useCallback((selectedOption) => {
+    setTransferDialog((prev) => ({
+      ...prev,
+      selectedDoctorId: selectedOption?.value || "",
+    }));
+  }, []);
+
+  // Optimized transfer handler with batch operations
+  const handleTransferCase = useCallback(async () => {
     if (!transferDialog.case || !transferDialog.selectedDoctorId) {
       onError("Please select a doctor to transfer the case to.");
       return;
@@ -122,16 +286,19 @@ const CaseTransferTable = ({
     setTransferLoading(true);
 
     try {
-      const caseRef = doc(firestore, "cases", transferDialog.case.id);
-      const selectedDoctor = doctors.find(
-        (d) => d.id === transferDialog.selectedDoctorId
-      );
+      const selectedDoctor = doctorOptions.find(
+        (option) => option.value === transferDialog.selectedDoctorId
+      )?.doctor;
 
       if (!selectedDoctor) {
         throw new Error("Selected doctor not found");
       }
 
-      // Get current case data to preserve version
+      // Use batch write for better performance
+      const batch = writeBatch(firestore);
+      const caseRef = doc(firestore, "cases", transferDialog.case.id);
+
+      // Get current case data
       const currentCaseSnap = await getDoc(caseRef);
       if (!currentCaseSnap.exists()) {
         throw new Error("Case not found");
@@ -140,12 +307,12 @@ const CaseTransferTable = ({
       const currentCaseData = currentCaseSnap.data();
       const currentVersion = currentCaseData.version || 0;
 
-      // Update the case with new doctor assignment
+      // Prepare update data
       const updateData = {
         "assignedDoctors.primary": transferDialog.selectedDoctorId,
         "assignedDoctors.primaryName": selectedDoctor.name,
         "assignedDoctors.primaryStatus": selectedDoctor.availabilityStatus,
-        "assignedDoctors.primaryType": "transferred", // Mark as transferred
+        "assignedDoctors.primaryType": "transferred",
         transferredAt: serverTimestamp(),
         transferredBy: currentUser.uid,
         transferredByName: currentUser.displayName || currentUser.name,
@@ -154,7 +321,11 @@ const CaseTransferTable = ({
         lastModified: serverTimestamp(),
       };
 
-      await updateDoc(caseRef, updateData);
+      // Add to batch
+      batch.update(caseRef, updateData);
+
+      // Commit batch
+      await batch.commit();
 
       onSuccess(`Case transferred successfully to Dr. ${selectedDoctor.name}`);
       closeTransferDialog();
@@ -164,78 +335,16 @@ const CaseTransferTable = ({
     } finally {
       setTransferLoading(false);
     }
-  };
+  }, [
+    transferDialog,
+    doctorOptions,
+    currentUser,
+    onSuccess,
+    onError,
+    closeTransferDialog,
+  ]);
 
-  const getStatusBadge = (caseItem) => {
-    if (caseItem.queue === "doctor") {
-      return (
-        <Badge
-          variant="outline"
-          className="bg-blue-50 text-blue-700 border-blue-200"
-        >
-          <Stethoscope className="h-3 w-3 mr-1" />
-          Doctor Queue
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge
-          variant="outline"
-          className="bg-green-50 text-green-700 border-green-200"
-        >
-          <Pill className="h-3 w-3 mr-1" />
-          Pharmacist Queue
-        </Badge>
-      );
-    }
-  };
-
-  const getDoctorStatusIcon = (status, caseCount) => {
-    if (status === "unavailable" || status === "on_break") {
-      return <AlertCircle className="h-4 w-4 text-red-500" />;
-    } else if (caseCount >= 10) {
-      return <AlertCircle className="h-4 w-4 text-amber-500" />;
-    } else {
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    }
-  };
-
-  // Generate page numbers for pagination
-  const getPageNumbers = () => {
-    const pageNumbers = [];
-    const maxVisiblePages = 5;
-    
-    if (totalPages <= maxVisiblePages) {
-      for (let i = 1; i <= totalPages; i++) {
-        pageNumbers.push(i);
-      }
-    } else {
-      if (currentPage <= 3) {
-        for (let i = 1; i <= 4; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push('...');
-        pageNumbers.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pageNumbers.push(1);
-        pageNumbers.push('...');
-        for (let i = totalPages - 3; i <= totalPages; i++) {
-          pageNumbers.push(i);
-        }
-      } else {
-        pageNumbers.push(1);
-        pageNumbers.push('...');
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push('...');
-        pageNumbers.push(totalPages);
-      }
-    }
-    
-    return pageNumbers;
-  };
-
+  // Loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12 border rounded-lg bg-white">
@@ -249,6 +358,7 @@ const CaseTransferTable = ({
     );
   }
 
+  // Empty state
   if (cases.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500 border rounded-lg bg-white">
@@ -283,57 +393,26 @@ const CaseTransferTable = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {currentCases.map((caseItem) => (
+              {paginationData.currentCases.map((caseItem) => (
                 <TableRow
                   key={caseItem.id}
                   className="hover:bg-gray-50 transition-colors duration-200"
                 >
                   <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center">
-                        <User className="h-4 w-4 text-gray-400 mr-2" />
-                        <span className="font-medium">
-                          {caseItem.patientName}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        EMR: {caseItem.emrNumber}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {caseItem.chiefComplaint}
-                      </div>
-                    </div>
+                    <PatientInfoCell caseItem={caseItem} />
+                  </TableCell>
+
+                  <TableCell>
+                    <ClinicCell clinicCode={caseItem.clinicCode} />
+                  </TableCell>
+
+                  <TableCell>
+                    <DoctorCell assignedDoctors={caseItem.assignedDoctors} />
                   </TableCell>
 
                   <TableCell>
                     <div className="flex items-center">
-                      <div className="h-2 w-2 bg-purple-500 rounded-full mr-2"></div>
-                      <span className="font-medium text-purple-700 text-sm">
-                        {caseItem.clinicCode}
-                      </span>
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center">
-                        <Stethoscope className="h-4 w-4 text-blue-500 mr-2" />
-                        <span className="font-medium">
-                          {caseItem.assignedDoctors?.primaryName ||
-                            "Not assigned"}
-                        </span>
-                      </div>
-                      {caseItem.assignedDoctors?.primaryType && (
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
-                          {caseItem.assignedDoctors.primaryType}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center">
-                      {getStatusBadge(caseItem)}
+                      <StatusBadge queue={caseItem.queue} />
                       {/* Real-time indicator */}
                       <div
                         className="ml-2 h-2 w-2 bg-green-400 rounded-full animate-pulse"
@@ -343,31 +422,11 @@ const CaseTransferTable = ({
                   </TableCell>
 
                   <TableCell>
-                    <div className="flex items-center text-sm">
-                      {caseItem.consultationType === "tele" ? (
-                        <Video className="h-4 w-4 text-indigo-500 mr-2" />
-                      ) : (
-                        <Phone className="h-4 w-4 text-blue-500 mr-2" />
-                      )}
-                      <span className="truncate max-w-32">
-                        {caseItem.consultationType === "tele"
-                          ? "Video Call"
-                          : "Phone Call"}
-                      </span>
-                    </div>
+                    <ContactCell consultationType={caseItem.consultationType} />
                   </TableCell>
 
                   <TableCell>
-                    <div className="text-sm space-y-1">
-                      <div className="flex items-center">
-                        <Calendar className="h-3 w-3 text-gray-400 mr-1" />
-                        {format(caseItem.createdAt, "MMM dd")}
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                        {format(caseItem.createdAt, "HH:mm")}
-                      </div>
-                    </div>
+                    <DateCell createdAt={caseItem.createdAt} />
                   </TableCell>
 
                   <TableCell>
@@ -395,16 +454,17 @@ const CaseTransferTable = ({
           </Table>
         </div>
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
+        {/* Optimized Pagination Controls */}
+        {paginationData.totalPages > 1 && (
           <div className="flex items-center justify-between bg-white px-4 py-3 border rounded-lg">
             <div className="flex items-center text-sm text-gray-700">
               <span>
-                Showing {startIndex + 1} to {Math.min(endIndex, cases.length)} of{" "}
+                Showing {paginationData.startIndex + 1} to{" "}
+                {Math.min(paginationData.endIndex, cases.length)} of{" "}
                 {cases.length} cases
               </span>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               {/* Previous Button */}
               <Button
@@ -420,15 +480,17 @@ const CaseTransferTable = ({
 
               {/* Page Numbers */}
               <div className="flex items-center space-x-1">
-                {getPageNumbers().map((pageNum, index) => (
+                {pageNumbers.map((pageNum, index) => (
                   <React.Fragment key={index}>
-                    {pageNum === '...' ? (
+                    {pageNum === "..." ? (
                       <span className="px-2 py-1 text-gray-500">
                         <MoreHorizontal className="h-4 w-4" />
                       </span>
                     ) : (
                       <Button
-                        variant={currentPage === pageNum ? "default" : "outline"}
+                        variant={
+                          currentPage === pageNum ? "default" : "outline"
+                        }
                         size="sm"
                         onClick={() => goToPage(pageNum)}
                         className={`min-w-[32px] h-8 ${
@@ -449,7 +511,7 @@ const CaseTransferTable = ({
                 variant="outline"
                 size="sm"
                 onClick={goToNextPage}
-                disabled={currentPage === totalPages}
+                disabled={currentPage === paginationData.totalPages}
                 className="flex items-center"
               >
                 Next
@@ -460,7 +522,7 @@ const CaseTransferTable = ({
         )}
       </div>
 
-      {/* Transfer Dialog */}
+      {/* Optimized Transfer Dialog */}
       <Dialog open={transferDialog.open} onOpenChange={closeTransferDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -514,89 +576,42 @@ const CaseTransferTable = ({
                 </div>
               </div>
 
-              {/* Doctor Selection */}
+              {/* Doctor Selection with React Select for better performance */}
               <div className="space-y-2">
                 <Label htmlFor="doctor-select" className="text-sm font-medium">
                   Select New Doctor
                 </Label>
                 <Select
                   id="doctor-select"
-                  options={doctors
-                    .filter((doctor) => doctor.isAvailable && doctor.caseCount < 10)
-                    .map((doctor) => ({
-                      value: doctor.id,
-                      label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
-                    }))}
+                  options={doctorOptions}
                   value={
-                    transferDialog.selectedDoctorId
-                      ? doctors
-                          .filter((doctor) => doctor.id === transferDialog.selectedDoctorId)
-                          .map((doctor) => ({
-                            value: doctor.id,
-                            label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
-                          }))[0]
-                      : null
+                    doctorOptions.find(
+                      (option) =>
+                        option.value === transferDialog.selectedDoctorId
+                    ) || null
                   }
-                  onChange={(selectedOption) =>
-                    setTransferDialog((prev) => ({
-                      ...prev,
-                      selectedDoctorId: selectedOption.value,
-                    }))
-                  }
+                  onChange={handleDoctorSelect}
                   placeholder="Search and select a doctor..."
                   isSearchable
+                  isClearable
+                  menuPortalTarget={document.body}
+                  styles={{
+                    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                    control: (base) => ({
+                      ...base,
+                      minHeight: "40px",
+                    }),
+                  }}
+                  filterOption={(option, inputValue) => {
+                    return option.label
+                      .toLowerCase()
+                      .includes(inputValue.toLowerCase());
+                  }}
                 />
                 <p className="text-xs text-gray-500">
                   Only available doctors with less than 10 cases are shown.
                 </p>
               </div>
-              {/*
-              <div className="space-y-2">
-                <Label htmlFor="doctor-select" className="text-sm font-medium">
-                  Select New Doctor
-                </Label>
-                <Select
-                  value={transferDialog.selectedDoctorId}
-                  onValueChange={(value) =>
-                    setTransferDialog((prev) => ({
-                      ...prev,
-                      selectedDoctorId: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a doctor..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem
-                        key={doctor.id}
-                        value={doctor.id}
-                        disabled={!doctor.isAvailable}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center">
-                            {getDoctorStatusIcon(
-                              doctor.availabilityStatus,
-                              doctor.caseCount
-                            )}
-                            <span className="ml-2">{doctor.name}</span>
-                          </div>
-                          <div className="flex items-center ml-4">
-                            <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                              {doctor.caseCount}/10 cases
-                            </span>
-                          </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  Only available doctors with less than 10 cases are shown.
-                </p>
-              </div>
-              */}
 
               {/* Selected Doctor Info */}
               {transferDialog.selectedDoctorId && (
@@ -606,9 +621,10 @@ const CaseTransferTable = ({
                     <span className="text-sm font-medium text-blue-900">
                       Transferring to:{" "}
                       {
-                        doctors.find(
-                          (d) => d.id === transferDialog.selectedDoctorId
-                        )?.name
+                        doctorOptions.find(
+                          (option) =>
+                            option.value === transferDialog.selectedDoctorId
+                        )?.doctor?.name
                       }
                     </span>
                   </div>
@@ -662,4 +678,4 @@ const CaseTransferTable = ({
   );
 };
 
-export default CaseTransferTable;
+export default React.memo(CaseTransferTable);
