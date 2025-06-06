@@ -10,6 +10,8 @@ import {
   User,
   Clipboard,
   Tag,
+  ArrowRightLeft,
+  History,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -96,6 +98,12 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
       console.error("Error formatting time:", error, dateObj);
       return "Error";
     }
+  };
+
+  // Format date and time together
+  const formatDateTime = (dateObj) => {
+    if (!dateObj) return "N/A";
+    return `${formatDate(dateObj)} ${formatTime(dateObj)}`;
   };
 
   // Calculate time difference in readable format
@@ -204,6 +212,10 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
   // Determine if the case is marked as incomplete
   const isIncompleteCase = caseData.isIncomplete === true;
 
+  // Check if case has transfer history
+  const hasTransferHistory = caseData.transferHistory && caseData.transferHistory.length > 0;
+  const transferCount = caseData.transferCount || 0;
+
   return (
     <div className="max-w-5xl max-h-[80vh] flex flex-col">
       {/* Adding DialogTitle for accessibility */}
@@ -216,6 +228,12 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
           <h2 className="text-lg font-medium">
             Case {caseData.emrNumber || caseData.id?.substring(0, 8)}
           </h2>
+          {hasTransferHistory && (
+            <Badge variant="outline" className="ml-3 bg-orange-700 text-white border-orange-600">
+              <ArrowRightLeft className="h-3 w-3 mr-1" />
+              {transferCount} Transfer{transferCount !== 1 ? 's' : ''}
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -283,6 +301,15 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
               <Clipboard className="h-4 w-4 mr-2" />
               Notes
             </TabsTrigger>
+            {hasTransferHistory && (
+              <TabsTrigger
+                value="transfers"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-blue-500 rounded-none"
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                Transfer History
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -294,7 +321,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                 <label className="text-sm font-medium text-gray-500">
                   EMR Number(s)
                 </label>
-                <p className="font-medium">{caseData.emrNumber || (caseData.emrNumbers.join(", ") || "N/A")}</p>
+                <p className="font-medium">{caseData.emrNumber || (caseData.emrNumbers?.join(", ") || "N/A")}</p>
               </div>
 
               <div>
@@ -315,14 +342,14 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                 <label className="text-sm font-medium text-gray-500">
                   Patient Name(s)
                 </label>
-                <p>{caseData.patientName || (caseData.patientNames.join(", ") || "N/A")}</p>
+                <p>{caseData.patientName || (caseData.patientNames?.join(", ") || "N/A")}</p>
               </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-500">
                   Chief Complaint(s)
                 </label>
-                <p>{caseData.chiefComplaint || (caseData.chiefComplaints.join(", ") || "N/A")}</p>
+                <p>{caseData.chiefComplaint || (caseData.chiefComplaints?.join(", ") || "N/A")}</p>
               </div>
             </div>
 
@@ -331,7 +358,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                 <label className="text-sm font-medium text-gray-500">
                   Doctor
                 </label>
-                <div className="flex items-center">
+                <div className="flex items-center flex-wrap gap-2">
                   <span className="mr-2">
                     {caseData.doctorName ||
                       caseData.assignedDoctors?.primaryName ||
@@ -358,6 +385,15 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
                       className="bg-amber-100 text-amber-800 border-amber-200"
                     >
                       Pending
+                    </Badge>
+                  )}
+                  {hasTransferHistory && (
+                    <Badge
+                      variant="outline"
+                      className="bg-orange-100 text-orange-800 border-orange-200"
+                    >
+                      <ArrowRightLeft className="h-3 w-3 mr-1" />
+                      Transferred
                     </Badge>
                   )}
                 </div>
@@ -687,6 +723,122 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
             )}
           </div>
         </TabsContent>
+
+        {/* Transfer History Tab */}
+        {hasTransferHistory && (
+          <TabsContent value="transfers" className="flex-1 overflow-auto p-0 m-0">
+            <div className="p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center">
+                  <History className="h-5 w-5 text-orange-600 mr-2" />
+                  <h3 className="text-lg font-medium text-gray-900">Transfer History</h3>
+                </div>
+                <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200">
+                  {transferCount} Transfer{transferCount !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+
+              <div className="space-y-4">
+                {caseData.transferHistory
+                  .sort((a, b) => {
+                    // Sort by transfer date, most recent first
+                    const dateA = a.transferredAt instanceof Date ? a.transferredAt : new Date(a.transferredAt);
+                    const dateB = b.transferredAt instanceof Date ? b.transferredAt : new Date(b.transferredAt);
+                    return dateB - dateA;
+                  })
+                  .map((transfer, index) => (
+                    <div
+                      key={index}
+                      className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center">
+                          <ArrowRightLeft className="h-4 w-4 text-orange-600 mr-2" />
+                          <span className="font-medium text-gray-900">
+                            Transfer #{caseData.transferHistory.length - index}
+                          </span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {formatDateTime(transfer.transferredAt)}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <label className="text-gray-500 font-medium">From Doctor:</label>
+                          <p className="text-gray-900">
+                            {transfer.transferredFromName || "Unassigned"}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-gray-500 font-medium">To Doctor:</label>
+                          <p className="text-gray-900">{transfer.transferredToName}</p>
+                        </div>
+                        <div>
+                          <label className="text-gray-500 font-medium">Transferred By:</label>
+                          <p className="text-gray-900">{transfer.transferredByName}</p>
+                        </div>
+                        <div>
+                          <label className="text-gray-500 font-medium">Reason:</label>
+                          <p className="text-gray-900">{transfer.transferReason}</p>
+                        </div>
+                      </div>
+
+                      {transfer.version && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Case Version: {transfer.version}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+
+              {/* Legacy Transfer Info */}
+              {(caseData.transferredFrom || caseData.transferredAt) && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center mb-2">
+                    <AlertCircle className="h-4 w-4 text-blue-600 mr-2" />
+                    <span className="font-medium text-blue-900">Legacy Transfer Information</span>
+                  </div>
+                  <div className="text-sm text-blue-800 space-y-1">
+                    {caseData.transferredFromName && (
+                      <p>Previous Doctor: {caseData.transferredFromName}</p>
+                    )}
+                    {caseData.transferredAt && (
+                      <p>Last Transfer: {formatDateTime(caseData.transferredAt)}</p>
+                    )}
+                    {caseData.transferredByName && (
+                      <p>Transferred By: {caseData.transferredByName}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfer Summary */}
+              <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <h4 className="font-medium text-orange-900 mb-2">Transfer Summary</h4>
+                <div className="text-sm text-orange-800 space-y-1">
+                  <p>Total Transfers: {transferCount}</p>
+                  <p>Current Doctor: {caseData.doctorName || caseData.assignedDoctors?.primaryName || "N/A"}</p>
+                  {caseData.lastTransferredAt && (
+                    <p>Last Transfer: {formatDateTime(caseData.lastTransferredAt)}</p>
+                  )}
+                  {transferCount > 2 && (
+                    <div className="mt-2 p-2 bg-orange-100 rounded border border-orange-300">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-4 w-4 text-orange-700 mr-2" />
+                        <span className="text-orange-900 font-medium">High Transfer Count</span>
+                      </div>
+                      <p className="text-orange-800 text-xs mt-1">
+                        This case has been transferred multiple times. Please review for complexity or workload issues.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

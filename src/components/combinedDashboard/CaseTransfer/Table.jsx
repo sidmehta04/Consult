@@ -36,6 +36,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
+  History,
 } from "lucide-react";
 import {
   doc,
@@ -43,6 +44,7 @@ import {
   serverTimestamp,
   getDoc,
   writeBatch,
+  arrayUnion,
 } from "firebase/firestore";
 import { firestore } from "../../../firebase";
 import { format } from "date-fns";
@@ -100,18 +102,26 @@ const ClinicCell = React.memo(({ clinicCode }) => (
   </div>
 ));
 
-const DoctorCell = React.memo(({ assignedDoctors }) => (
+const DoctorCell = React.memo(({ assignedDoctors, transferHistory }) => (
   <div className="space-y-1">
     <div className="flex items-center">
       <Stethoscope className="h-4 w-4 text-blue-500 mr-2" />
       <span className="font-medium">
         {assignedDoctors?.primaryName || "Not assigned"}
       </span>
+      {transferHistory && transferHistory.length > 0 && (
+        <History className="h-3 w-3 text-orange-500 ml-2" title="Case has been transferred" />
+      )}
     </div>
     {assignedDoctors?.primaryType && (
       <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
         {assignedDoctors.primaryType}
       </span>
+    )}
+    {transferHistory && transferHistory.length > 0 && (
+      <div className="text-xs text-orange-600">
+        Transfers: {transferHistory.length}
+      </div>
     )}
   </div>
 ));
@@ -159,7 +169,7 @@ const CaseTransferTable = ({
 
   // Pagination state with better initial values
   const [currentPage, setCurrentPage] = useState(1);
-  const casesPerPage = 20; // Increased for better performance
+  const casesPerPage = 20;
 
   // Memoized pagination calculations
   const paginationData = useMemo(() => {
@@ -183,7 +193,7 @@ const CaseTransferTable = ({
       .map((doctor) => ({
         value: doctor.id,
         label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
-        doctor, // Include full doctor object for quick access
+        doctor,
       }));
   }, [doctors]);
 
@@ -276,7 +286,7 @@ const CaseTransferTable = ({
     }));
   }, []);
 
-  // Optimized transfer handler with batch operations
+  // Enhanced transfer handler with transfer history tracking
   const handleTransferCase = useCallback(async () => {
     if (!transferDialog.case || !transferDialog.selectedDoctorId) {
       onError("Please select a doctor to transfer the case to.");
@@ -307,16 +317,45 @@ const CaseTransferTable = ({
       const currentCaseData = currentCaseSnap.data();
       const currentVersion = currentCaseData.version || 0;
 
-      // Prepare update data
+      // Get current doctor info for transfer history
+      const currentDoctorId = currentCaseData.assignedDoctors?.primary;
+      const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
+
+      // Create transfer history entry with current timestamp
+      const now = new Date();
+      const transferHistoryEntry = {
+        transferredAt: now, // Use Date object instead of serverTimestamp()
+        transferredBy: currentUser.uid,
+        transferredByName: currentUser.displayName || currentUser.name,
+        transferredFrom: currentDoctorId || null,
+        transferredFromName: currentDoctorName || "Unassigned",
+        transferredTo: transferDialog.selectedDoctorId,
+        transferredToName: selectedDoctor.name,
+        transferReason: "Case load balancing",
+        version: currentVersion + 1,
+      };
+
+      // Prepare update data with enhanced transfer tracking
       const updateData = {
         "assignedDoctors.primary": transferDialog.selectedDoctorId,
         "assignedDoctors.primaryName": selectedDoctor.name,
         "assignedDoctors.primaryStatus": selectedDoctor.availabilityStatus,
         "assignedDoctors.primaryType": "transferred",
+        
+        // Legacy fields (maintain backwards compatibility)
         transferredAt: serverTimestamp(),
         transferredBy: currentUser.uid,
         transferredByName: currentUser.displayName || currentUser.name,
+        transferredFrom: currentDoctorId || null,
+        transferredFromName: currentDoctorName || "Unassigned",
         transferReason: "Case load balancing",
+        
+        // Enhanced transfer tracking
+        transferHistory: arrayUnion(transferHistoryEntry),
+        lastTransferredAt: serverTimestamp(),
+        transferCount: (currentCaseData.transferCount || 0) + 1,
+        
+        // Version control
         version: currentVersion + 1,
         lastModified: serverTimestamp(),
       };
@@ -327,7 +366,11 @@ const CaseTransferTable = ({
       // Commit batch
       await batch.commit();
 
-      onSuccess(`Case transferred successfully to Dr. ${selectedDoctor.name}`);
+      const transferMessage = currentDoctorName 
+        ? `Case transferred successfully from Dr. ${currentDoctorName} to Dr. ${selectedDoctor.name}`
+        : `Case transferred successfully to Dr. ${selectedDoctor.name}`;
+
+      onSuccess(transferMessage);
       closeTransferDialog();
     } catch (err) {
       console.error("Error transferring case:", err);
@@ -407,13 +450,15 @@ const CaseTransferTable = ({
                   </TableCell>
 
                   <TableCell>
-                    <DoctorCell assignedDoctors={caseItem.assignedDoctors} />
+                    <DoctorCell 
+                      assignedDoctors={caseItem.assignedDoctors} 
+                      transferHistory={caseItem.transferHistory}
+                    />
                   </TableCell>
 
                   <TableCell>
                     <div className="flex items-center">
                       <StatusBadge queue={caseItem.queue} />
-                      {/* Real-time indicator */}
                       <div
                         className="ml-2 h-2 w-2 bg-green-400 rounded-full animate-pulse"
                         title="Live update enabled"
@@ -454,7 +499,7 @@ const CaseTransferTable = ({
           </Table>
         </div>
 
-        {/* Optimized Pagination Controls */}
+        {/* Pagination Controls */}
         {paginationData.totalPages > 1 && (
           <div className="flex items-center justify-between bg-white px-4 py-3 border rounded-lg">
             <div className="flex items-center text-sm text-gray-700">
@@ -466,7 +511,6 @@ const CaseTransferTable = ({
             </div>
 
             <div className="flex items-center space-x-2">
-              {/* Previous Button */}
               <Button
                 variant="outline"
                 size="sm"
@@ -478,7 +522,6 @@ const CaseTransferTable = ({
                 Previous
               </Button>
 
-              {/* Page Numbers */}
               <div className="flex items-center space-x-1">
                 {pageNumbers.map((pageNum, index) => (
                   <React.Fragment key={index}>
@@ -506,7 +549,6 @@ const CaseTransferTable = ({
                 ))}
               </div>
 
-              {/* Next Button */}
               <Button
                 variant="outline"
                 size="sm"
@@ -522,7 +564,7 @@ const CaseTransferTable = ({
         )}
       </div>
 
-      {/* Optimized Transfer Dialog */}
+      {/* Enhanced Transfer Dialog */}
       <Dialog open={transferDialog.open} onOpenChange={closeTransferDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -531,8 +573,7 @@ const CaseTransferTable = ({
               Transfer Case to Another Doctor
             </DialogTitle>
             <DialogDescription>
-              Select an available doctor to transfer this case to. The case will
-              be moved in real-time.
+              Select an available doctor to transfer this case to. The transfer history will be tracked automatically.
             </DialogDescription>
           </DialogHeader>
 
@@ -573,10 +614,31 @@ const CaseTransferTable = ({
                       {transferDialog.case.chiefComplaint}
                     </span>
                   </div>
+                  {transferDialog.case.transferCount > 0 && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">Previous Transfers:</span>
+                      <span className="ml-2 text-orange-600 font-medium">
+                        {transferDialog.case.transferCount}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Doctor Selection with React Select for better performance */}
+              {/* Transfer History */}
+              {transferDialog.case.transferHistory && transferDialog.case.transferHistory.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-center mb-2">
+                    <History className="h-4 w-4 text-amber-600 mr-2" />
+                    <span className="text-sm font-medium text-amber-800">Transfer History</span>
+                  </div>
+                  <div className="text-xs text-amber-700">
+                    This case has been transferred {transferDialog.case.transferHistory.length} time(s) previously.
+                  </div>
+                </div>
+              )}
+
+              {/* Doctor Selection */}
               <div className="space-y-2">
                 <Label htmlFor="doctor-select" className="text-sm font-medium">
                   Select New Doctor
@@ -594,12 +656,60 @@ const CaseTransferTable = ({
                   placeholder="Search and select a doctor..."
                   isSearchable
                   isClearable
-                  menuPortalTarget={document.body}
+                  menuPlacement="bottom"
+                  menuShouldBlockScroll={true}
                   styles={{
-                    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-                    control: (base) => ({
+                    control: (base, state) => ({
                       ...base,
                       minHeight: "40px",
+                      borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+                      boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+                      '&:hover': {
+                        borderColor: state.isFocused ? '#3b82f6' : '#9ca3af',
+                      },
+                    }),
+                    menu: (base) => ({
+                      ...base,
+                      zIndex: 50,
+                      border: '1px solid #d1d5db',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                    }),
+                    option: (base, state) => ({
+                      ...base,
+                      backgroundColor: state.isSelected
+                        ? '#3b82f6'
+                        : state.isFocused
+                        ? '#eff6ff'
+                        : 'white',
+                      color: state.isSelected ? 'white' : '#374151',
+                      cursor: 'pointer',
+                      padding: '8px 12px',
+                      '&:active': {
+                        backgroundColor: state.isSelected ? '#3b82f6' : '#dbeafe',
+                      },
+                    }),
+                    singleValue: (base) => ({
+                      ...base,
+                      color: '#374151',
+                    }),
+                    placeholder: (base) => ({
+                      ...base,
+                      color: '#9ca3af',
+                    }),
+                    input: (base) => ({
+                      ...base,
+                      color: '#374151',
+                    }),
+                    indicatorSeparator: (base) => ({
+                      ...base,
+                      backgroundColor: '#d1d5db',
+                    }),
+                    dropdownIndicator: (base) => ({
+                      ...base,
+                      color: '#6b7280',
+                      '&:hover': {
+                        color: '#374151',
+                      },
                     }),
                   }}
                   filterOption={(option, inputValue) => {
@@ -619,7 +729,8 @@ const CaseTransferTable = ({
                   <div className="flex items-center">
                     <ArrowRight className="h-4 w-4 text-blue-600 mr-2" />
                     <span className="text-sm font-medium text-blue-900">
-                      Transferring to:{" "}
+                      Transferring from:{" "}
+                      {transferDialog.case.assignedDoctors?.primaryName || "Unassigned"} → {" "}
                       {
                         doctorOptions.find(
                           (option) =>
@@ -630,7 +741,7 @@ const CaseTransferTable = ({
                   </div>
                   <div className="mt-2 flex items-center text-xs text-blue-700">
                     <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse mr-2"></div>
-                    Changes will be reflected in real-time
+                    Transfer history will be automatically recorded
                   </div>
                 </div>
               )}
@@ -640,10 +751,7 @@ const CaseTransferTable = ({
                 <div className="flex items-start">
                   <AlertCircle className="h-4 w-4 text-amber-600 mr-2 mt-0.5" />
                   <div className="text-sm text-amber-800">
-                    <strong>Real-time Transfer:</strong> Once transferred, the
-                    case will immediately appear in the new doctor's queue and
-                    disappear from the current view if they're no longer in the
-                    selected queue filter.
+                    <strong>Transfer Tracking:</strong> This transfer will be recorded with full history including previous doctor, timestamp, and reason. The case will immediately appear in the new doctor's queue.
                   </div>
                 </div>
               </div>
