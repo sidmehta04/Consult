@@ -37,6 +37,8 @@ import {
   ChevronRight,
   MoreHorizontal,
   History,
+  Filter,
+  X,
 } from "lucide-react";
 import {
   doc,
@@ -194,6 +196,7 @@ const CaseTransferTable = ({
       startIndex,
       endIndex,
       currentCases,
+      filteredCases,
     };
   }, [cases, currentPage, casesPerPage, selectedDoctorFilter]);
 
@@ -303,6 +306,11 @@ const CaseTransferTable = ({
       ...prev,
       selectedDoctorId: selectedOption?.value || "",
     }));
+  }, []);
+
+  // Clear filter handler
+  const clearDoctorFilter = useCallback(() => {
+    setSelectedDoctorFilter(null);
   }, []);
 
   // HEAVILY OPTIMIZED transfer handler
@@ -445,7 +453,125 @@ const CaseTransferTable = ({
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="space-y-6">
+        {/* Filter Section - Better placement above the table */}
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">Filter Cases</span>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <div className="min-w-0 flex-1" style={{ minWidth: '280px' }}>
+                  <Select
+                    options={doctorFilterOptions}
+                    value={doctorFilterOptions.find(option => option.value === selectedDoctorFilter) || null}
+                    onChange={(selectedOption) => setSelectedDoctorFilter(selectedOption?.value || null)}
+                    placeholder="Filter by doctor..."
+                    isSearchable
+                    isClearable
+                    menuPlacement="bottom"
+                    styles={{
+                      control: (base, state) => ({
+                        ...base,
+                        minHeight: '38px',
+                        borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+                        boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+                        '&:hover': {
+                          borderColor: state.isFocused ? '#3b82f6' : '#9ca3af',
+                        },
+                        backgroundColor: '#ffffff',
+                        fontSize: '14px',
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        zIndex: 50,
+                        border: '1px solid #d1d5db',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        backgroundColor: '#ffffff',
+                      }),
+                      option: (base, state) => ({
+                        ...base,
+                        backgroundColor: state.isSelected
+                          ? '#3b82f6'
+                          : state.isFocused
+                          ? '#eff6ff'
+                          : 'white',
+                        color: state.isSelected ? 'white' : '#374151',
+                        cursor: 'pointer',
+                        padding: '10px 12px',
+                        '&:active': {
+                          backgroundColor: state.isSelected ? '#3b82f6' : '#dbeafe',
+                        },
+                      }),
+                      singleValue: (base) => ({
+                        ...base,
+                        color: '#374151',
+                      }),
+                      placeholder: (base) => ({
+                        ...base,
+                        color: '#9ca3af',
+                      }),
+                      input: (base) => ({
+                        ...base,
+                        color: '#374151',
+                      }),
+                      indicatorSeparator: (base) => ({
+                        ...base,
+                        backgroundColor: '#d1d5db',
+                      }),
+                      dropdownIndicator: (base) => ({
+                        ...base,
+                        color: '#6b7280',
+                        '&:hover': {
+                          color: '#374151',
+                        },
+                      }),
+                    }}
+                    filterOption={(option, inputValue) => {
+                      return option.label.toLowerCase().includes(inputValue.toLowerCase());
+                    }}
+                  />
+                </div>
+                
+                {selectedDoctorFilter && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearDoctorFilter}
+                    className="flex items-center text-gray-600 hover:text-gray-800"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Results Summary */}
+            <div className="flex items-center space-x-4 text-sm text-gray-600">
+              {selectedDoctorFilter && (
+                <div className="flex items-center space-x-2">
+                  <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                    <Stethoscope className="h-3 w-3 mr-1" />
+                    {doctorFilterOptions.find(d => d.value === selectedDoctorFilter)?.label}
+                  </Badge>
+                  <span className="text-xs">
+                    {paginationData.filteredCases.length} of {cases.length} cases
+                  </span>
+                </div>
+              )}
+              
+              <div className="flex items-center text-xs text-gray-500">
+                <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
+                Live updates active
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Cases Table */}
         <div className="border rounded-lg overflow-hidden bg-white">
           <Table>
@@ -453,81 +579,7 @@ const CaseTransferTable = ({
               <TableRow>
                 <TableHead className="font-semibold">Patient Info</TableHead>
                 <TableHead className="font-semibold">Clinic Code</TableHead>
-                <TableHead className="font-semibold">
-                  <div className="flex items-center space-x-2">
-                    <span>Current Doctor</span>
-                    <Select
-                      options={doctorFilterOptions}
-                      value={doctorFilterOptions.find(option => option.value === selectedDoctorFilter) || null}
-                      onChange={(selectedOption) => setSelectedDoctorFilter(selectedOption?.value || null)}
-                      placeholder="Filter by doctor..."
-                      isSearchable
-                      isClearable
-                      menuPlacement="bottom"
-                      styles={{
-                        control: (base, state) => ({
-                          ...base,
-                          minHeight: "40px",
-                          borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
-                          boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
-                          "&:hover": {
-                            borderColor: state.isFocused ? "#3b82f6" : "#9ca3af",
-                          },
-                          backgroundColor: "#f9fafb",
-                          fontSize: "14px",
-                        }),
-                        menu: (base) => ({
-                          ...base,
-                          zIndex: 50,
-                          border: "1px solid #d1d5db",
-                          boxShadow:
-                            "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                          backgroundColor: "#ffffff",
-                        }),
-                        option: (base, state) => ({
-                          ...base,
-                          backgroundColor: state.isSelected
-                            ? "#3b82f6"
-                            : state.isFocused
-                            ? "#eff6ff"
-                            : "white",
-                          color: state.isSelected ? "white" : "#374151",
-                          cursor: "pointer",
-                          padding: "8px 12px",
-                          "&:active": {
-                            backgroundColor: state.isSelected ? "#3b82f6" : "#dbeafe",
-                          },
-                        }),
-                        singleValue: (base) => ({
-                          ...base,
-                          color: "#374151",
-                        }),
-                        placeholder: (base) => ({
-                          ...base,
-                          color: "#9ca3af",
-                        }),
-                        input: (base) => ({
-                          ...base,
-                          color: "#374151",
-                        }),
-                        indicatorSeparator: (base) => ({
-                          ...base,
-                          backgroundColor: "#d1d5db",
-                        }),
-                        dropdownIndicator: (base) => ({
-                          ...base,
-                          color: "#6b7280",
-                          "&:hover": {
-                            color: "#374151",
-                          },
-                        }),
-                      }}
-                      filterOption={(option, inputValue) => {
-                        return option.label.toLowerCase().includes(inputValue.toLowerCase());
-                      }}
-                    />
-                  </div>
-                </TableHead>
+                <TableHead className="font-semibold">Current Doctor</TableHead>
                 <TableHead className="font-semibold">Queue Status</TableHead>
                 <TableHead className="font-semibold">Contact</TableHead>
                 <TableHead className="font-semibold">Created</TableHead>
@@ -609,8 +661,9 @@ const CaseTransferTable = ({
             <div className="flex items-center text-sm text-gray-700">
               <span>
                 Showing {paginationData.startIndex + 1} to{" "}
-                {Math.min(paginationData.endIndex, cases.length)} of{" "}
-                {cases.length} cases
+                {Math.min(paginationData.endIndex, paginationData.filteredCases.length)} of{" "}
+                {paginationData.filteredCases.length} 
+                {selectedDoctorFilter ? ' filtered' : ''} cases
               </span>
             </div>
 
