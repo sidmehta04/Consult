@@ -59,36 +59,37 @@ export const enrichDoctorsWithShiftData = (doctorsList, realtimeData) => {
     return doctorsList.map(doctor => {
         // Try to find doctor in realtime data by empId
         let shiftInfo = { 
-        shiftTiming: "9AM-5PM", // Default shift
+        shiftTiming: "NOT_SET", // Default shift
         shiftType: "Full-Time",
         hourlyTarget: DEFAULT_HOURLY_TARGET,
         dailyTarget: DEFAULT_HOURLY_TARGET * 8
         };
-        
+        console.log(doctor);
         // Search through realtime data to find matching doctor by empId
         if (doctor.empId) {
         Object.keys(realtimeData || {}).forEach(key => {
-            const rtDoctor = realtimeData[key];
-            if (rtDoctor.empId === doctor.empId) {
-            // Found matching doctor in realtime DB
-            shiftInfo.shiftTiming = rtDoctor.shiftTiming || shiftInfo.shiftTiming;
-            shiftInfo.shiftType = rtDoctor.shiftType || shiftInfo.shiftType;
-            
-            // Calculate shift hours and targets
-            const shiftHours = calculateShiftHours(rtDoctor.shiftTiming);
-            shiftInfo.shiftHours = shiftHours;
-            
-            // Calculate daily target based on shift type
-            // Part-time: No break, full hours × 12 cases
-            // Full-time: 1 hour break, (hours - 1) × 12 cases
-            if (rtDoctor.shiftType === "Part-Time") {
-                shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * shiftHours;
-            } else {
-                // For full-time, account for 1-hour break
-                shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * (shiftHours - 1);
-            }
+          const rtDoctor = realtimeData[key];
+          if (rtDoctor.empId === doctor.empId) {
+                // Found matching doctor in realtime DB
+                shiftInfo.shiftTiming = rtDoctor.shiftTiming || shiftInfo.shiftTiming;
+                shiftInfo.shiftType = rtDoctor.shiftType || shiftInfo.shiftType;
+                
+                // Calculate shift hours and targets
+                const shiftHours = calculateShiftHours(rtDoctor.shiftTiming);
+                shiftInfo.shiftHours = shiftHours;
+                
+                // Calculate daily target based on shift type
+                // Part-time: No break, full hours × 12 cases
+                // Full-time: 1 hour break, (hours - 1) × 12 cases
+                if (rtDoctor.shiftType === "Part-Time") {
+                    shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * shiftHours;
+                } else {
+                    // For full-time, account for 1-hour break
+                    shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * (shiftHours - 1);
+                }
             }
         });
+
         }
         
         // Return doctor with shift info
