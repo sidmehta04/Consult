@@ -8,10 +8,10 @@ import {
   useLocation
 } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, query, collection, where, onSnapshot } from "firebase/firestore";
 import { firestore } from "./firebase";
  
-
+import { Badge } from "@/components/ui/badge";
 import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
 import CaseManagementModule from "./components/CaseManagement";
@@ -95,19 +95,43 @@ const useActivePath = () => {
 };
 
 // Navigation component to avoid repetition
-const Navigation = ({ items }) => {
+const Navigation = ({ items, userRole, userUid }) => {
   const isActive = useActivePath();
-  
+  const [numCases, setNumCases] = useState(0);
+  const [flashBadge, setFlashBadge] = useState(false);
+
+  useEffect(() => {
+    if (userUid && userRole === 'pharmacist') {
+      const casesCountQuery = query(
+        collection(firestore, "cases"),
+        where("pharmacistId", "==", userUid),
+        where("pharmacistCompleted", "==", false),
+        where("isIncomplete", "!=", true)
+      );
+
+      const unsubscribe = onSnapshot(casesCountQuery, (snapshot) => {
+        const newCount = snapshot.size;
+        if (newCount !== numCases) {
+          setFlashBadge(true); // Trigger flash effect
+          setTimeout(() => setFlashBadge(false), 2500); // Reset flash after 2.5 seconds
+        }
+        setNumCases(newCount); // Update numCases
+      });
+
+      return () => unsubscribe(); // Cleanup the listener when the component unmounts
+    }
+  }, [userUid, numCases]);
+
   const getNavItemStyles = (active) => {
     return active 
       ? "bg-blue-100 text-blue-800" 
       : "text-blue-800 hover:bg-blue-50 hover:text-blue-700";
   };
-  
+
   return (
     <div className="bg-white shadow-sm">
-      <div className="max-w-7xl mx-auto px-4">
-        <nav className="flex items-center space-x-4 py-2">
+      <div className="flex max-w-7xl mx-auto px-4 items-center">
+        <nav className="flex items-center space-x-4 py-2 flex-grow">
           {items.map((item) => (
             <Link
               key={item.name}
@@ -119,6 +143,23 @@ const Navigation = ({ items }) => {
             </Link>
           ))}
         </nav>
+        {userRole === 'pharmacist' && (
+          <div className="flex items-center">
+            <Badge
+              className={`bg-amber-100 text-amber-800 border-amber-200 px-3 py-1 rounded-md relative overflow-visible`}
+            >
+              {numCases > 0 && (
+                <span
+                  className={`absolute -top-1 -right-1 inline-flex w-3 h-3 rounded-full bg-orange-400 opacity-75 ${
+                    flashBadge ? "animate-ping" : ""
+                  }`}
+                ></span>
+              )}
+              
+              Reminder: Start recording for all cases assigned to you. Currently {numCases} cases are active.
+            </Badge>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -266,7 +307,7 @@ function AppContent() {
       </header>
 
       {/* Navigation */}
-      <Navigation items={getNavigationItems()} />
+      <Navigation items={getNavigationItems()} userRole={userRole} userUid={currentUser.uid} />
 
       {/* Main Content Area */}
       <div className="h-[calc(100vh-112px)]">
