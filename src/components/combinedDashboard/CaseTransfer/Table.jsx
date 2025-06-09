@@ -139,19 +139,56 @@ const ContactCell = React.memo(({ consultationType }) => (
   </div>
 ));
 
-const DateCell = React.memo(({ createdAt, errorFallback = 'N/A' }) => (
-  // Check if createdAt is valid, if not, use errorFallback
-  <div className="text-sm space-y-1">
-    <div className="flex items-center">
-      <Calendar className="h-3 w-3 text-gray-400 mr-1" />
-      {createdAt ? format(createdAt, "MMM dd") : errorFallback}
+const DateCell = React.memo(({ createdAt, errorFallback = 'N/A' }) => {
+  // Helper function to safely convert to Date and validate
+  const getSafeDate = (dateValue) => {
+    if (!dateValue) return null;
+    
+    let date;
+    
+    // Handle Firestore Timestamp
+    if (dateValue && typeof dateValue.toDate === 'function') {
+      date = dateValue.toDate();
+    }
+    // Handle existing Date objects
+    else if (dateValue instanceof Date) {
+      date = dateValue;
+    }
+    // Handle timestamp numbers
+    else if (typeof dateValue === 'number') {
+      date = new Date(dateValue);
+    }
+    // Handle date strings
+    else if (typeof dateValue === 'string') {
+      date = new Date(dateValue);
+    }
+    else {
+      return null;
+    }
+    
+    // Validate the date
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    
+    return date;
+  };
+
+  const validDate = getSafeDate(createdAt);
+
+  return (
+    <div className="text-sm space-y-1">
+      <div className="flex items-center">
+        <Calendar className="h-3 w-3 text-gray-400 mr-1" />
+        {validDate ? format(validDate, "MMM dd") : errorFallback}
+      </div>
+      <div className="flex items-center">
+        <Clock className="h-3 w-3 text-gray-400 mr-1" />
+        {validDate ? format(validDate, "HH:mm") : errorFallback}
+      </div>
     </div>
-    <div className="flex items-center">
-      <Clock className="h-3 w-3 text-gray-400 mr-1" />
-      {createdAt ? format(createdAt, "HH:mm") : errorFallback}
-    </div>
-  </div>
-));
+  );
+});
 
 const CaseTransferTable = ({
   cases,
@@ -627,7 +664,7 @@ const CaseTransferTable = ({
                   </TableCell>
                   
                   <TableCell>
-                    <DateCell createdAt={caseItem.doctorJoinedAt} />
+                    <DateCell createdAt={caseItem.doctorJoined} />
                   </TableCell>
 
                   <TableCell>
