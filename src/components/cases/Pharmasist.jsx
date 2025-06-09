@@ -594,7 +594,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       };
 
       // Only keep the last 50 status changes
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      //const updatedHistory = [statusChange, ...history].slice(0, 50);
+      const updatedHistory = [statusChange, ...history];
 
       await updateDoc(docRef, {
         availabilityStatus: status,

@@ -137,15 +137,16 @@ const ContactCell = React.memo(({ consultationType }) => (
   </div>
 ));
 
-const DateCell = React.memo(({ createdAt }) => (
+const DateCell = React.memo(({ createdAt, errorFallback = 'N/A' }) => (
+  // Check if createdAt is valid, if not, use errorFallback
   <div className="text-sm space-y-1">
     <div className="flex items-center">
       <Calendar className="h-3 w-3 text-gray-400 mr-1" />
-      {format(createdAt, "MMM dd")}
+      {createdAt ? format(createdAt, "MMM dd") : errorFallback}
     </div>
     <div className="flex items-center">
       <Clock className="h-3 w-3 text-gray-400 mr-1" />
-      {format(createdAt, "HH:mm")}
+      {createdAt ? format(createdAt, "HH:mm") : errorFallback}
     </div>
   </div>
 ));
@@ -167,6 +168,8 @@ const CaseTransferTable = ({
 
   // Pagination state with better initial values
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
+
   const casesPerPage = 20;
   
   // Ref to prevent multiple simultaneous transfers
@@ -174,10 +177,17 @@ const CaseTransferTable = ({
 
   // Memoized pagination calculations
   const paginationData = useMemo(() => {
-    const totalPages = Math.ceil(cases.length / casesPerPage);
+    const filteredCases = selectedDoctorFilter
+      ? cases.filter(
+          (caseItem) =>
+            caseItem.assignedDoctors?.primary === selectedDoctorFilter
+        )
+      : cases;
+
+    const totalPages = Math.ceil(filteredCases.length / casesPerPage);
     const startIndex = (currentPage - 1) * casesPerPage;
     const endIndex = startIndex + casesPerPage;
-    const currentCases = cases.slice(startIndex, endIndex);
+    const currentCases = filteredCases.slice(startIndex, endIndex);
 
     return {
       totalPages,
@@ -185,7 +195,7 @@ const CaseTransferTable = ({
       endIndex,
       currentCases,
     };
-  }, [cases, currentPage, casesPerPage]);
+  }, [cases, currentPage, casesPerPage, selectedDoctorFilter]);
 
   // Memoized doctor options for select
   const doctorOptions = useMemo(() => {
@@ -196,6 +206,14 @@ const CaseTransferTable = ({
         label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
         doctor,
       }));
+  }, [doctors]);
+
+  const doctorFilterOptions = useMemo(() => {
+    return doctors.map((doctor) => ({
+      value: doctor.id,
+      label: `${doctor.name}`,
+      doctor,
+    }));
   }, [doctors]);
 
   // Memoized page numbers calculation
@@ -435,10 +453,85 @@ const CaseTransferTable = ({
               <TableRow>
                 <TableHead className="font-semibold">Patient Info</TableHead>
                 <TableHead className="font-semibold">Clinic Code</TableHead>
-                <TableHead className="font-semibold">Current Doctor</TableHead>
+                <TableHead className="font-semibold">
+                  <div className="flex items-center space-x-2">
+                    <span>Current Doctor</span>
+                    <Select
+                      options={doctorFilterOptions}
+                      value={doctorFilterOptions.find(option => option.value === selectedDoctorFilter) || null}
+                      onChange={(selectedOption) => setSelectedDoctorFilter(selectedOption?.value || null)}
+                      placeholder="Filter by doctor..."
+                      isSearchable
+                      isClearable
+                      menuPlacement="bottom"
+                      styles={{
+                        control: (base, state) => ({
+                          ...base,
+                          minHeight: "40px",
+                          borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+                          boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+                          "&:hover": {
+                            borderColor: state.isFocused ? "#3b82f6" : "#9ca3af",
+                          },
+                          backgroundColor: "#f9fafb",
+                          fontSize: "14px",
+                        }),
+                        menu: (base) => ({
+                          ...base,
+                          zIndex: 50,
+                          border: "1px solid #d1d5db",
+                          boxShadow:
+                            "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                          backgroundColor: "#ffffff",
+                        }),
+                        option: (base, state) => ({
+                          ...base,
+                          backgroundColor: state.isSelected
+                            ? "#3b82f6"
+                            : state.isFocused
+                            ? "#eff6ff"
+                            : "white",
+                          color: state.isSelected ? "white" : "#374151",
+                          cursor: "pointer",
+                          padding: "8px 12px",
+                          "&:active": {
+                            backgroundColor: state.isSelected ? "#3b82f6" : "#dbeafe",
+                          },
+                        }),
+                        singleValue: (base) => ({
+                          ...base,
+                          color: "#374151",
+                        }),
+                        placeholder: (base) => ({
+                          ...base,
+                          color: "#9ca3af",
+                        }),
+                        input: (base) => ({
+                          ...base,
+                          color: "#374151",
+                        }),
+                        indicatorSeparator: (base) => ({
+                          ...base,
+                          backgroundColor: "#d1d5db",
+                        }),
+                        dropdownIndicator: (base) => ({
+                          ...base,
+                          color: "#6b7280",
+                          "&:hover": {
+                            color: "#374151",
+                          },
+                        }),
+                      }}
+                      filterOption={(option, inputValue) => {
+                        return option.label.toLowerCase().includes(inputValue.toLowerCase());
+                      }}
+                    />
+                  </div>
+                </TableHead>
                 <TableHead className="font-semibold">Queue Status</TableHead>
                 <TableHead className="font-semibold">Contact</TableHead>
                 <TableHead className="font-semibold">Created</TableHead>
+                <TableHead className="font-semibold">Doctor Joined</TableHead>
                 <TableHead className="font-semibold">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -479,6 +572,10 @@ const CaseTransferTable = ({
 
                   <TableCell>
                     <DateCell createdAt={caseItem.createdAt} />
+                  </TableCell>
+                  
+                  <TableCell>
+                    <DateCell createdAt={caseItem.doctorJoinedAt} />
                   </TableCell>
 
                   <TableCell>

@@ -280,8 +280,9 @@ const NurseCaseManagement = ({ currentUser }) => {
         reason: "Automatically marked as busy due to high case load (via nurse action)",
         casesNo: activeCaseCount,
       };
-      
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
+
+      // const updatedHistory = [statusChange, ...history].slice(0, 50);
+      const updatedHistory = [statusChange, ...history];
       
       await updateDoc(doctorRef, {
         availabilityStatus: "busy",
@@ -356,7 +357,8 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
         casesNo: activeCaseCount,
       };
       
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      //const updatedHistory = [statusChange, ...history].slice(0, 50);
+      const updatedHistory = [statusChange, ...history];
       
       await updateDoc(pharmacistRef, {
         availabilityStatus: "busy",
@@ -376,7 +378,8 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
         casesNo: activeCaseCount,
       };
       
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      //const updatedHistory = [statusChange, ...history].slice(0, 50);
+      const updatedHistory = [statusChange, ...history];
       
       await updateDoc(pharmacistRef, {
         availabilityStatus: "available",

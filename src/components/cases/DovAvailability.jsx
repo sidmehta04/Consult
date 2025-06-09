@@ -123,8 +123,9 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
         statusChange.expectedReturnTime = returnTime;
       }
       
-      // Only keep the last 50 status changes
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
+      // Only keep the last 50 status changes -REMOVED
+      // const updatedHistory = [statusChange, ...history].slice(0, 50);
+      const updatedHistory = [statusChange, ...history];
       
       // If going on break, set a timestamp for when break started
       let additionalData = {};
