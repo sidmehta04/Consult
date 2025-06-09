@@ -234,7 +234,7 @@ const CasesTable = ({
     
     return (
       <tr className="border-t bg-gray-50">
-        <td colSpan="12">
+        <td colSpan="13">
           <div className="flex justify-between items-center px-6 py-4">
             <div className="text-sm text-gray-500">
               {paginationText}
@@ -281,36 +281,14 @@ const CasesTable = ({
             </td>
             <td className="p-3">{caseItem.partnerName || "N/A"}</td>
             <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
-            {/*
+            {/* Doctor Joined column */}
             <td className="p-3">
-              {caseItem.doctorJoined? 
+              {caseItem.doctorJoined ? 
                 `${formatDate(caseItem.doctorJoined)} ${formatTime(
                     caseItem.doctorJoined
                   )}`
                 : "Pending"}
             </td>
-            <td className="p-3">
-              {caseItem.doctorCompleted? 
-                `${formatDate(caseItem.doctorCompletedAt)} ${formatTime(
-                    caseItem.doctorCompletedAt
-                  )}`
-                : "Pending"}
-            </td>
-            <td className="p-3">
-              {caseItem.pharmacistJoined? 
-                `${formatDate(caseItem.pharmacistJoined)} ${formatTime(
-                    caseItem.pharmacistJoined
-                  )}`
-                : "Pending"}
-            </td>
-            <td className="p-3">
-              {caseItem.pharmacistCompleted? 
-                `${formatDate(caseItem.pharmacistCompletedAt)} ${formatTime(
-                    caseItem.pharmacistCompletedAt
-                  )}`
-                : "Pending"}
-            </td>
-            */}
             {/* Timeline columns - Doctor TAT */}
             <td className="p-3 whitespace-nowrap">
               {isIncompleteCase(caseItem) ? (
@@ -490,8 +468,7 @@ const CasesTable = ({
             <th className="p-3 text-left font-medium">Clinic Code</th>
             <th className="p-3 text-left font-medium">Partner</th>
             <th className="p-3 text-left font-medium">Doctor</th>
-            <th className="p-3 text-left font-medium">Doctor Completed At</th>
-            <th className="p-3 text-left font-medium">Pharmacist Completed At</th>
+            <th className="p-3 text-left font-medium">Doctor Joined</th>
             <th className="p-3 text-left font-medium">Doctor TAT</th>
             <th className="p-3 text-left font-medium">Overall TAT</th>
             <th className="p-3 text-left font-medium">Created</th>
@@ -511,8 +488,14 @@ const CasesTable = ({
               </td>
               <td className="p-3">{caseItem.partnerName || "N/A"}</td>
               <td className="p-3">{caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A"}</td>
-              <td className="p-3"></td>
-              <td className="p-3"></td>
+              {/* Doctor Joined column */}
+              <td className="p-3">
+                {caseItem.doctorJoined ? 
+                  `${formatDate(caseItem.doctorJoined)} ${formatTime(
+                      caseItem.doctorJoined
+                    )}`
+                  : "Pending"}
+              </td>
               {/* Timeline columns - Doctor TAT */}
               <td className="p-3 whitespace-nowrap">
                 {isIncompleteCase(caseItem) ? (
