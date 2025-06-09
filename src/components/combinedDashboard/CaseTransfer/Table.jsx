@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Select from "react-select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -42,9 +42,7 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
-  getDoc,
-  writeBatch,
-  arrayUnion,
+  runTransaction,
 } from "firebase/firestore";
 import { firestore } from "../../../firebase";
 import { format } from "date-fns";
@@ -170,6 +168,9 @@ const CaseTransferTable = ({
   // Pagination state with better initial values
   const [currentPage, setCurrentPage] = useState(1);
   const casesPerPage = 20;
+  
+  // Ref to prevent multiple simultaneous transfers
+  const transferInProgressRef = useRef(false);
 
   // Memoized pagination calculations
   const paginationData = useMemo(() => {
@@ -286,101 +287,107 @@ const CaseTransferTable = ({
     }));
   }, []);
 
-  // Enhanced transfer handler with transfer history tracking
+  // HEAVILY OPTIMIZED transfer handler
   const handleTransferCase = useCallback(async () => {
     if (!transferDialog.case || !transferDialog.selectedDoctorId) {
       onError("Please select a doctor to transfer the case to.");
       return;
     }
 
+    // Prevent multiple simultaneous transfers
+    if (transferInProgressRef.current) {
+      onError("Transfer already in progress. Please wait.");
+      return;
+    }
+
     setTransferLoading(true);
+    transferInProgressRef.current = true;
 
     try {
-      const selectedDoctor = doctorOptions.find(
-        (option) => option.value === transferDialog.selectedDoctorId
-      )?.doctor;
+      const selectedDoctor = doctors.find(
+        (doctor) => doctor.id === transferDialog.selectedDoctorId
+      );
 
       if (!selectedDoctor) {
         throw new Error("Selected doctor not found");
       }
 
-      // Use batch write for better performance
-      const batch = writeBatch(firestore);
       const caseRef = doc(firestore, "cases", transferDialog.case.id);
 
-      // Get current case data
-      const currentCaseSnap = await getDoc(caseRef);
-      if (!currentCaseSnap.exists()) {
-        throw new Error("Case not found");
-      }
-
-      const currentCaseData = currentCaseSnap.data();
-      const currentVersion = currentCaseData.version || 0;
-
-      // Get current doctor info for transfer history
-      const currentDoctorId = currentCaseData.assignedDoctors?.primary;
-      const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
-
-      // Create transfer history entry with current timestamp
-      const now = new Date();
-      const transferHistoryEntry = {
-        transferredAt: now, // Use Date object instead of serverTimestamp()
-        transferredBy: currentUser.uid,
-        transferredByName: currentUser.displayName || currentUser.name,
-        transferredFrom: currentDoctorId || null,
-        transferredFromName: currentDoctorName || "Unassigned",
-        transferredTo: transferDialog.selectedDoctorId,
-        transferredToName: selectedDoctor.name,
-        transferReason: "Case load balancing",
-        version: currentVersion + 1,
-      };
-
-      // Prepare update data with enhanced transfer tracking
-      const updateData = {
-        "assignedDoctors.primary": transferDialog.selectedDoctorId,
-        "assignedDoctors.primaryName": selectedDoctor.name,
-        "assignedDoctors.primaryStatus": selectedDoctor.availabilityStatus,
-        "assignedDoctors.primaryType": "transferred",
+      // Use transaction for atomic updates - MUCH faster than batch + getDoc
+      await runTransaction(firestore, async (transaction) => {
+        const caseSnap = await transaction.get(caseRef);
         
-        // Legacy fields (maintain backwards compatibility)
-        transferredAt: serverTimestamp(),
-        transferredBy: currentUser.uid,
-        transferredByName: currentUser.displayName || currentUser.name,
-        transferredFrom: currentDoctorId || null,
-        transferredFromName: currentDoctorName || "Unassigned",
-        transferReason: "Case load balancing",
+        if (!caseSnap.exists()) {
+          throw new Error("Case not found");
+        }
+
+        const currentCaseData = caseSnap.data();
         
-        // Enhanced transfer tracking
-        transferHistory: arrayUnion(transferHistoryEntry),
-        lastTransferredAt: serverTimestamp(),
-        transferCount: (currentCaseData.transferCount || 0) + 1,
+        // Get current doctor info for transfer history
+        const currentDoctorId = currentCaseData.assignedDoctors?.primary;
+        const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
+
+        // Minimal transfer history entry
+        const transferHistoryEntry = {
+          transferredAt: new Date(), // Use client timestamp for speed
+          transferredBy: currentUser.uid,
+          transferredByName: currentUser.displayName || currentUser.name,
+          transferredFrom: currentDoctorId || null,
+          transferredFromName: currentDoctorName || "Unassigned",
+          transferredTo: transferDialog.selectedDoctorId,
+          transferredToName: selectedDoctor.name,
+          transferReason: "Case load balancing",
+        };
+
+        // Optimized update - only essential fields
+        const updateData = {
+          "assignedDoctors.primary": transferDialog.selectedDoctorId,
+          "assignedDoctors.primaryName": selectedDoctor.name,
+          "assignedDoctors.primaryType": "transferred",
+          
+          // Use arrayUnion for transfer history
+          transferHistory: currentCaseData.transferHistory 
+            ? [...(currentCaseData.transferHistory || []), transferHistoryEntry]
+            : [transferHistoryEntry],
+          
+          transferCount: (currentCaseData.transferCount || 0) + 1,
+          lastTransferredAt: serverTimestamp(),
+          lastModified: serverTimestamp(),
+        };
+
+        transaction.update(caseRef, updateData);
         
-        // Version control
-        version: currentVersion + 1,
-        lastModified: serverTimestamp(),
-      };
+        return { currentDoctorName, selectedDoctor };
+      });
 
-      // Add to batch
-      batch.update(caseRef, updateData);
-
-      // Commit batch
-      await batch.commit();
-
-      const transferMessage = currentDoctorName 
-        ? `Case transferred successfully from Dr. ${currentDoctorName} to Dr. ${selectedDoctor.name}`
-        : `Case transferred successfully to Dr. ${selectedDoctor.name}`;
+      const transferMessage = transferDialog.case.assignedDoctors?.primaryName 
+        ? `Case transferred from Dr. ${transferDialog.case.assignedDoctors.primaryName} to Dr. ${selectedDoctor.name}`
+        : `Case assigned to Dr. ${selectedDoctor.name}`;
 
       onSuccess(transferMessage);
       closeTransferDialog();
+      
     } catch (err) {
       console.error("Error transferring case:", err);
-      onError("Failed to transfer case. Please try again.");
+      
+      // More specific error messages
+      if (err.code === 'permission-denied') {
+        onError("Permission denied. You may not have rights to transfer this case.");
+      } else if (err.code === 'not-found') {
+        onError("Case no longer exists. It may have been deleted or transferred.");
+      } else if (err.message.includes("network")) {
+        onError("Network error. Please check your connection and try again.");
+      } else {
+        onError("Transfer failed. Please try again in a moment.");
+      }
     } finally {
       setTransferLoading(false);
+      transferInProgressRef.current = false;
     }
   }, [
     transferDialog,
-    doctorOptions,
+    doctors,
     currentUser,
     onSuccess,
     onError,
@@ -564,68 +571,38 @@ const CaseTransferTable = ({
         )}
       </div>
 
-      {/* Enhanced Transfer Dialog */}
+      {/* Enhanced Transfer Dialog with optimized form */}
       <Dialog open={transferDialog.open} onOpenChange={closeTransferDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Search className="h-5 w-5 text-blue-500 mr-2" />
-              Transfer Case to Another Doctor
+              Transfer Case
             </DialogTitle>
             <DialogDescription>
-              Select an available doctor to transfer this case to. The transfer history will be tracked automatically.
+              Select an available doctor to transfer this case to.
             </DialogDescription>
           </DialogHeader>
 
           {transferDialog.case && (
             <div className="space-y-4">
-              {/* Case Info */}
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <h4 className="font-medium text-gray-900">Case Details</h4>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-500">Patient:</span>
-                    <span className="ml-2 font-medium">
-                      {transferDialog.case.patientName}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">EMR:</span>
-                    <span className="ml-2 font-medium">
-                      {transferDialog.case.emrNumber}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Clinic:</span>
-                    <span className="ml-2 font-medium text-purple-700">
-                      {transferDialog.case.clinicCode}
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-500">Current Doctor:</span>
-                    <span className="ml-2 font-medium">
-                      {transferDialog.case.assignedDoctors?.primaryName ||
-                        "Not assigned"}
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-500">Complaint:</span>
-                    <span className="ml-2">
-                      {transferDialog.case.chiefComplaint}
-                    </span>
-                  </div>
+              {/* Simplified Case Info */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm space-y-1">
+                  <div><strong>Patient:</strong> {transferDialog.case.patientName}</div>
+                  <div><strong>EMR:</strong> {transferDialog.case.emrNumber}</div>
+                  <div><strong>Current Doctor:</strong> {transferDialog.case.assignedDoctors?.primaryName || "Not assigned"}</div>
+                  <div><strong>Clinic:</strong> {transferDialog.case.clinicCode}</div>
+                  <div><strong>Complaint:</strong> {transferDialog.case.chiefComplaint}</div>
                   {transferDialog.case.transferCount > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-gray-500">Previous Transfers:</span>
-                      <span className="ml-2 text-orange-600 font-medium">
-                        {transferDialog.case.transferCount}
-                      </span>
+                    <div className="text-orange-600">
+                      <strong>Previous Transfers:</strong> {transferDialog.case.transferCount}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Transfer History */}
+              {/* Transfer History Warning */}
               {transferDialog.case.transferHistory && transferDialog.case.transferHistory.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                   <div className="flex items-center mb-2">
@@ -638,22 +615,14 @@ const CaseTransferTable = ({
                 </div>
               )}
 
-              {/* Doctor Selection */}
+              {/* Simplified Doctor Selection */}
               <div className="space-y-2">
-                <Label htmlFor="doctor-select" className="text-sm font-medium">
-                  Select New Doctor
-                </Label>
+                <Label>Select New Doctor</Label>
                 <Select
-                  id="doctor-select"
                   options={doctorOptions}
-                  value={
-                    doctorOptions.find(
-                      (option) =>
-                        option.value === transferDialog.selectedDoctorId
-                    ) || null
-                  }
+                  value={doctorOptions.find(option => option.value === transferDialog.selectedDoctorId) || null}
                   onChange={handleDoctorSelect}
-                  placeholder="Search and select a doctor..."
+                  placeholder="Select doctor..."
                   isSearchable
                   isClearable
                   menuPlacement="bottom"
@@ -723,7 +692,7 @@ const CaseTransferTable = ({
                 </p>
               </div>
 
-              {/* Selected Doctor Info */}
+              {/* Selected Doctor Preview */}
               {transferDialog.selectedDoctorId && (
                 <div className="bg-blue-50 p-3 rounded-lg">
                   <div className="flex items-center">
@@ -746,7 +715,7 @@ const CaseTransferTable = ({
                 </div>
               )}
 
-              {/* Real-time Update Notice */}
+              {/* Transfer Notice */}
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <div className="flex items-start">
                   <AlertCircle className="h-4 w-4 text-amber-600 mr-2 mt-0.5" />
@@ -775,7 +744,7 @@ const CaseTransferTable = ({
               ) : (
                 <>
                   <ArrowRightLeft className="h-4 w-4 mr-2" />
-                  Transfer Case
+                  Transfer
                 </>
               )}
             </Button>
