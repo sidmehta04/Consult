@@ -18,6 +18,7 @@ import CaseManagementModule from "./components/CaseManagement";
 //import DashboardTab from "./components/dashboard_old/Dashboard"; // Import the Dashboard Tab
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
+import AnalyticsDashboard from "./components/Analytics";
 import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
@@ -256,6 +257,14 @@ function AppContent() {
       });
     }
 
+    if (userRole === "superAdmin") {
+      items.push({
+        name: "Analytics",
+        href: "/analytics",
+        icon: <Activity className="h-5 w-5" />
+      });
+    }
+
     return items;
   };
 
@@ -408,7 +417,20 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />
-              
+
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      "superAdmin"
+                    ]}
+                  >
+                    <AnalyticsDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />
+
               {/* Default catch-all route */}
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

@@ -59,7 +59,7 @@ export const enrichDoctorsWithShiftData = (doctorsList, realtimeData) => {
     return doctorsList.map(doctor => {
         // Try to find doctor in realtime data by empId
         let shiftInfo = { 
-        shiftTiming: "NOT_SET", // Default shift
+        shiftTiming: "9AM-6PM", // Default shift
         shiftType: "Full-Time",
         hourlyTarget: DEFAULT_HOURLY_TARGET,
         dailyTarget: DEFAULT_HOURLY_TARGET * 8
