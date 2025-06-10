@@ -230,7 +230,7 @@ function AppContent() {
     */
 
     // combined dashboard
-    if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
+    if (["zonalHead", "teamLeader", "drManager","superAdmin"].includes(userRole)) {
       items.push({
         name: "Doctor/Pharmacist Status",
         href: "/medical-dashboard",
@@ -370,7 +370,7 @@ function AppContent() {
               <Route
                 path="/medical-dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead"]}>
+                  <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead","superAdmin"]}>
                     <CombinedDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
                   </ProtectedRoute>
                 }

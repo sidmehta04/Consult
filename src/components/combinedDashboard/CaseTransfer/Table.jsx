@@ -239,14 +239,20 @@ const CaseTransferTable = ({
 
   // Memoized doctor options for select
   const doctorOptions = useMemo(() => {
-    return doctors
-      .filter((doctor) => doctor.isAvailable && doctor.caseCount < 10)
-      .map((doctor) => ({
-        value: doctor.id,
-        label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
-        doctor,
-      }));
-  }, [doctors]);
+  
+  
+  const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
+  
+  const doctorsWithLowCaseCount = doctors.filter((doctor) => doctor.caseCount < 10);
+  
+  const filteredDoctors = doctors.filter((doctor) => doctor.isAvailable && doctor.caseCount < 10);
+  
+  return filteredDoctors.map((doctor) => ({
+    value: doctor.id,
+    label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
+    doctor,
+  }));
+}, [doctors]);
 
   const doctorFilterOptions = useMemo(() => {
     return doctors.map((doctor) => ({

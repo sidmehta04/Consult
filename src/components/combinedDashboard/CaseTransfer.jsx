@@ -66,7 +66,8 @@ const CaseTransferMain = ({ currentUser }) => {
   
   // Memoized permission check
   const canTransferCases = useMemo(() => 
-    currentUser?.role === "teamLeader", 
+    currentUser?.role === "teamLeader"||
+  currentUser?.role === "superAdmin" ||
     [currentUser?.role]
   );
 
@@ -241,7 +242,7 @@ const CaseTransferMain = ({ currentUser }) => {
             return {
               ...doctor,
               caseCount,
-              isAvailable: isAvailable && caseCount < 10,
+              isAvailable: isAvailable,
             };
           });
 
