@@ -257,6 +257,14 @@ function AppContent() {
       });
     }
 
+    if (userRole === "superAdmin") {
+      items.push({
+        name: "Analytics",
+        href: "/analytics",
+        icon: <Activity className="h-5 w-5" />
+      });
+    }
+
     return items;
   };
 

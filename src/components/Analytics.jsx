@@ -25,7 +25,7 @@ import {
 } from "recharts";
 
 // Summary Cards Component
-const SummaryCards = ({ data, selectedPartner }) => {
+const SummaryCards = ({ data, selectedPartner, onlineDoctors, onlinePharmacists }) => {
   const metrics = useMemo(() => {
     const filteredData =
       selectedPartner === "all"
@@ -53,11 +53,11 @@ const SummaryCards = ({ data, selectedPartner }) => {
         activeCases++;
 
         // Count unique doctors working on active cases
-        if (caseItem.assignedDoctors?.primary) {
+        if (caseItem.assignedDoctors?.primary && (caseItem.doctorJoined || caseItem.consultationType == "audio")) {
           busyDoctors.add(caseItem.assignedDoctors.primary);
         }
         // Count unique pharmacists working on active cases
-        if (caseItem.pharmacistId) {
+        if (caseItem.pharmacistId && (caseItem.pharmacistJoined || caseItem.consultationType == "audio")) {
           busyPharmacists.add(caseItem.pharmacistId);
         }
       }
@@ -80,8 +80,8 @@ const SummaryCards = ({ data, selectedPartner }) => {
   const cards = [
     { title: "Total Cases", value: metrics.totalCases },
     { title: "Active Cases", value: metrics.activeCases },
-    { title: "Busy Doctors", value: metrics.busyDoctors },
-    { title: "Busy Pharmacists", value: metrics.busyPharmacists },
+    //{ title: "Busy Doctors", value: metrics.busyDoctors },
+    //{ title: "Busy Pharmacists", value: metrics.busyPharmacists },
   ];
 
   return (
@@ -98,6 +98,24 @@ const SummaryCards = ({ data, selectedPartner }) => {
             </div>
           </div>
         ))}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Busy Doctors</div>
+          <div className="flex items-baseline">
+            <div className="text-2xl font-semibold text-gray-900"> {metrics.busyDoctors}&nbsp;</div>
+            <div className="text-sm text-gray-500 mb-1"> out of </div>
+            <div className="text-2xl font-semibold text-gray-900">&nbsp;{onlineDoctors}&nbsp;</div>
+            <div className="text-sm text-gray-500 mb-1"> online</div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Busy Pharmacists</div>
+          <div className="flex items-baseline">
+            <div className="text-2xl font-semibold text-gray-900"> {metrics.busyPharmacists}&nbsp;</div>
+            <div className="text-sm text-gray-500 mb-1"> out of </div>
+            <div className="text-2xl font-semibold text-gray-900">&nbsp;{onlinePharmacists}&nbsp;</div>
+            <div className="text-sm text-gray-500 mb-1"> online</div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -750,6 +768,8 @@ const AnalyticsDashboard = ({ currentUser }) => {
   const [totalClinicsFromUsers, setTotalClinicsFromUsers] = useState(0);
   const [totalDoctors, setTotalDoctors] = useState(0);
   const [totalPharmacists, setTotalPharmacists] = useState(0);
+  const [onlineDoctors, setOnlineDoctors] = useState(0);
+  const [onlinePharmacists, setOnlinePharmacists] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPartner, setSelectedPartner] = useState("all");
@@ -767,6 +787,34 @@ const AnalyticsDashboard = ({ currentUser }) => {
     }, 60000); // Update every minute
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const doctorsQuery = query(
+      collection(firestore, "users"),
+      where("role", "==", "doctor"),
+      where("availabilityStatus", "==", "available")
+    );
+
+    const pharmacistsQuery = query(
+      collection(firestore, "users"),
+      where("role", "==", "pharmacist"),
+      where("availabilityStatus", "==", "available")
+    );
+
+    const unsubscribeDoctors = onSnapshot(doctorsQuery, (snapshot) => {
+      setOnlineDoctors(snapshot.size);
+    });
+
+    const unsubscribePharmacists = onSnapshot(pharmacistsQuery, (snapshot) => {
+      setOnlinePharmacists(snapshot.size);
+    });
+
+    // Cleanup listeners on component unmount
+    return () => {
+      unsubscribeDoctors();
+      unsubscribePharmacists();
+    };
   }, []);
 
   // Fetch total clinics from users collection where role = nurse
@@ -1144,6 +1192,8 @@ const AnalyticsDashboard = ({ currentUser }) => {
             <SummaryCards
               data={currentData}
               selectedPartner={selectedPartner}
+              onlineDoctors={onlineDoctors}
+              onlinePharmacists={onlinePharmacists}
             />
 
             {/* Case Timeline */}
