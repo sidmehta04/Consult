@@ -237,22 +237,27 @@ const CaseTransferTable = ({
     };
   }, [cases, currentPage, casesPerPage, selectedDoctorFilter]);
 
-  // Memoized doctor options for select
+  // FIXED: Memoized doctor options for select - Show all available doctors
   const doctorOptions = useMemo(() => {
-  
-  
-  const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
-  
-  const doctorsWithLowCaseCount = doctors.filter((doctor) => doctor.caseCount < 10);
-  
-  const filteredDoctors = doctors.filter((doctor) => doctor.isAvailable && doctor.caseCount < 10);
-  
-  return filteredDoctors.map((doctor) => ({
-    value: doctor.id,
-    label: `${doctor.name} (${doctor.caseCount}/10 cases)`,
-    doctor,
-  }));
-}, [doctors]);
+    console.log("All doctors received:", doctors);
+    
+    // Show all doctors with "available" status, regardless of case count
+    const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
+    
+    console.log("Available doctors:", availableDoctors);
+    
+    return availableDoctors.map((doctor) => {
+      const canAcceptMoreCases = doctor.caseCount < 10;
+      const statusIndicator = canAcceptMoreCases ? "" : " (At Capacity)";
+      
+      return {
+        value: doctor.id,
+        label: `${doctor.name} (${doctor.caseCount}/10 cases)${statusIndicator}`,
+        doctor,
+        isDisabled: !canAcceptMoreCases, // Disable if at capacity but still show them
+      };
+    });
+  }, [doctors]);
 
   const doctorFilterOptions = useMemo(() => {
     return doctors.map((doctor) => ({
@@ -818,6 +823,7 @@ const CaseTransferTable = ({
                   placeholder="Select doctor..."
                   isSearchable
                   isClearable
+                  isOptionDisabled={(option) => option.isDisabled}
                   menuPlacement="bottom"
                   menuShouldBlockScroll={true}
                   styles={{
@@ -838,16 +844,26 @@ const CaseTransferTable = ({
                     }),
                     option: (base, state) => ({
                       ...base,
-                      backgroundColor: state.isSelected
+                      backgroundColor: state.isDisabled 
+                        ? '#f9fafb' 
+                        : state.isSelected
                         ? '#3b82f6'
                         : state.isFocused
                         ? '#eff6ff'
                         : 'white',
-                      color: state.isSelected ? 'white' : '#374151',
-                      cursor: 'pointer',
+                      color: state.isDisabled 
+                        ? '#9ca3af'
+                        : state.isSelected 
+                        ? 'white' 
+                        : '#374151',
+                      cursor: state.isDisabled ? 'not-allowed' : 'pointer',
                       padding: '8px 12px',
                       '&:active': {
-                        backgroundColor: state.isSelected ? '#3b82f6' : '#dbeafe',
+                        backgroundColor: state.isDisabled 
+                          ? '#f9fafb'
+                          : state.isSelected 
+                          ? '#3b82f6' 
+                          : '#dbeafe',
                       },
                     }),
                     singleValue: (base) => ({
@@ -881,7 +897,7 @@ const CaseTransferTable = ({
                   }}
                 />
                 <p className="text-xs text-gray-500">
-                  Only available doctors with less than 10 cases are shown.
+                  Available doctors are shown. Doctors at capacity (10+ cases) are disabled.
                 </p>
               </div>
 

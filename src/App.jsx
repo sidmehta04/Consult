@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
 import CaseManagementModule from "./components/CaseManagement";
-import AnalyticsDashboard from './components/analytics/Analytics';
 //import DashboardTab from "./components/dashboard_old/Dashboard"; // Import the Dashboard Tab
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
@@ -419,7 +418,7 @@ function AppContent() {
                       "superAdmin"
                     ]}
                   >
-                    <AnalyticsDashboard />
+                    <AnalyticsDashboard currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
               />

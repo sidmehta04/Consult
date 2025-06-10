@@ -1,4 +1,3 @@
-// CaseTransferMain.js - Optimized version
 import React, { useState, useEffect, useMemo, useCallback, useReducer, useRef } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,10 +65,9 @@ const CaseTransferMain = ({ currentUser }) => {
   
   // Memoized permission check
   const canTransferCases = useMemo(() => 
-    currentUser?.role === "teamLeader"||
-  currentUser?.role === "superAdmin" ||
-    [currentUser?.role]
-  );
+    currentUser?.role === "teamLeader" ||
+    currentUser?.role === "superAdmin"
+  , [currentUser?.role]);
 
   // Memoized filtered cases with optimized filtering
   const filteredCases = useMemo(() => {
@@ -197,13 +195,13 @@ const CaseTransferMain = ({ currentUser }) => {
     return () => {}; // No cleanup needed for this approach
   }, [state.cases]);
 
-  // Heavily optimized doctors listener
+  // FIXED: Heavily optimized doctors listener
   const setupDoctorsListener = useCallback(() => {
     try {
       const doctorsQuery = query(
         collection(firestore, "users"),
         where("role", "==", "doctor"),
-        limit(100) // Reasonable limit for doctors
+        limit(400) // Reasonable limit for doctors
       );
 
       const unsubscribeDoctors = onSnapshot(
@@ -232,17 +230,23 @@ const CaseTransferMain = ({ currentUser }) => {
             }
           });
 
-          // Process doctors list with optimized availability check
+          // FIXED: Process doctors list with corrected availability check
           const doctorsList = doctorsData.map((doctor) => {
             const caseCount = doctorCaseCounts.get(doctor.id) || 0;
+            
+            // FIXED: Separate availability status from case count
             const isAvailable = 
               doctor.availabilityStatus === "available" ||
               doctor.availabilityStatus === "busy";
             
+            // Add separate property for transfer eligibility
+            const canAcceptCases = isAvailable && caseCount < 10;
+            
             return {
               ...doctor,
               caseCount,
-              isAvailable: isAvailable,
+              isAvailable, // Only based on status, not case count
+              canAcceptCases, // Separate property for transfer eligibility
             };
           });
 
@@ -253,6 +257,15 @@ const CaseTransferMain = ({ currentUser }) => {
             }
             return a.caseCount - b.caseCount;
           });
+
+          // Debug log to help troubleshoot
+          console.log("Processed doctors:", doctorsList.map(d => ({
+            name: d.name,
+            availabilityStatus: d.availabilityStatus,
+            isAvailable: d.isAvailable,
+            canAcceptCases: d.canAcceptCases,
+            caseCount: d.caseCount
+          })));
 
           doctorsMapRef.current = newDoctorsMap;
           dispatch({ type: 'SET_DOCTORS', payload: doctorsList });
@@ -393,7 +406,7 @@ const CaseTransferMain = ({ currentUser }) => {
 
       <CaseTransferTable
         cases={filteredCases}
-        doctors={state.doctors}
+        doctors={state.doctors}x
         loading={state.loading}
         currentUser={currentUser}
         onSuccess={handleSuccess}
