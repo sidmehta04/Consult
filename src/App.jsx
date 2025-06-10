@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import LoginForm from "./components/Login";
 import UserCreationTab from "./components/UserCreation";
 import CaseManagementModule from "./components/CaseManagement";
-import AnalyticsDashboard from './components/analytics/Analytics';
 //import DashboardTab from "./components/dashboard_old/Dashboard"; // Import the Dashboard Tab
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
@@ -265,15 +264,7 @@ function AppContent() {
         icon: <Activity className="h-5 w-5" />
       });
     }
-
-    if (userRole === "superAdmin") {
-      items.push({
-        name: "Analytics",
-        href: "/analytics",
-        icon: <Activity className="h-5 w-5" />
-      });
-    }
-
+    
     return items;
   };
 
