@@ -64,7 +64,6 @@ export const enrichDoctorsWithShiftData = (doctorsList, realtimeData) => {
         hourlyTarget: DEFAULT_HOURLY_TARGET,
         dailyTarget: DEFAULT_HOURLY_TARGET * 8
         };
-        console.log(doctor);
         // Search through realtime data to find matching doctor by empId
         if (doctor.empId) {
         Object.keys(realtimeData || {}).forEach(key => {
