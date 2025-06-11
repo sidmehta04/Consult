@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -34,6 +34,9 @@ import {
   LinkIcon,
   Info,
   UserPen,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -42,23 +45,42 @@ import {
   collection,
   query,
   where,
-  onSnapshot,
+  orderBy,
+  limit,
+  startAfter,
   updateDoc,
   serverTimestamp,
   getDoc,
   getDocs,
+  writeBatch,
+  increment,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import NurseCaseForm from "./NurseCaseForm";
 import { format } from "date-fns";
 
+const CASES_PER_PAGE = 20;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 const NurseCaseManagement = ({ currentUser }) => {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [linkedCases, setLinkedCases] = useState({});
   const [currentCase, setCurrentCase] = useState(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPrevPage, setHasPrevPage] = useState(false);
+  const [pageCache, setPageCache] = useState(new Map());
+  const [lastDocCache, setLastDocCache] = useState(new Map());
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Cache for doctor/pharmacist status updates to avoid duplicate calls
+  const [statusUpdateCache, setStatusUpdateCache] = useState(new Set());
 
   const [confirmComplete, setConfirmComplete] = useState({
     open: false,
@@ -79,6 +101,15 @@ const NurseCaseManagement = ({ currentUser }) => {
     cases: [],
     batchTimestamp: null,
   });
+
+  // Debounced function to avoid excessive status updates
+  const debounceStatusUpdate = useCallback((fn, delay = 1000) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn(...args), delay);
+    };
+  }, []);
 
   const openEditDialog = (caseData) => {
     setEditCase({
@@ -110,100 +141,153 @@ const NurseCaseManagement = ({ currentUser }) => {
     throw lastError;
   };
 
-  useEffect(() => {
-    const fetchCases = async () => {
-      try {
-        const q = query(
-          collection(firestore, "cases"),
-          where("clinicId", "==", currentUser.uid)
-        );
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-          const casesData = [];
-          const linkedCasesMap = {};
-
-          querySnapshot.forEach((doc) => {
-            const caseData = doc.data();
-
-            // Process batch-created cases for linking
-            if (caseData.batchCreated && caseData.batchTimestamp) {
-              const batchKey = caseData.batchTimestamp.toString();
-
-              if (!linkedCasesMap[batchKey]) {
-                linkedCasesMap[batchKey] = [];
-              }
-
-              linkedCasesMap[batchKey].push({
-                id: doc.id,
-                ...caseData,
-                createdAtFormatted:
-                  caseData.createdAt &&
-                  typeof caseData.createdAt.toDate === "function"
-                    ? format(caseData.createdAt.toDate(), "PPpp")
-                    : "Not available",
-                createdAtDate: caseData.createdAt
-                  ? format(caseData.createdAt.toDate(), "PP")
-                  : "",
-                createdAtTime: caseData.createdAt
-                  ? format(caseData.createdAt.toDate(), "p")
-                  : "",
-                doctorCompletedAtFormatted: caseData.doctorCompletedAt
-                  ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
-                  : null,
-                pharmacistCompletedAtFormatted: caseData.pharmacistCompletedAt
-                  ? format(caseData.pharmacistCompletedAt.toDate(), "PPpp")
-                  : null,
-              });
-            }
-
-            casesData.push({
-              id: doc.id,
-              ...caseData,
-              createdAtFormatted:
-                caseData.createdAt &&
-                typeof caseData.createdAt.toDate === "function"
-                  ? format(caseData.createdAt.toDate(), "PPpp")
-                  : "Not available",
-              createdAtDate: caseData.createdAt
-                ? format(caseData.createdAt.toDate(), "PP")
-                : "",
-              createdAtTime: caseData.createdAt
-                ? format(caseData.createdAt.toDate(), "p")
-                : "",
-              doctorCompletedAtFormatted: caseData.doctorCompletedAt
-                ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
-                : null,
-              pharmacistCompletedAtFormatted: caseData.pharmacistCompletedAt
-                ? format(caseData.pharmacistCompletedAt.toDate(), "PPpp")
-                : null,
-            });
-          });
-
-          // Sort by creation date (newest first)
-          casesData.sort(
-            (a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()
-          );
-
-          // Update state with all cases and the linked cases map
-          setCases(casesData);
-          setLinkedCases(linkedCasesMap);
-          setLoading(false);
-        });
-
-        return () => {
-          if (typeof unsubscribe === "function") {
-            unsubscribe();
-          }
-        };
-      } catch (err) {
-        console.error("Error fetching cases:", err);
-        setError("Failed to load cases");
+  // Optimized function to fetch cases with pagination
+  const fetchCasesPage = useCallback(async (page = 1, forceRefresh = false) => {
+    const cacheKey = `${currentUser.uid}-${page}`;
+    const now = Date.now();
+    
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && pageCache.has(cacheKey)) {
+      const cached = pageCache.get(cacheKey);
+      if (now - cached.timestamp < CACHE_DURATION) {
+        setCases(cached.data);
+        setCurrentPage(page);
+        setHasNextPage(cached.hasNext);
+        setHasPrevPage(page > 1);
+        setLinkedCases(cached.linkedCases);
         setLoading(false);
+        return;
       }
-    };
+    }
 
-    fetchCases();
-  }, [currentUser.uid]);
+    try {
+      setLoading(page === 1);
+      if (page !== 1) setRefreshing(true);
+
+      let q = query(
+        collection(firestore, "cases"),
+        where("clinicId", "==", currentUser.uid),
+        orderBy("createdAt", "desc"),
+        limit(CASES_PER_PAGE + 1) // Get one extra to check if there's a next page
+      );
+
+      // Add pagination cursor for pages beyond the first
+      if (page > 1 && lastDocCache.has(page - 1)) {
+        const lastDoc = lastDocCache.get(page - 1);
+        q = query(q, startAfter(lastDoc));
+      }
+
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs;
+      
+      // Check if there's a next page
+      const hasNext = docs.length > CASES_PER_PAGE;
+      if (hasNext) {
+        docs.pop(); // Remove the extra document
+      }
+
+      // Store the last document for pagination
+      if (docs.length > 0) {
+        lastDocCache.set(page, docs[docs.length - 1]);
+      }
+
+      const casesData = [];
+      const linkedCasesMap = {};
+
+      docs.forEach((doc) => {
+        const caseData = doc.data();
+
+        // Process batch-created cases for linking
+        if (caseData.batchCreated && caseData.batchTimestamp) {
+          const batchKey = caseData.batchTimestamp.toString();
+
+          if (!linkedCasesMap[batchKey]) {
+            linkedCasesMap[batchKey] = [];
+          }
+
+          linkedCasesMap[batchKey].push({
+            id: doc.id,
+            ...formatCaseData(caseData),
+          });
+        }
+
+        casesData.push({
+          id: doc.id,
+          ...formatCaseData(caseData),
+        });
+      });
+
+      // Cache the results
+      pageCache.set(cacheKey, {
+        data: casesData,
+        linkedCases: linkedCasesMap,
+        hasNext,
+        timestamp: now,
+      });
+
+      // Update state
+      setCases(casesData);
+      setCurrentPage(page);
+      setHasNextPage(hasNext);
+      setHasPrevPage(page > 1);
+      setLinkedCases(linkedCasesMap);
+      
+    } catch (err) {
+      console.error("Error fetching cases:", err);
+      setError("Failed to load cases");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [currentUser.uid, pageCache, lastDocCache]);
+
+  // Helper function to format case data consistently
+  const formatCaseData = useCallback((caseData) => {
+    return {
+      ...caseData,
+      createdAtFormatted:
+        caseData.createdAt && typeof caseData.createdAt.toDate === "function"
+          ? format(caseData.createdAt.toDate(), "PPpp")
+          : "Not available",
+      createdAtDate: caseData.createdAt
+        ? format(caseData.createdAt.toDate(), "PP")
+        : "",
+      createdAtTime: caseData.createdAt
+        ? format(caseData.createdAt.toDate(), "p")
+        : "",
+      doctorCompletedAtFormatted: caseData.doctorCompletedAt
+        ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
+        : null,
+      pharmacistCompletedAtFormatted: caseData.pharmacistCompletedAt
+        ? format(caseData.pharmacistCompletedAt.toDate(), "PPpp")
+        : null,
+    };
+  }, []);
+
+  // Load initial page
+  useEffect(() => {
+    fetchCasesPage(1);
+  }, [fetchCasesPage]);
+
+  // Pagination handlers
+  const handleNextPage = () => {
+    if (hasNextPage) {
+      fetchCasesPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (hasPrevPage) {
+      fetchCasesPage(currentPage - 1);
+    }
+  };
+
+  const handleRefresh = () => {
+    // Clear cache for current page and refresh
+    const cacheKey = `${currentUser.uid}-${currentPage}`;
+    pageCache.delete(cacheKey);
+    fetchCasesPage(currentPage, true);
+  };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -229,7 +313,10 @@ const NurseCaseManagement = ({ currentUser }) => {
       });
 
       setEditCase({ open: false, caseData: null });
-      // Success notification could be added here
+      
+      // Refresh current page to reflect changes
+      handleRefresh();
+      
     } catch (err) {
       console.error("Error updating case:", err);
       setError("Failed to update case");
@@ -238,384 +325,374 @@ const NurseCaseManagement = ({ currentUser }) => {
     }
   };
 
-  const handleFallbackDoctor = async (caseItem) => {
-
-  }
-  const updateDoctorStatusIfNeeded = async (doctorId) => {
-  if (!doctorId) return;
-
-  try {
-    // Get doctor's current status
-    const doctorRef = doc(firestore, "users", doctorId);
-    const doctorSnap = await getDoc(doctorRef);
-    
-    if (!doctorSnap.exists()) return;
-    
-    const doctorData = doctorSnap.data();
-    const currentStatus = doctorData.availabilityStatus;
-    
-    // Count doctor's active cases
-    const doctorActiveCasesQuery = query(
-      collection(firestore, "cases"),
-      where("assignedDoctors.primary", "==", doctorId),
-      where("doctorCompleted", "==", false),
-      where("isIncomplete", "!=", true)
-    );
-    
-    const doctorActiveCasesSnapshot = await getDocs(doctorActiveCasesQuery);
-    const activeCaseCount = doctorActiveCasesSnapshot.size;
-    
-    console.log(`Doctor ${doctorId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
-    
-    const timestamp = new Date();
-    const history = doctorData.availabilityHistory || [];
-    
-    // Update status based on case load
-    if (activeCaseCount >= 10 && currentStatus === "available") {
-      // Mark as busy
-      const statusChange = {
-        previousStatus: currentStatus,
-        newStatus: "busy",
-        changedAt: timestamp,
-        reason: "Automatically marked as busy due to high case load (via nurse action)",
-        casesNo: activeCaseCount,
-      };
-
-      // const updatedHistory = [statusChange, ...history].slice(0, 50);
-      const updatedHistory = [statusChange, ...history];
+  // Optimized status update functions with batching and caching
+  const updateDoctorStatusIfNeeded = useMemo(() => 
+    debounceStatusUpdate(async (doctorId) => {
+      if (!doctorId || statusUpdateCache.has(`doctor-${doctorId}`)) return;
       
-      await updateDoc(doctorRef, {
-        availabilityStatus: "busy",
-        lastStatusUpdate: timestamp,
-        availabilityHistory: updatedHistory,
-      });
+      statusUpdateCache.add(`doctor-${doctorId}`);
       
-      console.log(`Updated doctor ${doctorId} status to busy`);
-      
-    } else if (activeCaseCount < 10 && currentStatus === "busy") {
-      // Mark as available
-      const statusChange = {
-        previousStatus: currentStatus,
-        newStatus: "available",
-        changedAt: timestamp,
-        reason: "Automatically marked as available due to reduced case load (via nurse action)",
-        casesNo: activeCaseCount,
-      };
-      
-      const updatedHistory = [statusChange, ...history].slice(0, 50);
-      
-      await updateDoc(doctorRef, {
-        availabilityStatus: "available",
-        lastStatusUpdate: timestamp,
-        availabilityHistory: updatedHistory,
-      });
-      
-      console.log(`Updated doctor ${doctorId} status to available`);
-    }
-    
-  } catch (err) {
-    console.error("Error updating doctor status:", err);
-  }
-};
-const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
-  if (!pharmacistId) return;
-
-  try {
-    // Get pharmacist's current status
-    const pharmacistRef = doc(firestore, "users", pharmacistId);
-    const pharmacistSnap = await getDoc(pharmacistRef);
-    
-    if (!pharmacistSnap.exists()) return;
-    
-    const pharmacistData = pharmacistSnap.data();
-    const currentStatus = pharmacistData.availabilityStatus;
-    
-    // Count pharmacist's active cases
-    const pharmacistActiveCasesQuery = query(
-      collection(firestore, "cases"),
-      where("pharmacistId", "==", pharmacistId),
-      where("pharmacistCompleted", "==", false),
-      where("isIncomplete", "!=", true)
-    );
-    
-    const pharmacistActiveCasesSnapshot = await getDocs(pharmacistActiveCasesQuery);
-    const activeCaseCount = pharmacistActiveCasesSnapshot.size;
-    
-    console.log(`Pharmacist ${pharmacistId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
-    
-    const timestamp = new Date();
-    const history = pharmacistData.availabilityHistory || [];
-    
-    // Update status based on case load
-    if (activeCaseCount >= 10 && currentStatus === "available") {
-      // Mark as busy
-      const statusChange = {
-        previousStatus: currentStatus,
-        newStatus: "busy",
-        changedAt: timestamp,
-        reason: "Automatically marked as busy due to high case load (via nurse action)",
-        casesNo: activeCaseCount,
-      };
-      
-      //const updatedHistory = [statusChange, ...history].slice(0, 50);
-      const updatedHistory = [statusChange, ...history];
-      
-      await updateDoc(pharmacistRef, {
-        availabilityStatus: "busy",
-        lastStatusUpdate: timestamp,
-        availabilityHistory: updatedHistory,
-      });
-      
-      console.log(`Updated pharmacist ${pharmacistId} status to busy`);
-      
-    } else if (activeCaseCount < 10 && currentStatus === "busy") {
-      // Mark as available
-      const statusChange = {
-        previousStatus: currentStatus,
-        newStatus: "available",
-        changedAt: timestamp,
-        reason: "Automatically marked as available due to reduced case load (via nurse action)",
-        casesNo: activeCaseCount,
-      };
-      
-      //const updatedHistory = [statusChange, ...history].slice(0, 50);
-      const updatedHistory = [statusChange, ...history];
-      
-      await updateDoc(pharmacistRef, {
-        availabilityStatus: "available",
-        lastStatusUpdate: timestamp,
-        availabilityHistory: updatedHistory,
-      });
-      
-      console.log(`Updated pharmacist ${pharmacistId} status to available`);
-    }
-    
-  } catch (err) {
-    console.error("Error updating pharmacist status:", err);
-  }
-};
-
-
-  const handlePharmacistIncomplete = async (caseId) => {
-  if (!caseId) return;
-
-  try {
-    // First get the current case data to check doctor completion
-    const caseRef = doc(firestore, "cases", caseId);
-    const caseSnap = await getDoc(caseRef);
-
-    if (!caseSnap.exists()) {
-      throw new Error("Case not found");
-    }
-
-    const caseData = caseSnap.data();
-
-    // Enhanced check for doctor completion - check both the flag and the timestamp
-    if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
-      setError("This case cannot be marked incomplete until the doctor has completed their review.");
-      return;
-    }
-
-    // Check for incomplete flag
-    if (caseData.isIncomplete) {
-      setError("This case has been marked as incomplete by the doctor and cannot be marked incomplete by you.");
-      return;
-    }
-
-    // Check if already completed
-    if (caseData.pharmacistCompleted) {
-      setError("This case has already been completed.");
-      return;
-    }
-
-    const timestamp = new Date();
-    const currentVersion = caseData.version || 0;
-
-    try {
-      await retryOperation(() =>
-        updateDoc(caseRef, {
-          pharmacistCompleted: true,
-          inPharmacistPendingReview: false,
-          status: "pharmacist_incomplete",
-          pharmacistCompletedAt: timestamp,
-          pharmacistCompletedBy: currentUser.uid,
-          pharmacistCompletedByName: currentUser.displayName || "Nurse",
-          version: currentVersion + 1,
-          isIncomplete: true,
-        })
-      );
-      
-      // Update pharmacist status based on their new case load
-      const pharmacistId = caseData.pharmacistId;
-      if (pharmacistId) {
-        await updatePharmacistStatusIfNeeded(pharmacistId);
-      }
-      
-    } catch (err) {
-      console.error("Error updating case after retries:", err);
-      setError("Failed to update case after multiple attempts. Please try again.");
-      return;
-    }
-
-    setCurrentCase(null);
-    
-  } catch (err) {
-    console.error("Error completing case:", err);
-    setError("Failed to mark case as incomplete");
-  }
-};
-
-  const handleComplete = async () => {
-  try {
-    const { caseId, type, isIncomplete, reason } = confirmComplete;
-
-    // Validate that a reason is provided when marking as incomplete
-    if (isIncomplete && !reason.trim()) {
-      setError("Please provide a reason for marking the case as incomplete.");
-      return;
-    }
-
-    const caseRef = doc(firestore, "cases", caseId);
-    const timestamp = new Date();
-
-    // Get the current case data to verify workflow state
-    const caseSnap = await getDoc(caseRef);
-    if (!caseSnap.exists()) {
-      throw new Error("Case not found");
-    }
-
-    const caseData = caseSnap.data();
-
-    if (type === "doctor") {
-      const updateData = {
-        doctorCompleted: true,
-        status: isIncomplete ? "doctor_incomplete" : "doctor_completed",
-        doctorCompletedAt: timestamp,
-        doctorCompletedBy: currentUser.uid,
-        doctorCompletedByName: currentUser.displayName || "Nurse",
-        // Always set inPharmacistPendingReview based on complete/incomplete status
-        inPharmacistPendingReview: !isIncomplete,
-        version: (caseData.version || 0) + 1,
-      };
-
-      // Only add isIncomplete and incompleteReason if it's true
-      if (isIncomplete) {
-        updateData.isIncomplete = true;
-        updateData.incompleteReason = reason;
-      }
-
       try {
-        await retryOperation(() => updateDoc(caseRef, updateData));
+        // Use a single compound query to get both doctor data and case count
+        const [doctorSnap, doctorActiveCasesSnapshot] = await Promise.all([
+          getDoc(doc(firestore, "users", doctorId)),
+          getDocs(query(
+            collection(firestore, "cases"),
+            where("assignedDoctors.primary", "==", doctorId),
+            where("doctorCompleted", "==", false),
+            where("isIncomplete", "!=", true)
+          ))
+        ]);
         
-        // Update doctor status based on their new case load
-        const doctorId = caseData.assignedDoctors?.primary;
-        if (doctorId) {
-          await updateDoctorStatusIfNeeded(doctorId);
+        if (!doctorSnap.exists()) return;
+        
+        const doctorData = doctorSnap.data();
+        const currentStatus = doctorData.availabilityStatus;
+        const activeCaseCount = doctorActiveCasesSnapshot.size;
+        
+        console.log(`Doctor ${doctorId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
+        
+        const timestamp = new Date();
+        const history = doctorData.availabilityHistory || [];
+        
+        let needsUpdate = false;
+        let newStatus = currentStatus;
+        let statusChange = null;
+        
+        if (activeCaseCount >= 10 && currentStatus === "available") {
+          newStatus = "busy";
+          needsUpdate = true;
+          statusChange = {
+            previousStatus: currentStatus,
+            newStatus: "busy",
+            changedAt: timestamp,
+            reason: "Automatically marked as busy due to high case load (via nurse action)",
+            casesNo: activeCaseCount,
+          };
+        } else if (activeCaseCount < 10 && currentStatus === "busy") {
+          newStatus = "available";
+          needsUpdate = true;
+          statusChange = {
+            previousStatus: currentStatus,
+            newStatus: "available",
+            changedAt: timestamp,
+            reason: "Automatically marked as available due to reduced case load (via nurse action)",
+            casesNo: activeCaseCount,
+          };
+        }
+        
+        if (needsUpdate && statusChange) {
+          const updatedHistory = [statusChange, ...history].slice(0, 50);
+          
+          await updateDoc(doc(firestore, "users", doctorId), {
+            availabilityStatus: newStatus,
+            lastStatusUpdate: timestamp,
+            availabilityHistory: updatedHistory,
+          });
+          
+          console.log(`Updated doctor ${doctorId} status to ${newStatus}`);
         }
         
       } catch (err) {
-        console.error("Error updating case after retries:", err);
-        setError("Failed to update case after multiple attempts. Please try again.");
-        throw err;
+        console.error("Error updating doctor status:", err);
+      } finally {
+        // Remove from cache after a delay to prevent immediate re-execution
+        setTimeout(() => {
+          statusUpdateCache.delete(`doctor-${doctorId}`);
+          setStatusUpdateCache(new Set(statusUpdateCache));
+        }, 5000);
       }
+    }, 1000)
+  , [debounceStatusUpdate, statusUpdateCache]);
+
+  const updatePharmacistStatusIfNeeded = useMemo(() => 
+    debounceStatusUpdate(async (pharmacistId) => {
+      if (!pharmacistId || statusUpdateCache.has(`pharmacist-${pharmacistId}`)) return;
       
-    } else if (type === "pharmacist") {
-      // Extra validation: Cannot complete pharmacist part if doctor hasn't completed
+      statusUpdateCache.add(`pharmacist-${pharmacistId}`);
+      
+      try {
+        const [pharmacistSnap, pharmacistActiveCasesSnapshot] = await Promise.all([
+          getDoc(doc(firestore, "users", pharmacistId)),
+          getDocs(query(
+            collection(firestore, "cases"),
+            where("pharmacistId", "==", pharmacistId),
+            where("pharmacistCompleted", "==", false),
+            where("isIncomplete", "!=", true)
+          ))
+        ]);
+        
+        if (!pharmacistSnap.exists()) return;
+        
+        const pharmacistData = pharmacistSnap.data();
+        const currentStatus = pharmacistData.availabilityStatus;
+        const activeCaseCount = pharmacistActiveCasesSnapshot.size;
+        
+        console.log(`Pharmacist ${pharmacistId} has ${activeCaseCount} active cases, current status: ${currentStatus}`);
+        
+        const timestamp = new Date();
+        const history = pharmacistData.availabilityHistory || [];
+        
+        let needsUpdate = false;
+        let newStatus = currentStatus;
+        let statusChange = null;
+        
+        if (activeCaseCount >= 10 && currentStatus === "available") {
+          newStatus = "busy";
+          needsUpdate = true;
+          statusChange = {
+            previousStatus: currentStatus,
+            newStatus: "busy",
+            changedAt: timestamp,
+            reason: "Automatically marked as busy due to high case load (via nurse action)",
+            casesNo: activeCaseCount,
+          };
+        } else if (activeCaseCount < 10 && currentStatus === "busy") {
+          newStatus = "available";
+          needsUpdate = true;
+          statusChange = {
+            previousStatus: currentStatus,
+            newStatus: "available",
+            changedAt: timestamp,
+            reason: "Automatically marked as available due to reduced case load (via nurse action)",
+            casesNo: activeCaseCount,
+          };
+        }
+        
+        if (needsUpdate && statusChange) {
+          const updatedHistory = [statusChange, ...history].slice(0, 50);
+          
+          await updateDoc(doc(firestore, "users", pharmacistId), {
+            availabilityStatus: newStatus,
+            lastStatusUpdate: timestamp,
+            availabilityHistory: updatedHistory,
+          });
+          
+          console.log(`Updated pharmacist ${pharmacistId} status to ${newStatus}`);
+        }
+        
+      } catch (err) {
+        console.error("Error updating pharmacist status:", err);
+      } finally {
+        setTimeout(() => {
+          statusUpdateCache.delete(`pharmacist-${pharmacistId}`);
+          setStatusUpdateCache(new Set(statusUpdateCache));
+        }, 5000);
+      }
+    }, 1000)
+  , [debounceStatusUpdate, statusUpdateCache]);
+
+  const handlePharmacistIncomplete = async (caseId) => {
+    if (!caseId) return;
+
+    try {
+      const caseRef = doc(firestore, "cases", caseId);
+      const caseSnap = await getDoc(caseRef);
+
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+
+      const caseData = caseSnap.data();
+
       if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
-        setError("The doctor must complete this case before the pharmacist can be marked as complete.");
-        setConfirmComplete({
-          open: false,
-          caseId: null,
-          type: null,
-          caseData: null,
-          isIncomplete: false,
-          reason: "",
-        });
+        setError("This case cannot be marked incomplete until the doctor has completed their review.");
         return;
       }
 
-      // Cannot complete if case is marked as incomplete by doctor
       if (caseData.isIncomplete) {
-        setError("This case has been marked as incomplete by the doctor and cannot be completed.");
-        setConfirmComplete({
-          open: false,
-          caseId: null,
-          type: null,
-          caseData: null,
-          isIncomplete: false,
-          reason: "",
-        });
+        setError("This case has been marked as incomplete by the doctor and cannot be marked incomplete by you.");
         return;
       }
 
-      // Cannot complete if already completed
       if (caseData.pharmacistCompleted) {
-        setError("This case has already been completed by a pharmacist.");
-        setConfirmComplete({
-          open: false,
-          caseId: null,
-          type: null,
-          caseData: null,
-          isIncomplete: false,
-          reason: "",
-        });
+        setError("This case has already been completed.");
         return;
       }
 
-      const updateData = {
-        pharmacistCompleted: true,
-        status: isIncomplete ? "pharmacist_incomplete" : "completed",
-        pharmacistCompletedAt: timestamp,
-        pharmacistCompletedBy: currentUser.uid,
-        pharmacistCompletedByName: currentUser.displayName || "Nurse",
-        version: (caseData.version || 0) + 1,
-      };
-
-      // Only add isIncomplete and incompleteReason if it's true
-      if (isIncomplete) {
-        updateData.isIncomplete = true;
-        updateData.incompleteReason = reason;
-      }
+      const timestamp = new Date();
+      const currentVersion = caseData.version || 0;
 
       try {
-        await retryOperation(() => updateDoc(caseRef, updateData));
+        await retryOperation(() =>
+          updateDoc(caseRef, {
+            pharmacistCompleted: true,
+            inPharmacistPendingReview: false,
+            status: "pharmacist_incomplete",
+            pharmacistCompletedAt: timestamp,
+            pharmacistCompletedBy: currentUser.uid,
+            pharmacistCompletedByName: currentUser.displayName || "Nurse",
+            version: currentVersion + 1,
+            isIncomplete: true,
+          })
+        );
         
-        // Update pharmacist status based on their new case load
         const pharmacistId = caseData.pharmacistId;
         if (pharmacistId) {
           await updatePharmacistStatusIfNeeded(pharmacistId);
         }
         
+        // Refresh current page
+        handleRefresh();
+        
       } catch (err) {
         console.error("Error updating case after retries:", err);
         setError("Failed to update case after multiple attempts. Please try again.");
-        throw err;
+        return;
       }
-    }
 
-    setConfirmComplete({
-      open: false,
-      caseId: null,
-      type: null,
-      caseData: null,
-      isIncomplete: false,
-      reason: "",
-    });
-    
-  } catch (err) {
-    console.error("Error completing case:", err);
-    setError("Failed to complete case");
-    setConfirmComplete({
-      open: false,
-      caseId: null,
-      type: null,
-      caseData: null,
-      isIncomplete: false,
-      reason: "",
-    });
-  }
-};
-  // Add a function to open the dialog for incomplete cases
+      setCurrentCase(null);
+      
+    } catch (err) {
+      console.error("Error completing case:", err);
+      setError("Failed to mark case as incomplete");
+    }
+  };
+
+  const handleComplete = async () => {
+    try {
+      const { caseId, type, isIncomplete, reason } = confirmComplete;
+
+      if (isIncomplete && !reason.trim()) {
+        setError("Please provide a reason for marking the case as incomplete.");
+        return;
+      }
+
+      const caseRef = doc(firestore, "cases", caseId);
+      const timestamp = new Date();
+
+      const caseSnap = await getDoc(caseRef);
+      if (!caseSnap.exists()) {
+        throw new Error("Case not found");
+      }
+
+      const caseData = caseSnap.data();
+
+      if (type === "doctor") {
+        const updateData = {
+          doctorCompleted: true,
+          status: isIncomplete ? "doctor_incomplete" : "doctor_completed",
+          doctorCompletedAt: timestamp,
+          doctorCompletedBy: currentUser.uid,
+          doctorCompletedByName: currentUser.displayName || "Nurse",
+          inPharmacistPendingReview: !isIncomplete,
+          version: (caseData.version || 0) + 1,
+        };
+
+        if (isIncomplete) {
+          updateData.isIncomplete = true;
+          updateData.incompleteReason = reason;
+        }
+
+        try {
+          await retryOperation(() => updateDoc(caseRef, updateData));
+          
+          const doctorId = caseData.assignedDoctors?.primary;
+          if (doctorId) {
+            await updateDoctorStatusIfNeeded(doctorId);
+          }
+          
+        } catch (err) {
+          console.error("Error updating case after retries:", err);
+          setError("Failed to update case after multiple attempts. Please try again.");
+          throw err;
+        }
+        
+      } else if (type === "pharmacist") {
+        if (!caseData.doctorCompleted || !caseData.doctorCompletedAt) {
+          setError("The doctor must complete this case before the pharmacist can be marked as complete.");
+          setConfirmComplete({
+            open: false,
+            caseId: null,
+            type: null,
+            caseData: null,
+            isIncomplete: false,
+            reason: "",
+          });
+          return;
+        }
+
+        if (caseData.isIncomplete) {
+          setError("This case has been marked as incomplete by the doctor and cannot be completed.");
+          setConfirmComplete({
+            open: false,
+            caseId: null,
+            type: null,
+            caseData: null,
+            isIncomplete: false,
+            reason: "",
+          });
+          return;
+        }
+
+        if (caseData.pharmacistCompleted) {
+          setError("This case has already been completed by a pharmacist.");
+          setConfirmComplete({
+            open: false,
+            caseId: null,
+            type: null,
+            caseData: null,
+            isIncomplete: false,
+            reason: "",
+          });
+          return;
+        }
+
+        const updateData = {
+          pharmacistCompleted: true,
+          status: isIncomplete ? "pharmacist_incomplete" : "completed",
+          pharmacistCompletedAt: timestamp,
+          pharmacistCompletedBy: currentUser.uid,
+          pharmacistCompletedByName: currentUser.displayName || "Nurse",
+          version: (caseData.version || 0) + 1,
+        };
+
+        if (isIncomplete) {
+          updateData.isIncomplete = true;
+          updateData.incompleteReason = reason;
+        }
+
+        try {
+          await retryOperation(() => updateDoc(caseRef, updateData));
+          
+          const pharmacistId = caseData.pharmacistId;
+          if (pharmacistId) {
+            await updatePharmacistStatusIfNeeded(pharmacistId);
+          }
+          
+        } catch (err) {
+          console.error("Error updating case after retries:", err);
+          setError("Failed to update case after multiple attempts. Please try again.");
+          throw err;
+        }
+      }
+
+      setConfirmComplete({
+        open: false,
+        caseId: null,
+        type: null,
+        caseData: null,
+        isIncomplete: false,
+        reason: "",
+      });
+      
+      // Refresh current page to show updated status
+      handleRefresh();
+      
+    } catch (err) {
+      console.error("Error completing case:", err);
+      setError("Failed to complete case");
+      setConfirmComplete({
+        open: false,
+        caseId: null,
+        type: null,
+        caseData: null,
+        isIncomplete: false,
+        reason: "",
+      });
+    }
+  };
+
   const openIncompleteDialog = (caseId, type, caseData) => {
     setConfirmComplete({
       open: true,
@@ -623,12 +700,16 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
       type,
       caseData,
       isIncomplete: true,
-      reason: "", // Initialize with empty reason
+      reason: "",
     });
   };
 
   const handleNewCaseCreated = () => {
     setShowForm(false);
+    // Clear cache and reload first page to show new case
+    setPageCache(new Map());
+    setLastDocCache(new Map());
+    fetchCasesPage(1, true);
   };
 
   const openConfirmDialog = (caseId, type, caseData) => {
@@ -642,7 +723,6 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
     });
   };
 
-  // Handle opening the linked cases dialog
   const openLinkedCasesDialog = (batchTimestamp) => {
     if (linkedCases[batchTimestamp]) {
       setViewLinkedCases({
@@ -685,7 +765,6 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
     }
   };
 
-  // Function to determine if a case has linked cases in the same batch
   const hasLinkedCases = (caseItem) => {
     if (caseItem.batchCreated && caseItem.batchTimestamp) {
       const batchKey = caseItem.batchTimestamp.toString();
@@ -694,7 +773,6 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
     return false;
   };
 
-  // Function to get number of linked cases
   const getLinkedCasesCount = (caseItem) => {
     if (caseItem.batchCreated && caseItem.batchTimestamp) {
       const batchKey = caseItem.batchTimestamp.toString();
@@ -703,7 +781,7 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
     return 0;
   };
 
-  if (loading) {
+  if (loading && currentPage === 1) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -718,12 +796,24 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
           <ClipboardList className="h-5 w-5 text-blue-500" />
           <h2 className="text-xl font-semibold">Case Management</h2>
         </div>
-        <Button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          {showForm ? "View Cases" : "Create New Case"}
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {showForm ? "View Cases" : "Create New Case"}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -740,7 +830,46 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
         />
       ) : (
         <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-100">
-          {cases.length === 0 ? (
+          {/* Pagination Controls - Top */}
+          {(cases.length > 0 || currentPage > 1) && (
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">
+                  Page {currentPage} • Showing {cases.length} cases
+                </span>
+                {refreshing && (
+                  <div className="flex items-center text-sm text-gray-500">
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                    Refreshing...
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevPage}
+                  disabled={!hasPrevPage || refreshing}
+                  className="flex items-center"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNextPage}
+                  disabled={!hasNextPage || refreshing}
+                  className="flex items-center"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {cases.length === 0 && currentPage === 1 ? (
             <div className="p-8 text-center text-gray-500">
               <div className="flex flex-col items-center space-y-4">
                 <ClipboardList className="h-12 w-12 text-gray-300" />
@@ -756,315 +885,345 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-gray-50">
-                  <TableRow>
-                    <TableHead className="font-semibold">Patient</TableHead>
-                    <TableHead className="font-semibold">EMR</TableHead>
-                    <TableHead className="font-semibold">Complaint</TableHead>
-                    <TableHead className="font-semibold">Assigned To</TableHead>
-                    <TableHead className="font-semibold">Type</TableHead>
-                    <TableHead className="font-semibold">Created</TableHead>
-                    <TableHead className="font-semibold">Status</TableHead>
-                    <TableHead className="font-semibold">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cases.map((caseItem) => (
-                    <TableRow key={caseItem.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">
-                        <div className="flex flex-col space-y-1">
-                          <div className="flex items-center">
-                            <User className="h-4 w-4 text-gray-400 mr-2" />
-                            {caseItem.patientName}
-                            {hasLinkedCases(caseItem) && (
-                              <Badge
-                                variant="outline"
-                                className="ml-2 text-xs cursor-pointer hover:bg-blue-50"
-                                onClick={() =>
-                                  openLinkedCasesDialog(
-                                    caseItem.batchTimestamp.toString()
-                                  )
-                                }
-                              >
-                                <LinkIcon className="h-3 w-3 mr-1" />
-                                Batch ({getLinkedCasesCount(caseItem)})
-                              </Badge>
-                            )}
-                          </div>
-                          {caseItem.batchCreated && (
-                            <div className="text-xs text-gray-500">
-                              Patient {caseItem.batchIndex + 1} of{" "}
-                              {caseItem.batchSize}
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-gray-50">
+                    <TableRow>
+                      <TableHead className="font-semibold">Patient</TableHead>
+                      <TableHead className="font-semibold">EMR</TableHead>
+                      <TableHead className="font-semibold">Complaint</TableHead>
+                      <TableHead className="font-semibold">Assigned To</TableHead>
+                      <TableHead className="font-semibold">Type</TableHead>
+                      <TableHead className="font-semibold">Created</TableHead>
+                      <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cases.map((caseItem) => (
+                      <TableRow key={caseItem.id} className="hover:bg-gray-50">
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col space-y-1">
+                            <div className="flex items-center">
+                              <User className="h-4 w-4 text-gray-400 mr-2" />
+                              {caseItem.patientName}
+                              {hasLinkedCases(caseItem) && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 text-xs cursor-pointer hover:bg-blue-50"
+                                  onClick={() =>
+                                    openLinkedCasesDialog(
+                                      caseItem.batchTimestamp.toString()
+                                    )
+                                  }
+                                >
+                                  <LinkIcon className="h-3 w-3 mr-1" />
+                                  Batch ({getLinkedCasesCount(caseItem)})
+                                </Badge>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{caseItem.emrNumber}</TableCell>
-                      <TableCell className="max-w-[150px] truncate">
-                        {caseItem.chiefComplaint}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center text-sm">
-                            <Stethoscope className="h-3.5 w-3.5 text-blue-500 mr-1.5" />
-                            {caseItem.assignedDoctors?.primaryName ||
-                              "No doctor assigned"}
-                            {caseItem.assignedDoctors?.primaryType && (
-                              <span className="ml-1 text-xs bg-blue-50 text-blue-700 px-1 rounded">
-                                ({caseItem.assignedDoctors.primaryType})
-                              </span>
+                            {caseItem.batchCreated && (
+                              <div className="text-xs text-gray-500">
+                                Patient {caseItem.batchIndex + 1} of{" "}
+                                {caseItem.batchSize}
+                              </div>
                             )}
-                            <Button
-                              variant="ghost"
-                              onClick={() => {}}
-                              type="button"
-                            >
-                              <UserPen className="!h-3.5 !w-3.5" />
-                            </Button>
                           </div>
-                          <div className="flex items-center text-sm">
-                            <Pill className="h-3.5 w-3.5 text-green-500 mr-1.5" />
-                            {caseItem.pharmacistName ||
-                              "No pharmacist assigned"}
-                            <Button
-                              variant="ghost"
-                              onClick={() => {}}
-                              type="button"
-                            >
-                              <UserPen className="!h-3.5 !w-3.5" />
-                            </Button>
+                        </TableCell>
+                        <TableCell>{caseItem.emrNumber}</TableCell>
+                        <TableCell className="max-w-[150px] truncate">
+                          {caseItem.chiefComplaint}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center text-sm">
+                              <Stethoscope className="h-3.5 w-3.5 text-blue-500 mr-1.5" />
+                              {caseItem.assignedDoctors?.primaryName ||
+                                "No doctor assigned"}
+                              {caseItem.assignedDoctors?.primaryType && (
+                                <span className="ml-1 text-xs bg-blue-50 text-blue-700 px-1 rounded">
+                                  ({caseItem.assignedDoctors.primaryType})
+                                </span>
+                              )}
+                              <Button
+                                variant="ghost"
+                                onClick={() => {}}
+                                type="button"
+                              >
+                                <UserPen className="!h-3.5 !w-3.5" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center text-sm">
+                              <Pill className="h-3.5 w-3.5 text-green-500 mr-1.5" />
+                              {caseItem.pharmacistName ||
+                                "No pharmacist assigned"}
+                              <Button
+                                variant="ghost"
+                                onClick={() => {}}
+                                type="button"
+                              >
+                                <UserPen className="!h-3.5 !w-3.5" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            caseItem.consultationType === "tele"
-                              ? "default"
-                              : "outline"
-                          }
-                          className={
-                            caseItem.consultationType === "tele"
-                              ? "bg-indigo-100 text-indigo-800 hover:bg-indigo-100"
-                              : ""
-                          }
-                        >
-                          {caseItem.consultationType === "tele"
-                            ? "Tele"
-                            : "Audio"}
-                        </Badge>
-                        {caseItem.consultationType === "audio" && (
-                          <div className="mt-1 text-sm text-gray-600">
-                            {caseItem.contactInfo}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center text-xs text-gray-500">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            <span>{caseItem.createdAtDate}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-gray-500">
-                            <Clock className="h-3 w-3 mr-1" />
-                            <span>{caseItem.createdAtTime}</span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
+                        </TableCell>
+                        <TableCell>
                           <Badge
-                            variant={getStatusBadgeVariant(caseItem.status)}
+                            variant={
+                              caseItem.consultationType === "tele"
+                                ? "default"
+                                : "outline"
+                            }
                             className={
-                              caseItem.status === "completed"
-                                ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                : caseItem.status === "doctor_completed"
-                                ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                              caseItem.consultationType === "tele"
+                                ? "bg-indigo-100 text-indigo-800 hover:bg-indigo-100"
                                 : ""
                             }
                           >
-                            {getStatusLabel(caseItem.status)}
+                            {caseItem.consultationType === "tele"
+                              ? "Tele"
+                              : "Audio"}
                           </Badge>
-
-                          <div className="space-y-1">
-                            {caseItem.doctorCompletedAtFormatted && (
-                              <div className="flex items-center text-xs text-gray-500">
-                                <Check className="h-3 w-3 mr-1 text-blue-500" />
-                                <span>
-                                  Doc:{" "}
-                                  {format(
-                                    new Date(
-                                      caseItem.doctorCompletedAt.toDate()
-                                    ),
-                                    "p"
-                                  )}
-                                </span>
-                              </div>
-                            )}
-                            {caseItem.pharmacistCompletedAtFormatted && (
-                              <div className="flex items-center text-xs text-gray-500">
-                                <Check className="h-3 w-3 mr-1 text-green-500" />
-                                <span>
-                                  Pharm:{" "}
-                                  {format(
-                                    new Date(
-                                      caseItem.pharmacistCompletedAt.toDate()
-                                    ),
-                                    "p"
-                                  )}
-                                </span>
-                              </div>
-                            )}
-                            {caseItem.doctorCompletedByName && (
-                              <div className="flex items-center text-xs text-gray-500">
-                                <User className="h-3 w-3 mr-1 text-gray-400" />
-                                <span>
-                                  By: {caseItem.doctorCompletedByName}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex items-center text-gray-600 border-gray-200 hover:bg-gray-50"
-                            onClick={() => openEditDialog(caseItem)}
-                          >
-                            <Edit className="h-4 w-4 mr-1" /> Edit Case
-                          </Button>
-                          {caseItem.consultationType === "tele" ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                              asChild
-                            >
-                              <a
-                                href={caseItem.contactInfo}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                <Video className="h-4 w-4 mr-1" /> Join Video
-                              </a>
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
-                              asChild
-                            >
-                              <a href={`tel:${caseItem.contactInfo}`}>
-                                <Phone className="h-4 w-4 mr-1" /> Call Patient
-                              </a>
-                            </Button>
+                          {caseItem.consultationType === "audio" && (
+                            <div className="mt-1 text-sm text-gray-600">
+                              {caseItem.contactInfo}
+                            </div>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center text-xs text-gray-500">
+                              <Calendar className="h-3 w-3 mr-1" />
+                              <span>{caseItem.createdAtDate}</span>
+                            </div>
+                            <div className="flex items-center text-xs text-gray-500">
+                              <Clock className="h-3 w-3 mr-1" />
+                              <span>{caseItem.createdAtTime}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-2">
+                            <Badge
+                              variant={getStatusBadgeVariant(caseItem.status)}
+                              className={
+                                caseItem.status === "completed"
+                                  ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                  : caseItem.status === "doctor_completed"
+                                  ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                                  : ""
+                              }
+                            >
+                              {getStatusLabel(caseItem.status)}
+                            </Badge>
 
-                          {!caseItem.doctorCompleted && (
-                            <>
+                            <div className="space-y-1">
+                              {caseItem.doctorCompletedAtFormatted && (
+                                <div className="flex items-center text-xs text-gray-500">
+                                  <Check className="h-3 w-3 mr-1 text-blue-500" />
+                                  <span>
+                                    Doc:{" "}
+                                    {format(
+                                      new Date(
+                                        caseItem.doctorCompletedAt.toDate()
+                                      ),
+                                      "p"
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                              {caseItem.pharmacistCompletedAtFormatted && (
+                                <div className="flex items-center text-xs text-gray-500">
+                                  <Check className="h-3 w-3 mr-1 text-green-500" />
+                                  <span>
+                                    Pharm:{" "}
+                                    {format(
+                                      new Date(
+                                        caseItem.pharmacistCompletedAt.toDate()
+                                      ),
+                                      "p"
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                              {caseItem.doctorCompletedByName && (
+                                <div className="flex items-center text-xs text-gray-500">
+                                  <User className="h-3 w-3 mr-1 text-gray-400" />
+                                  <span>
+                                    By: {caseItem.doctorCompletedByName}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center text-gray-600 border-gray-200 hover:bg-gray-50"
+                              onClick={() => openEditDialog(caseItem)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" /> Edit Case
+                            </Button>
+                            {caseItem.consultationType === "tele" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex items-center text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                asChild
+                              >
+                                <a
+                                  href={caseItem.contactInfo}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <Video className="h-4 w-4 mr-1" /> Join Video
+                                </a>
+                              </Button>
+                            ) : (
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
-                                onClick={() =>
-                                  openConfirmDialog(
-                                    caseItem.id,
-                                    "doctor",
-                                    caseItem
-                                  )
-                                }
+                                asChild
                               >
-                                <Check className="h-4 w-4 mr-1" /> Mark Doctor
-                                Done
+                                <a href={`tel:${caseItem.contactInfo}`}>
+                                  <Phone className="h-4 w-4 mr-1" /> Call Patient
+                                </a>
                               </Button>
+                            )}
 
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center text-red-600 border-red-200 hover:bg-red-50"
-                                onClick={() =>
-                                  openIncompleteDialog(
-                                    caseItem.id,
-                                    "doctor",
-                                    caseItem
-                                  )
-                                }
-                              >
-                                <X className="h-4 w-4 mr-1" /> Mark as
-                                Incomplete
-                              </Button>
-                            </>
-                          )}
-
-                          {/* Only show the pharmacist complete option if doctor is complete AND not marked incomplete */}
-                          {caseItem.doctorCompleted &&
-                            !caseItem.pharmacistCompleted &&
-                            !caseItem.isIncomplete && (
+                            {!caseItem.doctorCompleted && (
                               <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  onClick={() =>
+                                    openConfirmDialog(
+                                      caseItem.id,
+                                      "doctor",
+                                      caseItem
+                                    )
+                                  }
+                                >
+                                  <Check className="h-4 w-4 mr-1" /> Mark Doctor
+                                  Done
+                                </Button>
+
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="flex items-center text-red-600 border-red-200 hover:bg-red-50"
                                   onClick={() =>
-                                    handlePharmacistIncomplete(caseItem.id)
-                                  }
-                                >
-                                  <X className="h-4 w-4 mr-1" /> Mark Pharm
-                                  Incomplete
-                                </Button>
-
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
-                                  onClick={() =>
-                                    openConfirmDialog(
+                                    openIncompleteDialog(
                                       caseItem.id,
-                                      "pharmacist",
+                                      "doctor",
                                       caseItem
                                     )
                                   }
                                 >
-                                  <Check className="h-4 w-4 mr-1" /> Mark Pharm
-                                  Done
+                                  <X className="h-4 w-4 mr-1" /> Mark as
+                                  Incomplete
                                 </Button>
                               </>
                             )}
 
-                          {!caseItem.doctorCompleted &&
-                            !caseItem.pharmacistCompleted && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center text-gray-400 border-gray-200 cursor-not-allowed opacity-50"
-                                disabled={true}
-                                title="Doctor must complete before pharmacist"
-                              >
-                                <Check className="h-4 w-4 mr-1" /> Mark Pharm
-                                Done
-                              </Button>
-                            )}
+                            {caseItem.doctorCompleted &&
+                              !caseItem.pharmacistCompleted &&
+                              !caseItem.isIncomplete && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex items-center text-red-600 border-red-200 hover:bg-red-50"
+                                    onClick={() =>
+                                      handlePharmacistIncomplete(caseItem.id)
+                                    }
+                                  >
+                                    <X className="h-4 w-4 mr-1" /> Mark Pharm
+                                    Incomplete
+                                  </Button>
 
-                          {caseItem.isIncomplete && (
-                            <div className="mt-1 text-xs text-red-600 flex items-center">
-                              <X className="h-3.5 w-3.5 mr-1" />
-                              Marked incomplete - <br /> No further action
-                              needed
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex items-center text-green-600 border-green-200 hover:bg-green-50"
+                                    onClick={() =>
+                                      openConfirmDialog(
+                                        caseItem.id,
+                                        "pharmacist",
+                                        caseItem
+                                      )
+                                    }
+                                  >
+                                    <Check className="h-4 w-4 mr-1" /> Mark Pharm
+                                    Done
+                                  </Button>
+                                </>
+                              )}
+
+                            {!caseItem.doctorCompleted &&
+                              !caseItem.pharmacistCompleted && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center text-gray-400 border-gray-200 cursor-not-allowed opacity-50"
+                                  disabled={true}
+                                  title="Doctor must complete before pharmacist"
+                                >
+                                  <Check className="h-4 w-4 mr-1" /> Mark Pharm
+                                  Done
+                                </Button>
+                              )}
+
+                            {caseItem.isIncomplete && (
+                              <div className="mt-1 text-xs text-red-600 flex items-center">
+                                <X className="h-3.5 w-3.5 mr-1" />
+                                Marked incomplete - <br /> No further action
+                                needed
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination Controls - Bottom */}
+              <div className="flex justify-between items-center p-4 border-t border-gray-100 bg-gray-50">
+                <div className="text-sm text-gray-600">
+                  Showing {cases.length} cases on page {currentPage}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePrevPage}
+                    disabled={!hasPrevPage || refreshing}
+                    className="flex items-center"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextPage}
+                    disabled={!hasNextPage || refreshing}
+                    className="flex items-center"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1098,7 +1257,6 @@ const updatePharmacistStatusIfNeeded = async (pharmacistId) => {
 
           {confirmComplete.caseData && (
             <div className="space-y-3 py-3 border-y border-gray-100">
-              {/* Patient information */}
               <div className="flex items-center">
                 <User className="h-4 w-4 text-gray-400 mr-2" />
                 <span className="font-medium">Patient:</span>{" "}
