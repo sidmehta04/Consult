@@ -200,12 +200,24 @@ const CasesCompletionChart = ({
           }
         }
 
+        //OLD LOGIC
         // Count cases completed in this time slot
+        /*
         if (completionTime) {
           const nextTimestamp = new Date(time + interval);
           if (completionTime >= timestamp && completionTime < nextTimestamp) {
             completedCases++;
           }
+        }
+        */
+
+        //NEW LOGIC
+        // Count cases started within this time slot
+        const nextTimestamp = new Date(time + interval);
+        const startedAt = caseItem.createdAt.toDate();
+
+        if (startedAt > timestamp && startedAt < nextTimestamp) {
+          completedCases++;
         }
       });
 
@@ -233,7 +245,7 @@ const CasesCompletionChart = ({
               Cases Completion Timeline
             </h3>
             <p className="text-sm text-gray-500">
-              Cases completed (including incomplete) from 8 AM - 10 PM on{" "}
+              Cases created (including incomplete) from 8 AM - 10 PM on{" "}
               {new Date(selectedDate).toLocaleDateString()}
             </p>
           </div>
@@ -277,7 +289,7 @@ const CasesCompletionChart = ({
               />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip
-                formatter={(value, name) => [value, "Cases Completed"]}
+                formatter={(value, name) => [value, "Cases Created"]}
                 labelFormatter={(label, payload) => {
                   if (payload && payload.length > 0) {
                     return `Period: ${payload[0].payload.period}`;
