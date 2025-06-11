@@ -19,7 +19,7 @@ import CaseManagementModule from "./components/CaseManagement";
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import AnalyticsDashboard from "./components/Analytics";
-import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle} from "lucide-react";
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 
@@ -261,7 +261,7 @@ function AppContent() {
       items.push({
         name: "Analytics",
         href: "/analytics",
-        icon: <Activity className="h-5 w-5" />
+        icon: <ChartColumnBig className="h-5 w-5" />
       });
     }
 
