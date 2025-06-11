@@ -64,7 +64,7 @@ const SummaryCards = ({
         if (caseItem.assignedDoctors?.primary) {
           if (caseItem.consultationType == "audio") {
             audioDoctors.add(caseItem.assignedDoctors.primary);
-          } else if (caseItem.doctorJoined) {
+          } else{
             busyDoctors.add(caseItem.assignedDoctors.primary);
           }
         }
@@ -119,31 +119,35 @@ const SummaryCards = ({
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500 mb-1">Busy Doctors</div>
           <table>
-            <tr>
-              <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyDoctors}</div></td>
-              <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioDoctors}</div></td>
-              <td><div className="text-2xl font-semibold text-gray-900">{onlineDoctors}</div></td>
-            </tr>
-            <tr>
-              <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-              <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-              <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
-            </tr>
+            <tbody>
+              <tr>
+                <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyDoctors}</div></td>
+                <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioDoctors}</div></td>
+                <td><div className="text-2xl font-semibold text-gray-900">{onlineDoctors}</div></td>
+              </tr>
+              <tr>
+                <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
+                <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
+                <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
+              </tr>
+            </tbody>
           </table>
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500 mb-1">Busy Pharmacists</div>
           <table>
-            <tr>
-              <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyPharmacists}</div></td>
-              <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioPharmacists}</div></td>
-              <td><div className="text-2xl font-semibold text-gray-900">{onlinePharmacists}</div></td>
-            </tr>
-            <tr>
-              <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-              <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-              <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
-            </tr>
+            <tbody>
+              <tr>
+                <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyPharmacists}</div></td>
+                <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioPharmacists}</div></td>
+                <td><div className="text-2xl font-semibold text-gray-900">{onlinePharmacists}</div></td>
+              </tr>
+              <tr>
+                <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
+                <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
+                <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
+              </tr>
+            </tbody>
           </table>
         </div>
       </div>
