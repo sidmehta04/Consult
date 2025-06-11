@@ -25,7 +25,12 @@ import {
 } from "recharts";
 
 // Summary Cards Component
-const SummaryCards = ({ data, selectedPartner, onlineDoctors, onlinePharmacists }) => {
+const SummaryCards = ({
+  data,
+  selectedPartner,
+  onlineDoctors,
+  onlinePharmacists,
+}) => {
   const metrics = useMemo(() => {
     const filteredData =
       selectedPartner === "all"
@@ -53,11 +58,17 @@ const SummaryCards = ({ data, selectedPartner, onlineDoctors, onlinePharmacists 
         activeCases++;
 
         // Count unique doctors working on active cases
-        if (caseItem.assignedDoctors?.primary && (caseItem.doctorJoined || caseItem.consultationType == "audio")) {
+        if (
+          caseItem.assignedDoctors?.primary &&
+          (caseItem.doctorJoined || caseItem.consultationType == "audio")
+        ) {
           busyDoctors.add(caseItem.assignedDoctors.primary);
         }
         // Count unique pharmacists working on active cases
-        if (caseItem.pharmacistId && (caseItem.pharmacistJoined || caseItem.consultationType == "audio")) {
+        if (
+          caseItem.pharmacistId &&
+          (caseItem.pharmacistJoined || caseItem.consultationType == "audio")
+        ) {
           busyPharmacists.add(caseItem.pharmacistId);
         }
       }
@@ -101,18 +112,28 @@ const SummaryCards = ({ data, selectedPartner, onlineDoctors, onlinePharmacists 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500 mb-1">Busy Doctors</div>
           <div className="flex items-baseline">
-            <div className="text-2xl font-semibold text-gray-900"> {metrics.busyDoctors}&nbsp;</div>
+            <div className="text-2xl font-semibold text-gray-900">
+              {" "}
+              {metrics.busyDoctors}&nbsp;
+            </div>
             <div className="text-sm text-gray-500 mb-1"> out of </div>
-            <div className="text-2xl font-semibold text-gray-900">&nbsp;{onlineDoctors}&nbsp;</div>
+            <div className="text-2xl font-semibold text-gray-900">
+              &nbsp;{onlineDoctors}&nbsp;
+            </div>
             <div className="text-sm text-gray-500 mb-1"> online</div>
           </div>
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500 mb-1">Busy Pharmacists</div>
           <div className="flex items-baseline">
-            <div className="text-2xl font-semibold text-gray-900"> {metrics.busyPharmacists}&nbsp;</div>
+            <div className="text-2xl font-semibold text-gray-900">
+              {" "}
+              {metrics.busyPharmacists}&nbsp;
+            </div>
             <div className="text-sm text-gray-500 mb-1"> out of </div>
-            <div className="text-2xl font-semibold text-gray-900">&nbsp;{onlinePharmacists}&nbsp;</div>
+            <div className="text-2xl font-semibold text-gray-900">
+              &nbsp;{onlinePharmacists}&nbsp;
+            </div>
             <div className="text-sm text-gray-500 mb-1"> online</div>
           </div>
         </div>
@@ -144,6 +165,16 @@ const CasesCompletionChart = ({
     const baseDate = new Date(selectedDate);
     baseDate.setHours(startHour, 0, 0, 0);
 
+    // For historical data, limit to the actual data range for that specific date
+    const selectedDateEnd = new Date(selectedDate);
+    selectedDateEnd.setHours(endHour, 0, 0, 0);
+
+    // Only show timeline up to the end of the selected date
+    const maxEndTime = Math.min(
+      selectedDateEnd.getTime(),
+      baseDate.getTime() + (endHour - startHour) * 60 * 60 * 1000
+    );
+
     for (
       let time = baseDate.getTime();
       time < baseDate.getTime() + (endHour - startHour) * 60 * 60 * 1000;
@@ -160,11 +191,7 @@ const CasesCompletionChart = ({
         let completionTime = null;
 
         // Check for completion time based on completion flags
-        if (
-          (caseItem.doctorCompleted === true &&
-            caseItem.pharmacistCompleted === true) ||
-          caseItem.isIncomplete === true
-        ) {
+        if (caseItem.status === "completed" || caseItem.isIncomplete === true) {
           // Use the latest completion timestamp
           if (caseItem.pharmacistCompletedAt) {
             completionTime = caseItem.pharmacistCompletedAt.toDate();
@@ -1230,15 +1257,8 @@ const AnalyticsDashboard = ({ currentUser }) => {
                   Cases Data for {selectedDate.toLocaleDateString()}
                 </h2>
                 <div className="text-sm text-gray-600">
-                  Total cases: {currentData.length} | Completed cases:{" "}
-                  {
-                    currentData.filter(
-                      (c) =>
-                        c.status === "completed" ||
-                        c.status === "doctor_completed" ||
-                        c.incomplete === true
-                    ).length
-                  }
+                  Total cases: {currentData.length} 
+                  
                 </div>
               </div>
             </div>
