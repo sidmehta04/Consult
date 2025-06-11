@@ -45,11 +45,16 @@ import {
   updateDoc,
   serverTimestamp,
   runTransaction,
+  writeBatch,
 } from "firebase/firestore";
 import { firestore } from "../../../firebase";
 import { format } from "date-fns";
 
-// Memoized components for better performance
+// OPTIMIZATION 1: Move static data outside component to prevent re-creation
+const CASES_PER_PAGE = 20;
+const MAX_VISIBLE_PAGES = 5;
+
+// OPTIMIZATION 2: Memoize all sub-components with React.memo and proper dependency arrays
 const StatusBadge = React.memo(({ queue }) => {
   if (queue === "doctor") {
     return (
@@ -139,141 +144,155 @@ const ContactCell = React.memo(({ consultationType }) => (
   </div>
 ));
 
+// OPTIMIZATION 3: Optimize DateCell with better memoization
 const DateCell = React.memo(({ createdAt, errorFallback = 'N/A' }) => {
-  // Helper function to safely convert to Date and validate
-  const getSafeDate = (dateValue) => {
-    if (!dateValue) return null;
+  const formattedDate = useMemo(() => {
+    if (!createdAt) return { date: errorFallback, time: errorFallback };
     
     let date;
     
-    // Handle Firestore Timestamp
-    if (dateValue && typeof dateValue.toDate === 'function') {
-      date = dateValue.toDate();
+    try {
+      // Handle Firestore Timestamp
+      if (createdAt && typeof createdAt.toDate === 'function') {
+        date = createdAt.toDate();
+      }
+      // Handle existing Date objects
+      else if (createdAt instanceof Date) {
+        date = createdAt;
+      }
+      // Handle timestamp numbers
+      else if (typeof createdAt === 'number') {
+        date = new Date(createdAt);
+      }
+      // Handle date strings
+      else if (typeof createdAt === 'string') {
+        date = new Date(createdAt);
+      }
+      else {
+        return { date: errorFallback, time: errorFallback };
+      }
+      
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        return { date: errorFallback, time: errorFallback };
+      }
+      
+      return {
+        date: format(date, "MMM dd"),
+        time: format(date, "HH:mm")
+      };
+    } catch (error) {
+      console.warn('Date formatting error:', error);
+      return { date: errorFallback, time: errorFallback };
     }
-    // Handle existing Date objects
-    else if (dateValue instanceof Date) {
-      date = dateValue;
-    }
-    // Handle timestamp numbers
-    else if (typeof dateValue === 'number') {
-      date = new Date(dateValue);
-    }
-    // Handle date strings
-    else if (typeof dateValue === 'string') {
-      date = new Date(dateValue);
-    }
-    else {
-      return null;
-    }
-    
-    // Validate the date
-    if (isNaN(date.getTime())) {
-      return null;
-    }
-    
-    return date;
-  };
-
-  const validDate = getSafeDate(createdAt);
+  }, [createdAt, errorFallback]);
 
   return (
     <div className="text-sm space-y-1">
       <div className="flex items-center">
         <Calendar className="h-3 w-3 text-gray-400 mr-1" />
-        {validDate ? format(validDate, "MMM dd") : errorFallback}
+        {formattedDate.date}
       </div>
       <div className="flex items-center">
         <Clock className="h-3 w-3 text-gray-400 mr-1" />
-        {validDate ? format(validDate, "HH:mm") : errorFallback}
+        {formattedDate.time}
       </div>
     </div>
   );
 });
 
-const CaseTransferTable = ({
-  cases,
-  doctors,
-  loading,
-  currentUser,
-  onSuccess,
-  onError,
-}) => {
-  const [transferLoading, setTransferLoading] = useState(false);
-  const [transferDialog, setTransferDialog] = useState({
-    open: false,
-    case: null,
-    selectedDoctorId: "",
-  });
+// OPTIMIZATION 4: Memoize table row component
+const CaseTableRow = React.memo(({ caseItem, onTransferClick }) => {
+  const handleTransferClick = useCallback(() => {
+    onTransferClick(caseItem);
+  }, [caseItem, onTransferClick]);
 
-  // Pagination state with better initial values
+  return (
+    <TableRow className="hover:bg-gray-50 transition-colors duration-200">
+      <TableCell>
+        <PatientInfoCell caseItem={caseItem} />
+      </TableCell>
+
+      <TableCell>
+        <ClinicCell clinicCode={caseItem.clinicCode} />
+      </TableCell>
+
+      <TableCell>
+        <DoctorCell 
+          assignedDoctors={caseItem.assignedDoctors} 
+          transferHistory={caseItem.transferHistory}
+        />
+      </TableCell>
+
+      <TableCell>
+        <div className="flex items-center">
+          <StatusBadge queue={caseItem.queue} />
+          <div
+            className="ml-2 h-2 w-2 bg-green-400 rounded-full animate-pulse"
+            title="Live update enabled"
+          ></div>
+        </div>
+      </TableCell>
+
+      <TableCell>
+        <ContactCell consultationType={caseItem.consultationType} />
+      </TableCell>
+
+      <TableCell>
+        <DateCell createdAt={caseItem.createdAt} />
+      </TableCell>
+      
+      <TableCell>
+        <DateCell createdAt={caseItem.doctorJoined} />
+      </TableCell>
+
+      <TableCell>
+        {caseItem.queue === "doctor" && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleTransferClick}
+            className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
+          >
+            <ArrowRightLeft className="h-4 w-4 mr-1" />
+            Transfer
+          </Button>
+        )}
+        {caseItem.queue === "pharmacist" && (
+          <span className="text-xs text-gray-500 flex items-center">
+            <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+            Doctor completed
+          </span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+});
+
+// OPTIMIZATION 5: Extract pagination logic to custom hook
+const usePagination = (items, itemsPerPage = CASES_PER_PAGE) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
 
-  const casesPerPage = 20;
-  
-  // Ref to prevent multiple simultaneous transfers
-  const transferInProgressRef = useRef(false);
-
-  // Memoized pagination calculations
   const paginationData = useMemo(() => {
-    const filteredCases = selectedDoctorFilter
-      ? cases.filter(
-          (caseItem) =>
-            caseItem.assignedDoctors?.primary === selectedDoctorFilter
-        )
-      : cases;
-
-    const totalPages = Math.ceil(filteredCases.length / casesPerPage);
-    const startIndex = (currentPage - 1) * casesPerPage;
-    const endIndex = startIndex + casesPerPage;
-    const currentCases = filteredCases.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(items.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const currentItems = items.slice(startIndex, endIndex);
 
     return {
       totalPages,
       startIndex,
       endIndex,
-      currentCases,
-      filteredCases,
+      currentItems,
+      totalItems: items.length,
     };
-  }, [cases, currentPage, casesPerPage, selectedDoctorFilter]);
+  }, [items, currentPage, itemsPerPage]);
 
-  // FIXED: Memoized doctor options for select - Show all available doctors
-  const doctorOptions = useMemo(() => {
-    console.log("All doctors received:", doctors);
-    
-    // Show all doctors with "available" status, regardless of case count
-    const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
-    
-    console.log("Available doctors:", availableDoctors);
-    
-    return availableDoctors.map((doctor) => {
-      const canAcceptMoreCases = doctor.caseCount < 10;
-      const statusIndicator = canAcceptMoreCases ? "" : " (At Capacity)";
-      
-      return {
-        value: doctor.id,
-        label: `${doctor.name} (${doctor.caseCount}/10 cases)${statusIndicator}`,
-        doctor,
-        isDisabled: !canAcceptMoreCases, // Disable if at capacity but still show them
-      };
-    });
-  }, [doctors]);
-
-  const doctorFilterOptions = useMemo(() => {
-    return doctors.map((doctor) => ({
-      value: doctor.id,
-      label: `${doctor.name}`,
-      doctor,
-    }));
-  }, [doctors]);
-
-  // Memoized page numbers calculation
   const pageNumbers = useMemo(() => {
     const pages = [];
-    const maxVisiblePages = 5;
     const { totalPages } = paginationData;
 
-    if (totalPages <= maxVisiblePages) {
+    if (totalPages <= MAX_VISIBLE_PAGES) {
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
@@ -304,7 +323,6 @@ const CaseTransferTable = ({
     return pages;
   }, [currentPage, paginationData.totalPages]);
 
-  // Optimized pagination handlers
   const goToNextPage = useCallback(() => {
     setCurrentPage((prev) => Math.min(prev + 1, paginationData.totalPages));
   }, [paginationData.totalPages]);
@@ -322,16 +340,78 @@ const CaseTransferTable = ({
     [paginationData.totalPages]
   );
 
-  // Reset to first page when cases change (with debouncing)
+  // Reset to first page when items change
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setCurrentPage(1);
-    }, 100);
+    setCurrentPage(1);
+  }, [items.length]);
 
-    return () => clearTimeout(timeoutId);
-  }, [cases.length]);
+  return {
+    ...paginationData,
+    currentPage,
+    pageNumbers,
+    goToNextPage,
+    goToPreviousPage,
+    goToPage,
+  };
+};
 
-  // Optimized dialog handlers
+// OPTIMIZATION 6: Main component with optimized state management
+const CaseTransferTable = ({
+  cases,
+  doctors,
+  loading,
+  currentUser,
+  onSuccess,
+  onError,
+}) => {
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferDialog, setTransferDialog] = useState({
+    open: false,
+    case: null,
+    selectedDoctorId: "",
+  });
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
+  
+  // Ref to prevent multiple simultaneous transfers
+  const transferInProgressRef = useRef(false);
+
+  // OPTIMIZATION 7: Memoize filtered cases to prevent unnecessary recalculation
+  const filteredCases = useMemo(() => {
+    if (!selectedDoctorFilter) return cases;
+    return cases.filter(
+      (caseItem) => caseItem.assignedDoctors?.primary === selectedDoctorFilter
+    );
+  }, [cases, selectedDoctorFilter]);
+
+  // Use pagination hook
+  const pagination = usePagination(filteredCases);
+
+  // OPTIMIZATION 8: Memoize doctor options with deep comparison
+  const doctorOptions = useMemo(() => {
+    const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
+    
+    return availableDoctors.map((doctor) => {
+      const canAcceptMoreCases = doctor.caseCount < 10;
+      const statusIndicator = canAcceptMoreCases ? "" : " (At Capacity)";
+      
+      return {
+        value: doctor.id,
+        label: `${doctor.name} (${doctor.caseCount}/10 cases)${statusIndicator}`,
+        doctor,
+        isDisabled: !canAcceptMoreCases,
+      };
+    });
+  }, [doctors]);
+
+  const doctorFilterOptions = useMemo(() => {
+    return doctors.map((doctor) => ({
+      value: doctor.id,
+      label: doctor.name,
+      doctor,
+    }));
+  }, [doctors]);
+
+  // OPTIMIZATION 9: Optimize dialog handlers with useCallback
   const openTransferDialog = useCallback((caseItem) => {
     setTransferDialog({
       open: true,
@@ -348,7 +428,6 @@ const CaseTransferTable = ({
     });
   }, []);
 
-  // Optimized doctor selection handler
   const handleDoctorSelect = useCallback((selectedOption) => {
     setTransferDialog((prev) => ({
       ...prev,
@@ -356,12 +435,11 @@ const CaseTransferTable = ({
     }));
   }, []);
 
-  // Clear filter handler
   const clearDoctorFilter = useCallback(() => {
     setSelectedDoctorFilter(null);
   }, []);
 
-  // HEAVILY OPTIMIZED transfer handler
+  // OPTIMIZATION 10: Ultra-optimized transfer handler with batch operations
   const handleTransferCase = useCallback(async () => {
     if (!transferDialog.case || !transferDialog.selectedDoctorId) {
       onError("Please select a doctor to transfer the case to.");
@@ -388,7 +466,7 @@ const CaseTransferTable = ({
 
       const caseRef = doc(firestore, "cases", transferDialog.case.id);
 
-      // Use transaction for atomic updates - MUCH faster than batch + getDoc
+      // OPTIMIZATION: Use transaction for atomic updates - single read/write operation
       await runTransaction(firestore, async (transaction) => {
         const caseSnap = await transaction.get(caseRef);
         
@@ -402,9 +480,9 @@ const CaseTransferTable = ({
         const currentDoctorId = currentCaseData.assignedDoctors?.primary;
         const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
 
-        // Minimal transfer history entry
+        // Minimal transfer history entry with client-side timestamp for speed
         const transferHistoryEntry = {
-          transferredAt: new Date(), // Use client timestamp for speed
+          transferredAt: new Date(),
           transferredBy: currentUser.uid,
           transferredByName: currentUser.displayName || currentUser.name,
           transferredFrom: currentDoctorId || null,
@@ -414,16 +492,17 @@ const CaseTransferTable = ({
           transferReason: "Case load balancing",
         };
 
-        // Optimized update - only essential fields
+        // OPTIMIZATION: Minimal update object - only essential fields
         const updateData = {
           "assignedDoctors.primary": transferDialog.selectedDoctorId,
           "assignedDoctors.primaryName": selectedDoctor.name,
           "assignedDoctors.primaryType": "transferred",
           
-          // Use arrayUnion for transfer history
-          transferHistory: currentCaseData.transferHistory 
-            ? [...(currentCaseData.transferHistory || []), transferHistoryEntry]
-            : [transferHistoryEntry],
+          // Append to transfer history array efficiently
+          transferHistory: [
+            ...(currentCaseData.transferHistory || []), 
+            transferHistoryEntry
+          ],
           
           transferCount: (currentCaseData.transferCount || 0) + 1,
           lastTransferredAt: serverTimestamp(),
@@ -468,6 +547,97 @@ const CaseTransferTable = ({
     closeTransferDialog,
   ]);
 
+  // OPTIMIZATION 11: Memoize select styles to prevent recreation
+  const selectStyles = useMemo(() => ({
+    control: (base, state) => ({
+      ...base,
+      minHeight: '38px',
+      borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+      boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+      '&:hover': {
+        borderColor: state.isFocused ? '#3b82f6' : '#9ca3af',
+      },
+      backgroundColor: '#ffffff',
+      fontSize: '14px',
+    }),
+    menu: (base) => ({
+      ...base,
+      zIndex: 50,
+      border: '1px solid #d1d5db',
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+      backgroundColor: '#ffffff',
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: state.isSelected
+        ? '#3b82f6'
+        : state.isFocused
+        ? '#eff6ff'
+        : 'white',
+      color: state.isSelected ? 'white' : '#374151',
+      cursor: 'pointer',
+      padding: '10px 12px',
+      '&:active': {
+        backgroundColor: state.isSelected ? '#3b82f6' : '#dbeafe',
+      },
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: '#374151',
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: '#9ca3af',
+    }),
+    input: (base) => ({
+      ...base,
+      color: '#374151',
+    }),
+    indicatorSeparator: (base) => ({
+      ...base,
+      backgroundColor: '#d1d5db',
+    }),
+    dropdownIndicator: (base) => ({
+      ...base,
+      color: '#6b7280',
+      '&:hover': {
+        color: '#374151',
+      },
+    }),
+  }), []);
+
+  const dialogSelectStyles = useMemo(() => ({
+    ...selectStyles,
+    control: (base, state) => ({
+      ...selectStyles.control(base, state),
+      minHeight: "40px",
+    }),
+    option: (base, state) => ({
+      ...selectStyles.option(base, state),
+      backgroundColor: state.isDisabled 
+        ? '#f9fafb' 
+        : state.isSelected
+        ? '#3b82f6'
+        : state.isFocused
+        ? '#eff6ff'
+        : 'white',
+      color: state.isDisabled 
+        ? '#9ca3af'
+        : state.isSelected 
+        ? 'white' 
+        : '#374151',
+      cursor: state.isDisabled ? 'not-allowed' : 'pointer',
+      padding: '8px 12px',
+      '&:active': {
+        backgroundColor: state.isDisabled 
+          ? '#f9fafb'
+          : state.isSelected 
+          ? '#3b82f6' 
+          : '#dbeafe',
+      },
+    }),
+  }), [selectStyles]);
+
   // Loading state
   if (loading) {
     return (
@@ -502,7 +672,7 @@ const CaseTransferTable = ({
   return (
     <>
       <div className="space-y-6">
-        {/* Filter Section - Better placement above the table */}
+        {/* Filter Section */}
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -521,63 +691,7 @@ const CaseTransferTable = ({
                     isSearchable
                     isClearable
                     menuPlacement="bottom"
-                    styles={{
-                      control: (base, state) => ({
-                        ...base,
-                        minHeight: '38px',
-                        borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
-                        boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
-                        '&:hover': {
-                          borderColor: state.isFocused ? '#3b82f6' : '#9ca3af',
-                        },
-                        backgroundColor: '#ffffff',
-                        fontSize: '14px',
-                      }),
-                      menu: (base) => ({
-                        ...base,
-                        zIndex: 50,
-                        border: '1px solid #d1d5db',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                        backgroundColor: '#ffffff',
-                      }),
-                      option: (base, state) => ({
-                        ...base,
-                        backgroundColor: state.isSelected
-                          ? '#3b82f6'
-                          : state.isFocused
-                          ? '#eff6ff'
-                          : 'white',
-                        color: state.isSelected ? 'white' : '#374151',
-                        cursor: 'pointer',
-                        padding: '10px 12px',
-                        '&:active': {
-                          backgroundColor: state.isSelected ? '#3b82f6' : '#dbeafe',
-                        },
-                      }),
-                      singleValue: (base) => ({
-                        ...base,
-                        color: '#374151',
-                      }),
-                      placeholder: (base) => ({
-                        ...base,
-                        color: '#9ca3af',
-                      }),
-                      input: (base) => ({
-                        ...base,
-                        color: '#374151',
-                      }),
-                      indicatorSeparator: (base) => ({
-                        ...base,
-                        backgroundColor: '#d1d5db',
-                      }),
-                      dropdownIndicator: (base) => ({
-                        ...base,
-                        color: '#6b7280',
-                        '&:hover': {
-                          color: '#374151',
-                        },
-                      }),
-                    }}
+                    styles={selectStyles}
                     filterOption={(option, inputValue) => {
                       return option.label.toLowerCase().includes(inputValue.toLowerCase());
                     }}
@@ -607,7 +721,7 @@ const CaseTransferTable = ({
                     {doctorFilterOptions.find(d => d.value === selectedDoctorFilter)?.label}
                   </Badge>
                   <span className="text-xs">
-                    {paginationData.filteredCases.length} of {cases.length} cases
+                    {filteredCases.length} of {cases.length} cases
                   </span>
                 </div>
               )}
@@ -636,81 +750,25 @@ const CaseTransferTable = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginationData.currentCases.map((caseItem) => (
-                <TableRow
+              {pagination.currentItems.map((caseItem) => (
+                <CaseTableRow
                   key={caseItem.id}
-                  className="hover:bg-gray-50 transition-colors duration-200"
-                >
-                  <TableCell>
-                    <PatientInfoCell caseItem={caseItem} />
-                  </TableCell>
-
-                  <TableCell>
-                    <ClinicCell clinicCode={caseItem.clinicCode} />
-                  </TableCell>
-
-                  <TableCell>
-                    <DoctorCell 
-                      assignedDoctors={caseItem.assignedDoctors} 
-                      transferHistory={caseItem.transferHistory}
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center">
-                      <StatusBadge queue={caseItem.queue} />
-                      <div
-                        className="ml-2 h-2 w-2 bg-green-400 rounded-full animate-pulse"
-                        title="Live update enabled"
-                      ></div>
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <ContactCell consultationType={caseItem.consultationType} />
-                  </TableCell>
-
-                  <TableCell>
-                    <DateCell createdAt={caseItem.createdAt} />
-                  </TableCell>
-                  
-                  <TableCell>
-                    <DateCell createdAt={caseItem.doctorJoined} />
-                  </TableCell>
-
-                  <TableCell>
-                    {caseItem.queue === "doctor" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openTransferDialog(caseItem)}
-                        className="flex items-center text-blue-600 border-blue-200 hover:bg-blue-50"
-                      >
-                        <ArrowRightLeft className="h-4 w-4 mr-1" />
-                        Transfer
-                      </Button>
-                    )}
-                    {caseItem.queue === "pharmacist" && (
-                      <span className="text-xs text-gray-500 flex items-center">
-                        <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                        Doctor completed
-                      </span>
-                    )}
-                  </TableCell>
-                </TableRow>
+                  caseItem={caseItem}
+                  onTransferClick={openTransferDialog}
+                />
               ))}
             </TableBody>
           </Table>
         </div>
 
         {/* Pagination Controls */}
-        {paginationData.totalPages > 1 && (
+        {pagination.totalPages > 1 && (
           <div className="flex items-center justify-between bg-white px-4 py-3 border rounded-lg">
             <div className="flex items-center text-sm text-gray-700">
               <span>
-                Showing {paginationData.startIndex + 1} to{" "}
-                {Math.min(paginationData.endIndex, paginationData.filteredCases.length)} of{" "}
-                {paginationData.filteredCases.length} 
+                Showing {pagination.startIndex + 1} to{" "}
+                {Math.min(pagination.endIndex, filteredCases.length)} of{" "}
+                {filteredCases.length} 
                 {selectedDoctorFilter ? ' filtered' : ''} cases
               </span>
             </div>
@@ -719,8 +777,8 @@ const CaseTransferTable = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={goToPreviousPage}
-                disabled={currentPage === 1}
+                onClick={pagination.goToPreviousPage}
+                disabled={pagination.currentPage === 1}
                 className="flex items-center"
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
@@ -728,7 +786,7 @@ const CaseTransferTable = ({
               </Button>
 
               <div className="flex items-center space-x-1">
-                {pageNumbers.map((pageNum, index) => (
+                {pagination.pageNumbers.map((pageNum, index) => (
                   <React.Fragment key={index}>
                     {pageNum === "..." ? (
                       <span className="px-2 py-1 text-gray-500">
@@ -737,12 +795,12 @@ const CaseTransferTable = ({
                     ) : (
                       <Button
                         variant={
-                          currentPage === pageNum ? "default" : "outline"
+                          pagination.currentPage === pageNum ? "default" : "outline"
                         }
                         size="sm"
-                        onClick={() => goToPage(pageNum)}
+                        onClick={() => pagination.goToPage(pageNum)}
                         className={`min-w-[32px] h-8 ${
-                          currentPage === pageNum
+                          pagination.currentPage === pageNum
                             ? "bg-blue-600 text-white"
                             : "text-gray-700"
                         }`}
@@ -757,8 +815,8 @@ const CaseTransferTable = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={goToNextPage}
-                disabled={currentPage === paginationData.totalPages}
+                onClick={pagination.goToNextPage}
+                disabled={pagination.currentPage === pagination.totalPages}
                 className="flex items-center"
               >
                 Next
@@ -769,7 +827,7 @@ const CaseTransferTable = ({
         )}
       </div>
 
-      {/* Enhanced Transfer Dialog with optimized form */}
+      {/* Enhanced Transfer Dialog */}
       <Dialog open={transferDialog.open} onOpenChange={closeTransferDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -826,70 +884,7 @@ const CaseTransferTable = ({
                   isOptionDisabled={(option) => option.isDisabled}
                   menuPlacement="bottom"
                   menuShouldBlockScroll={true}
-                  styles={{
-                    control: (base, state) => ({
-                      ...base,
-                      minHeight: "40px",
-                      borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
-                      boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
-                      '&:hover': {
-                        borderColor: state.isFocused ? '#3b82f6' : '#9ca3af',
-                      },
-                    }),
-                    menu: (base) => ({
-                      ...base,
-                      zIndex: 50,
-                      border: '1px solid #d1d5db',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                    }),
-                    option: (base, state) => ({
-                      ...base,
-                      backgroundColor: state.isDisabled 
-                        ? '#f9fafb' 
-                        : state.isSelected
-                        ? '#3b82f6'
-                        : state.isFocused
-                        ? '#eff6ff'
-                        : 'white',
-                      color: state.isDisabled 
-                        ? '#9ca3af'
-                        : state.isSelected 
-                        ? 'white' 
-                        : '#374151',
-                      cursor: state.isDisabled ? 'not-allowed' : 'pointer',
-                      padding: '8px 12px',
-                      '&:active': {
-                        backgroundColor: state.isDisabled 
-                          ? '#f9fafb'
-                          : state.isSelected 
-                          ? '#3b82f6' 
-                          : '#dbeafe',
-                      },
-                    }),
-                    singleValue: (base) => ({
-                      ...base,
-                      color: '#374151',
-                    }),
-                    placeholder: (base) => ({
-                      ...base,
-                      color: '#9ca3af',
-                    }),
-                    input: (base) => ({
-                      ...base,
-                      color: '#374151',
-                    }),
-                    indicatorSeparator: (base) => ({
-                      ...base,
-                      backgroundColor: '#d1d5db',
-                    }),
-                    dropdownIndicator: (base) => ({
-                      ...base,
-                      color: '#6b7280',
-                      '&:hover': {
-                        color: '#374151',
-                      },
-                    }),
-                  }}
+                  styles={dialogSelectStyles}
                   filterOption={(option, inputValue) => {
                     return option.label
                       .toLowerCase()

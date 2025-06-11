@@ -258,14 +258,7 @@ const CaseTransferMain = ({ currentUser }) => {
             return a.caseCount - b.caseCount;
           });
 
-          // Debug log to help troubleshoot
-          console.log("Processed doctors:", doctorsList.map(d => ({
-            name: d.name,
-            availabilityStatus: d.availabilityStatus,
-            isAvailable: d.isAvailable,
-            canAcceptCases: d.canAcceptCases,
-            caseCount: d.caseCount
-          })));
+          
 
           doctorsMapRef.current = newDoctorsMap;
           dispatch({ type: 'SET_DOCTORS', payload: doctorsList });

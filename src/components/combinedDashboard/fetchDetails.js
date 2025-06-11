@@ -1,4 +1,4 @@
-//Fetch details and helper functions
+//Optimized Fetch details and helper functions
 import { 
     collection, 
     query, 
@@ -16,7 +16,17 @@ import { ref, get, getDatabase } from "firebase/database";
 import { firestore } from "../../firebase";
 import { initializeApp } from "firebase/app";
 
-const DEFAULT_HOURLY_TARGET = 12; // Default hourly target for all roles
+const DEFAULT_HOURLY_TARGET = 12;
+
+// Cache for realtime data - refresh every 30 minutes
+let realtimeDataCache = null;
+let realtimeDataCacheTime = 0;
+const REALTIME_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+
+// Cache for today's cases - refresh every 5 minutes
+let todayCasesCache = null;
+let todayCasesCacheTime = 0;
+const CASES_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Firebase Realtime Database configuration
 const realtimeDbConfig = {
@@ -29,95 +39,286 @@ const realtimeDbConfig = {
   appId: "1:456008274635:web:1d8e9e6246e499df8dc14e"
 };
 
-// Initialize a separate Firebase app for the realtime database
 const realtimeDbApp = initializeApp(realtimeDbConfig, "realtimeDb");
 
-
-// Function to fetch realtime database data for doctors
+// OPTIMIZATION 1: Cache realtime data
 export const fetchRealtimeData = async () => {
-    try {
-    const db = getDatabase(realtimeDbApp);
-    const doctorsRef = ref(db, 'doctors'); // Specifically target the "doctors" node
-    const snapshot = await get(doctorsRef);
-
-    if (snapshot.exists()) {
-        const data = snapshot.val();
-        return data;
-    } else {
-        console.log("No data available in doctors node of realtime database");
-        return {};
+    const now = Date.now();
+    
+    // Return cached data if still valid
+    if (realtimeDataCache && (now - realtimeDataCacheTime) < REALTIME_CACHE_DURATION) {
+        console.log("Using cached realtime data");
+        return realtimeDataCache;
     }
+    
+    try {
+        const db = getDatabase(realtimeDbApp);
+        const doctorsRef = ref(db, 'doctors');
+        const snapshot = await get(doctorsRef);
+
+        if (snapshot.exists()) {
+            realtimeDataCache = snapshot.val();
+            realtimeDataCacheTime = now;
+            console.log("Fetched fresh realtime data");
+            return realtimeDataCache;
+        } else {
+            console.log("No data available in doctors node of realtime database");
+            realtimeDataCache = {};
+            realtimeDataCacheTime = now;
+            return {};
+        }
     } catch (error) {
-    console.error("Error fetching realtime data:", error);
-    return {};
+        console.error("Error fetching realtime data:", error);
+        return realtimeDataCache || {}; // Return cached data on error
     }
 };
 
+// OPTIMIZATION 2: Batch fetch all today's cases once
+const fetchAllTodaysCases = async () => {
+    const now = Date.now();
+    
+    // Return cached data if still valid
+    if (todayCasesCache && (now - todayCasesCacheTime) < CASES_CACHE_DURATION) {
+        console.log("Using cached cases data");
+        return todayCasesCache;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-// Enrich doctors with shift data from realtime database
-export const enrichDoctorsWithShiftData = (doctorsList, realtimeData) => {
-    return doctorsList.map(doctor => {
-        // Try to find doctor in realtime data by empId
-        let shiftInfo = { 
-        shiftTiming: "9AM-6PM", // Default shift
-        shiftType: "Full-Time",
-        hourlyTarget: DEFAULT_HOURLY_TARGET,
-        dailyTarget: DEFAULT_HOURLY_TARGET * 8
+    try {
+        const casesRef = collection(firestore, "cases");
+        
+        // SINGLE QUERY: Get all today's cases at once
+        const todayCasesQuery = query(
+            casesRef,
+            where("createdAt", ">=", Timestamp.fromDate(today)),
+            where("createdAt", "<", Timestamp.fromDate(tomorrow)),
+            limit(10000) // Increased limit - adjust based on your daily volume
+        );
+        
+        const casesSnapshot = await getDocs(todayCasesQuery);
+        
+        // Process all cases into grouped data structure
+        const casesData = {
+            doctorCases: new Map(), // doctorId -> cases[]
+            pharmacistCases: new Map(), // pharmacistId -> cases[]
+            allCases: []
         };
-        // Search through realtime data to find matching doctor by empId
-        if (doctor.empId) {
-        Object.keys(realtimeData || {}).forEach(key => {
-          const rtDoctor = realtimeData[key];
-          if (rtDoctor.empId === doctor.empId) {
-                // Found matching doctor in realtime DB
-                shiftInfo.shiftTiming = rtDoctor.shiftTiming || shiftInfo.shiftTiming;
-                shiftInfo.shiftType = rtDoctor.shiftType || shiftInfo.shiftType;
-                
-                // Calculate shift hours and targets
-                const shiftHours = calculateShiftHours(rtDoctor.shiftTiming);
-                shiftInfo.shiftHours = shiftHours;
-                
-                // Calculate daily target based on shift type
-                // Part-time: No break, full hours × 12 cases
-                // Full-time: 1 hour break, (hours - 1) × 12 cases
-                if (rtDoctor.shiftType === "Part-Time") {
-                    shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * shiftHours;
-                } else {
-                    // For full-time, account for 1-hour break
-                    shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * (shiftHours - 1);
+        
+        casesSnapshot.forEach((caseDoc) => {
+            const caseData = { id: caseDoc.id, ...caseDoc.data() };
+            casesData.allCases.push(caseData);
+            
+            // Group by doctor
+            if (caseData.assignedDoctors?.primary) {
+                const doctorId = caseData.assignedDoctors.primary;
+                if (!casesData.doctorCases.has(doctorId)) {
+                    casesData.doctorCases.set(doctorId, []);
                 }
+                casesData.doctorCases.get(doctorId).push(caseData);
+            }
+            
+            // Group by pharmacist
+            if (caseData.pharmacistId) {
+                const pharmacistId = caseData.pharmacistId;
+                if (!casesData.pharmacistCases.has(pharmacistId)) {
+                    casesData.pharmacistCases.set(pharmacistId, []);
+                }
+                casesData.pharmacistCases.get(pharmacistId).push(caseData);
             }
         });
+        
+        todayCasesCache = casesData;
+        todayCasesCacheTime = now;
+        console.log(`Fetched ${casesData.allCases.length} cases for today`);
+        
+        return casesData;
+    } catch (error) {
+        console.error("Error fetching today's cases:", error);
+        return todayCasesCache || { doctorCases: new Map(), pharmacistCases: new Map(), allCases: [] };
+    }
+};
 
+// OPTIMIZATION 3: Process doctor metrics from cached data
+const calculateDoctorMetrics = (doctorCases, doctor) => {
+    const doctorMetrics = {
+        todayCases: 0,
+        pendingCases: 0,
+        completedCases: 0,
+        incompleteCases: 0,
+        totalTAT: 0,
+        validTatCases: 0
+    };
+    
+    if (!doctorCases || doctorCases.length === 0) {
+        return {
+            ...doctor,
+            ...doctorMetrics,
+            averageTAT: 0,
+            completionPercentage: 0
+        };
+    }
+    
+    doctorCases.forEach((caseData) => {
+        // Count cases (handle EMR numbers)
+        const caseCount = (caseData.emrNumbers && caseData.emrNumbers.length > 0) 
+            ? caseData.emrNumbers.length 
+            : 1;
+        
+        doctorMetrics.todayCases += caseCount;
+        
+        // Count by status
+        if (caseData.status === "doctor_incomplete") {
+            doctorMetrics.incompleteCases += caseCount;
+        } else if (caseData.doctorCompleted || caseData.status === "pharmacist_incomplete") {
+            doctorMetrics.completedCases += caseCount;
+            
+            // Calculate TAT
+            if (caseData.createdAt && caseData.doctorCompletedAt) {
+                const startTime = (caseData.doctorJoined ?? caseData.createdAt).toDate();
+                const endTime = caseData.doctorCompletedAt.toDate();
+                const tat = (endTime - startTime) / (1000 * 60);
+                
+                if (tat >= 0) {
+                    doctorMetrics.totalTAT += tat;
+                    doctorMetrics.validTatCases++;
+                }
+            }
+        } else {
+            doctorMetrics.pendingCases += caseCount;
+        }
+    });
+    
+    const averageTAT = doctorMetrics.validTatCases > 0 
+        ? Math.round(doctorMetrics.totalTAT / doctorMetrics.validTatCases) 
+        : 0;
+    
+    const completionPercentage = doctor.dailyTarget > 0
+        ? Math.round((doctorMetrics.completedCases / doctor.dailyTarget) * 100)
+        : 0;
+    
+    return {
+        ...doctor,
+        ...doctorMetrics,
+        averageTAT,
+        completionPercentage
+    };
+};
+
+// OPTIMIZATION 4: Process pharmacist metrics from cached data
+const calculatePharmacistMetrics = (pharmacistCases, pharmacist) => {
+    const pharmacistMetrics = {
+        todayCases: 0,
+        pendingCases: 0,
+        completedCases: 0,
+        incompleteCases: 0,
+        totalTAT: 0,
+        validTatCases: 0
+    };
+    
+    if (!pharmacistCases || pharmacistCases.length === 0) {
+        return {
+            ...pharmacist,
+            ...pharmacistMetrics,
+            averageTAT: 0,
+            completionPercentage: 0
+        };
+    }
+    
+    pharmacistCases.forEach((caseData) => {
+        const caseCount = (caseData.emrNumbers && caseData.emrNumbers.length > 0) 
+            ? caseData.emrNumbers.length 
+            : 1;
+        
+        pharmacistMetrics.todayCases += caseCount;
+        
+        if (caseData.isIncomplete) {
+            pharmacistMetrics.incompleteCases += caseCount;
+        } else if (caseData.status === "doctor_completed") {
+            pharmacistMetrics.pendingCases += caseCount;
+        } else if (caseData.status === "completed") {
+            pharmacistMetrics.completedCases += caseCount;
+            
+            if (caseData.createdAt && caseData.pharmacistCompletedAt) {
+                const startTime = (caseData.pharmacistJoined ?? caseData.createdAt).toDate();
+                const endTime = caseData.pharmacistCompletedAt.toDate();
+                const tat = (endTime - startTime) / (1000 * 60);
+                
+                if (tat >= 0) {
+                    pharmacistMetrics.totalTAT += tat;
+                    pharmacistMetrics.validTatCases++;
+                }
+            }
+        }
+    });
+    
+    const averageTAT = pharmacistMetrics.validTatCases > 0 
+        ? Math.round(pharmacistMetrics.totalTAT / pharmacistMetrics.validTatCases) 
+        : 0;
+    
+    const completionPercentage = pharmacist.dailyTarget > 0
+        ? Math.round((pharmacistMetrics.completedCases / pharmacist.dailyTarget) * 100)
+        : 0;
+    
+    return {
+        ...pharmacist,
+        ...pharmacistMetrics,
+        averageTAT,
+        completionPercentage
+    };
+};
+
+// Existing helper functions (unchanged)
+export const enrichDoctorsWithShiftData = (doctorsList, realtimeData) => {
+    return doctorsList.map(doctor => {
+        let shiftInfo = { 
+            shiftTiming: "9AM-6PM",
+            shiftType: "Full-Time",
+            hourlyTarget: DEFAULT_HOURLY_TARGET,
+            dailyTarget: DEFAULT_HOURLY_TARGET * 8
+        };
+        
+        if (doctor.empId) {
+            Object.keys(realtimeData || {}).forEach(key => {
+                const rtDoctor = realtimeData[key];
+                if (rtDoctor.empId === doctor.empId) {
+                    shiftInfo.shiftTiming = rtDoctor.shiftTiming || shiftInfo.shiftTiming;
+                    shiftInfo.shiftType = rtDoctor.shiftType || shiftInfo.shiftType;
+                    
+                    const shiftHours = calculateShiftHours(rtDoctor.shiftTiming);
+                    shiftInfo.shiftHours = shiftHours;
+                    
+                    if (rtDoctor.shiftType === "Part-Time") {
+                        shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * shiftHours;
+                    } else {
+                        shiftInfo.dailyTarget = DEFAULT_HOURLY_TARGET * (shiftHours - 1);
+                    }
+                }
+            });
         }
         
-        // Return doctor with shift info
-        return {
-        ...doctor,
-        ...shiftInfo
-        };
+        return { ...doctor, ...shiftInfo };
     });
 };
 
-// Calculate shift hours from shift timing string
 export const calculateShiftHours = (shiftTiming) => {
-    if (!shiftTiming) return 8; // Default to 8 hours
+    if (!shiftTiming) return 8;
 
     try {
-        // Parse shift timing (e.g., "8AM-2PM", "1PM-9PM")
         const parts = shiftTiming.split('-');
         if (parts.length !== 2) return 8;
         
         const startPart = parts[0].trim();
         const endPart = parts[1].trim();
         
-        // Extract hours and AM/PM
         const startHour = parseInt(startPart.replace(/[^0-9]/g, ''));
         const endHour = parseInt(endPart.replace(/[^0-9]/g, ''));
         const startIsAM = startPart.toLowerCase().includes('am');
         const endIsAM = endPart.toLowerCase().includes('am');
         
-        // Convert to 24-hour format
         let start24 = startHour;
         if (startIsAM && startHour === 12) start24 = 0;
         if (!startIsAM && startHour !== 12) start24 += 12;
@@ -126,230 +327,73 @@ export const calculateShiftHours = (shiftTiming) => {
         if (endIsAM && endHour === 12) end24 = 0;
         if (!endIsAM && endHour !== 12) end24 += 12;
         
-        // Calculate hours
         let hours = end24 - start24;
-        if (hours < 0) hours += 24; // Handle overnight shifts
+        if (hours < 0) hours += 24;
         
-        return hours > 0 ? hours : 8; // Return calculated hours or default to 8
+        return hours > 0 ? hours : 8;
     } catch (err) {
         console.error("Error parsing shift timing:", err);
-        return 8; // Default to 8 hours on error
+        return 8;
     }
 };
 
-// Enrich doctors with case data
+// OPTIMIZED: Single function to enrich doctors with case data
 export const enrichDoctorsWithCaseData = async (doctorsList) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-// Set up promises for parallel execution
-const promises = doctorsList.map(async (doctor) => {
-    const casesRef = collection(firestore, "cases");
-    // Query for cases assigned to this doctor created today
-    const todayCasesQuery = query(
-        casesRef,
-        where("assignedDoctors.primary", "==", doctor.id),
-        where("createdAt", ">=", Timestamp.fromDate(today)),
-        where("createdAt", "<", Timestamp.fromDate(tomorrow)),
-        limit(500) // Increased limit to get all cases for the day
-    );
+    // Fetch all today's cases once
+    const casesData = await fetchAllTodaysCases();
     
-    const casesSnapshot = await getDocs(todayCasesQuery);
-    
-    // Initialize metrics
-    const doctorMetrics = {
-        todayCases: 0,
-        pendingCases: 0,
-        completedCases: 0,
-        incompleteCases: 0,
-        totalTAT: 0, // For calculating average
-        validTatCases: 0 // Count of cases with valid TAT data
-    };
-    
-    casesSnapshot.forEach((caseDoc) => {
-        const caseData = caseDoc.data();
-
-        if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-            doctorMetrics.todayCases += caseData.emrNumbers.length;
-        } else {
-            doctorMetrics.todayCases++;
-        }
-
-        // Count by status
-        if (caseData.status === "doctor_incomplete") {
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                doctorMetrics.incompleteCases += caseData.emrNumbers.length;
-            } else {
-                doctorMetrics.incompleteCases++;
-            }
-        } else if (caseData.doctorCompleted  || caseData.status === "pharmacist_incomplete") {
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                doctorMetrics.completedCases += caseData.emrNumbers.length;
-            } else {
-                doctorMetrics.completedCases++;
-            }
-            
-            // Calculate TAT if possible (time from creation to doctor completion)
-            if (caseData.createdAt && caseData.doctorCompletedAt) {
-                //const startTime = caseData.createdAt.toDate();
-                const startTime = (caseData.doctorJoined ?? caseData.createdAt).toDate();
-                const endTime = caseData.doctorCompletedAt.toDate();
-                const tat = (endTime - startTime) / (1000 * 60); // TAT in minutes
-                
-                if (tat >= 0) { // Ensure valid TAT (positive value)
-                    doctorMetrics.totalTAT += tat;
-                    doctorMetrics.validTatCases++;
-                }
-            }
-        } else {
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                doctorMetrics.pendingCases += caseData.emrNumbers.length;
-            } else {
-                doctorMetrics.pendingCases++;
-            }
-            //doctorMetrics.pendingCases++;
-        }
+    // Process each doctor using cached data
+    return doctorsList.map(doctor => {
+        const doctorCases = casesData.doctorCases.get(doctor.id) || [];
+        return calculateDoctorMetrics(doctorCases, doctor);
     });
-    
-    // Calculate average TAT (in minutes)
-    const averageTAT = doctorMetrics.validTatCases > 0 
-    ? Math.round(doctorMetrics.totalTAT / doctorMetrics.validTatCases) 
-    : 0;
-    
-    // Calculate completion percentage based on daily target
-    const completionPercentage = doctor.dailyTarget > 0
-    ? Math.round((doctorMetrics.completedCases / doctor.dailyTarget) * 100)
-    : 0;
-    
-    // Return updated doctor object
-    return {
-    ...doctor,
-        todayCases: doctorMetrics.todayCases,
-        pendingCases: doctorMetrics.pendingCases,
-        completedCases: doctorMetrics.completedCases,
-        incompleteCases: doctorMetrics.incompleteCases,
-        averageTAT,
-        completionPercentage
-    };
-});
-
-// Wait for all queries to complete
-return Promise.all(promises);
 };
 
-// Enrich pharmacists with default shift data
 export const enrichPharmacistsWithShiftData = (pharmacists) => {
     return pharmacists.map(pharmacist => ({
         ...pharmacist,
-        shiftTiming: "9AM-6PM", // Default shift timing
-        shiftType: "Full-Time", // Default shift type
-        hourlyTarget: 6.25, // Default hourly target
-        dailyTarget: 50 // Default daily target for 8-hour shift
+        shiftTiming: "9AM-6PM",
+        shiftType: "Full-Time",
+        hourlyTarget: 6.25,
+        dailyTarget: 50
     }));
 };
 
-// Enrich pharmacists with case data
+// OPTIMIZED: Single function to enrich pharmacists with case data
 export const enrichPharmacistsWithCaseData = async (pharmacistList) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Set up promises for parallel execution
-    const promises = pharmacistList.map(async (pharmacist) => {
-    const casesRef = collection(firestore, "cases");
+    // Fetch all today's cases once (will use cache if available)
+    const casesData = await fetchAllTodaysCases();
     
-    // Query for cases assigned to this pharmacist created today
-    const todayCasesQuery = query(
-        casesRef,
-        where("pharmacistId", "==", pharmacist.id),
-        where("createdAt", ">=", Timestamp.fromDate(today)),
-        where("createdAt", "<", Timestamp.fromDate(tomorrow)),
-        limit(500) // Increased limit to get all cases for the day
-    );
-    
-    const casesSnapshot = await getDocs(todayCasesQuery);
-    
-    // Initialize metrics
-    const pharmacistMetrics = {
-        todayCases: 0,
-        pendingCases: 0,
-        completedCases: 0,
-        incompleteCases: 0,
-        totalTAT: 0, // For calculating average
-        validTatCases: 0 // Count of cases with valid TAT data
-    };
-    
-    casesSnapshot.forEach((caseDoc) => {
-        const caseData = caseDoc.data();
-
-        if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-            pharmacistMetrics.todayCases += caseData.emrNumbers.length;
-        } else {
-            pharmacistMetrics.todayCases++;
-        }
-
-        if (caseData.isIncomplete){
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                pharmacistMetrics.incompleteCases += caseData.emrNumbers.length;
-            } else {
-                pharmacistMetrics.incompleteCases++;
-            }
-          } else if (caseData.status === "doctor_completed") {
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                pharmacistMetrics.pendingCases += caseData.emrNumbers.length;
-            } else {
-                pharmacistMetrics.pendingCases++;
-            }
-          } else if (caseData.status === "completed") {
-            if(caseData.emrNumbers && caseData.emrNumbers.length > 0) {
-                pharmacistMetrics.completedCases += caseData.emrNumbers.length;
-            } else {
-                pharmacistMetrics.completedCases++;
-            }
-            // Calculate TAT if possible (time from creation to pharmacist completion)
-            if (caseData.createdAt && caseData.pharmacistCompletedAt) {
-                //const startTime = caseData.createdAt.toDate();
-                const startTime = (caseData.pharmacistJoined ?? caseData.createdAt).toDate();
-                const endTime = caseData.pharmacistCompletedAt.toDate();
-                const tat = (endTime - startTime) / (1000 * 60); // TAT in minutes
-                
-                if (tat >= 0) { // Ensure valid TAT (positive value)
-                pharmacistMetrics.totalTAT += tat;
-                pharmacistMetrics.validTatCases++;
-            }
-          }
-        } 
+    // Process each pharmacist using cached data
+    return pharmacistList.map(pharmacist => {
+        const pharmacistCases = casesData.pharmacistCases.get(pharmacist.id) || [];
+        return calculatePharmacistMetrics(pharmacistCases, pharmacist);
     });
-
-    
-    
-    // Calculate average TAT (in minutes)
-    const averageTAT = pharmacistMetrics.validTatCases > 0 
-        ? Math.round(pharmacistMetrics.totalTAT / pharmacistMetrics.validTatCases) 
-        : 0;
-    
-    // Calculate completion percentage based on daily target
-    const completionPercentage = pharmacist.dailyTarget > 0
-        ? Math.round((pharmacistMetrics.completedCases / pharmacist.dailyTarget) * 100)
-        : 0;
-    
-    // Return updated pharmacist object
-    return {
-        ...pharmacist,
-        todayCases: pharmacistMetrics.todayCases,
-        pendingCases: pharmacistMetrics.pendingCases,
-        completedCases: pharmacistMetrics.completedCases,
-        incompleteCases: pharmacistMetrics.incompleteCases,
-        averageTAT,
-        completionPercentage
-    };
-    });
-    
-    // Wait for all queries to complete
-    return Promise.all(promises);
 };
 
-    
+// BONUS: Function to clear caches manually if needed
+export const clearCaches = () => {
+    realtimeDataCache = null;
+    realtimeDataCacheTime = 0;
+    todayCasesCache = null;
+    todayCasesCacheTime = 0;
+    console.log("All caches cleared");
+};
+
+// BONUS: Function to get cache stats
+export const getCacheStats = () => {
+    const now = Date.now();
+    return {
+        realtimeData: {
+            cached: !!realtimeDataCache,
+            age: realtimeDataCache ? Math.round((now - realtimeDataCacheTime) / 1000) : 0,
+            valid: realtimeDataCache && (now - realtimeDataCacheTime) < REALTIME_CACHE_DURATION
+        },
+        casesData: {
+            cached: !!todayCasesCache,
+            age: todayCasesCache ? Math.round((now - todayCasesCacheTime) / 1000) : 0,
+            valid: todayCasesCache && (now - todayCasesCacheTime) < CASES_CACHE_DURATION,
+            totalCases: todayCasesCache ? todayCasesCache.allCases.length : 0
+        }
+    };
+};
