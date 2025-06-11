@@ -22,7 +22,7 @@ import {
   Cell,
   LineChart,
   Line,
-  ComposedChart
+  ComposedChart,
 } from "recharts";
 
 // Summary Cards Component
@@ -64,14 +64,14 @@ const SummaryCards = ({
         if (caseItem.assignedDoctors?.primary) {
           if (caseItem.consultationType == "audio") {
             audioDoctors.add(caseItem.assignedDoctors.primary);
-          } else{
+          } else {
             busyDoctors.add(caseItem.assignedDoctors.primary);
           }
         }
         // Count unique pharmacists working on active cases
         if (caseItem.pharmacistId) {
           if (caseItem.consultationType == "audio") {
-            audioPharmacists.add(caseItem.pharmacistId); 
+            audioPharmacists.add(caseItem.pharmacistId);
           } else if (caseItem.pharmacistJoined) {
             busyPharmacists.add(caseItem.pharmacistId);
           }
@@ -121,14 +121,36 @@ const SummaryCards = ({
           <table>
             <tbody>
               <tr>
-                <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyDoctors}</div></td>
-                <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioDoctors}</div></td>
-                <td><div className="text-2xl font-semibold text-gray-900">{onlineDoctors}</div></td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {metrics.busyDoctors}
+                  </div>
+                </td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {metrics.audioDoctors}
+                  </div>
+                </td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {onlineDoctors}
+                  </div>
+                </td>
               </tr>
               <tr>
-                <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-                <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-                <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">
+                    Video&nbsp;&nbsp;|&nbsp;&nbsp;
+                  </div>
+                </td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">
+                    Audio&nbsp;&nbsp;|&nbsp;&nbsp;
+                  </div>
+                </td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">Online</div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -138,14 +160,36 @@ const SummaryCards = ({
           <table>
             <tbody>
               <tr>
-                <td><div className="text-2xl font-semibold text-gray-900">{metrics.busyPharmacists}</div></td>
-                <td><div className="text-2xl font-semibold text-gray-900">{metrics.audioPharmacists}</div></td>
-                <td><div className="text-2xl font-semibold text-gray-900">{onlinePharmacists}</div></td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {metrics.busyPharmacists}
+                  </div>
+                </td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {metrics.audioPharmacists}
+                  </div>
+                </td>
+                <td>
+                  <div className="text-2xl font-semibold text-gray-900">
+                    {onlinePharmacists}
+                  </div>
+                </td>
               </tr>
               <tr>
-                <td><div className="text-sm text-gray-500 mb-1">Video&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-                <td><div className="text-sm text-gray-500 mb-1">Audio&nbsp;&nbsp;|&nbsp;&nbsp;</div></td>
-                <td><div className="text-sm text-gray-500 mb-1">Online</div></td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">
+                    Video&nbsp;&nbsp;|&nbsp;&nbsp;
+                  </div>
+                </td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">
+                    Audio&nbsp;&nbsp;|&nbsp;&nbsp;
+                  </div>
+                </td>
+                <td>
+                  <div className="text-sm text-gray-500 mb-1">Online</div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -232,7 +276,7 @@ const CasesCompletionChart = ({
 
         if (startedAt > timestamp && startedAt < nextTimestamp) {
           completedCases++;
-          
+
           // Calculate average TAT
           if (completionTime) {
             const tat = completionTime - startedAt;
@@ -243,11 +287,10 @@ const CasesCompletionChart = ({
         }
       });
 
-      if(completedCases > 0 ){
-        avgTAT = avgTAT / completedCases
-      }
-      else {
-        avgTAT = 0
+      if (completedCases > 0) {
+        avgTAT = avgTAT / completedCases;
+      } else {
+        avgTAT = 0;
       }
 
       timeline.push({
@@ -332,7 +375,7 @@ const CasesCompletionChart = ({
                 formatter={(value, name) => {
                   if (name === "Average TAT") {
                     return [`${(value / 60000).toFixed(0)} min`, name]; // Convert ms to minutes
-                  } else if (name === "Completed Cases"){
+                  } else if (name === "Completed Cases") {
                     return [value, "Cases Created"];
                   } else {
                     return [];
@@ -351,11 +394,11 @@ const CasesCompletionChart = ({
                 }}
               />
               {/* Bar for Completed Cases */}
-              <Bar 
+              <Bar
                 barSize={granularity === 60 ? 40 : 10}
-                radius={granularity === 60 ? [20,20,0,0]: [0,0,0,0]}
-                dataKey="completedCases" 
-                fill="#3b82f6" 
+                radius={granularity === 60 ? [20, 20, 0, 0] : [0, 0, 0, 0]}
+                dataKey="completedCases"
+                fill="#3b82f6"
                 name="Completed Cases"
                 stackId="stack"
                 offset={17}
@@ -363,7 +406,7 @@ const CasesCompletionChart = ({
               {/* Bar for Average TAT */}
               <Bar
                 barSize={granularity === 60 ? 40 : 10}
-                radius={granularity === 60 ? [20,20,0,0]: [0,0,0,0]}
+                radius={granularity === 60 ? [20, 20, 0, 0] : [0, 0, 0, 0]}
                 dataKey="avgTAT"
                 fill="#f59e0b"
                 name="Average TAT"
@@ -375,10 +418,10 @@ const CasesCompletionChart = ({
               <Line
                 type="monotone"
                 dataKey="completedCases"
-                stroke="#3b82f6" 
+                stroke="#3b82f6"
                 strokeWidth={2}
                 name="Completed Cases (Line)"
-                dot={{ r:5 }}
+                dot={{ r: 5 }}
               />
               {/* Line for Average TAT */}
               <Line
@@ -388,7 +431,7 @@ const CasesCompletionChart = ({
                 strokeWidth={2}
                 yAxisId="right"
                 name="Average TAT (Line)"
-                dot={{ r:5 }}
+                dot={{ r: 5 }}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -916,13 +959,15 @@ const AnalyticsDashboard = ({ currentUser }) => {
   }, []);
 
   useEffect(() => {
-    let withPartner = []
+    let withPartner = [];
 
-    if (selectedPartner !== 'all'){
-      withPartner = [where("partnerName", "==", selectedPartner), where("availabilityStatus", "!=", "on_break")]
-    }
-    else {
-      withPartner = [where("availabilityStatus", "!=", "on_break")]
+    if (selectedPartner !== "all") {
+      withPartner = [
+        where("partnerName", "==", selectedPartner),
+        where("availabilityStatus", "!=", "on_break"),
+      ];
+    } else {
+      withPartner = [where("availabilityStatus", "!=", "on_break")];
     }
 
     const doctorsQuery = query(
@@ -1367,8 +1412,7 @@ const AnalyticsDashboard = ({ currentUser }) => {
                   Cases Data for {selectedDate.toLocaleDateString()}
                 </h2>
                 <div className="text-sm text-gray-600">
-                  Total cases: {currentData.length} 
-                  
+                  Total cases: {currentData.length}
                 </div>
               </div>
             </div>
