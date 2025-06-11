@@ -1342,12 +1342,14 @@ const AnalyticsDashboard = ({ currentUser }) => {
             />
 
             {/* Doctor Utilization */}
+            {/* 
             <DoctorUtilizationRow
               data={currentData}
               selectedPartner={selectedPartner}
               granularity={granularity}
               totalDoctors={totalDoctors}
             />
+            */}
 
             {/* Clinic Distribution */}
             <ClinicDistributionRow
