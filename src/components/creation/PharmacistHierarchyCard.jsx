@@ -97,7 +97,7 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
           
           // Check if there are any assigned pharmacists
           const hasAnyPharmacists = Object.keys(clinicData.assignedPharmacists).some(key => 
-            !key.includes('Name') && clinicData.assignedPharmacists[key]
+            !key.includes('Name') && !key.includes('assignToAnyPharmacist') && clinicData.assignedPharmacists[key]
           );
           
           setHasExistingHierarchy(hasAnyPharmacists);
@@ -259,19 +259,27 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
       const clinicRef = doc(firestore, "users", clinicUid);
 
       const clinicSnapshot = await getDoc(clinicRef);
-      const clinicData = clinicSnapshot.data()
+      const clinicData = clinicSnapshot.data();
       
-      clinicData.assignedPharmacists = {
-          ...assignedPharmacists.reduce((acc, pharm) => {
-            const positionKey = getPositionName(pharm.position).toLowerCase();
-            acc[positionKey] = pharm.id;
-            acc[`${positionKey}Name`] = pharm.name;
-            return acc;
-          }, {}),
-          assignToAnyPharmacist: clinicData.assignedPharmacists?.assignToAnyPharmacist,
-        }
+      // Build the new assignedPharmacists object
+      const newAssignedPharmacists = assignedPharmacists.reduce((acc, pharm) => {
+        const positionKey = getPositionName(pharm.position).toLowerCase();
+        acc[positionKey] = pharm.id;
+        acc[`${positionKey}Name`] = pharm.name;
+        return acc;
+      }, {});
 
-      await setDoc(clinicRef, clinicData, {merge: false})
+      // Preserve the existing assignToAnyPharmacist setting if it exists, otherwise default to false
+      const existingAssignToAny = clinicData.assignedPharmacists?.assignToAnyPharmacist;
+      if (existingAssignToAny !== undefined) {
+        newAssignedPharmacists.assignToAnyPharmacist = existingAssignToAny;
+      } else {
+        newAssignedPharmacists.assignToAnyPharmacist = false;
+      }
+
+      clinicData.assignedPharmacists = newAssignedPharmacists;
+
+      await setDoc(clinicRef, clinicData, {merge: false});
 
       // Also update each pharmacist's assigned clinics
       for (const pharmacist of assignedPharmacists) {
@@ -383,7 +391,7 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
                   
                   <div className="py-4">
                     <Select
-                      //value={getAvailablePharmacistsForSelect().find(p => p.id === selectedPharmacist) || null}
+                      value={getAvailablePharmacistsForSelect().find(p => p.id === selectedPharmacist) || null}
                       onChange={option => setSelectedPharmacist(option ? option.id : "")}
                       options={getAvailablePharmacistsForSelect().map(pharmacist => ({
                         value: pharmacist.id,
@@ -395,26 +403,6 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
                       noOptionsMessage={() => "No available pharmacists to add"}
                     />
                   </div>
-                  {/*<div className="py-4">
-                    <Select value={selectedPharmacist} onValueChange={setSelectedPharmacist}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a pharmacist" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getAvailablePharmacistsForSelect().length === 0 ? (
-                          <SelectItem value="no-pharmacists" disabled>
-                            No available pharmacists to add
-                          </SelectItem>
-                        ) : (
-                          getAvailablePharmacistsForSelect().map((pharmacist) => (
-                            <SelectItem key={pharmacist.id} value={pharmacist.id}>
-                              {pharmacist.name} ({pharmacist.email})
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>*/}
 
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
