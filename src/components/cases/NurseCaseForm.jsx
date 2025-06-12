@@ -20,6 +20,7 @@ import {
   Loader2,
   UserCheck,
   UserX,
+  UserPen,
   Users,
   Coffee,
   CalendarIcon,
@@ -979,6 +980,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
 
       const batchCode = `batch_${Date.now()}`
       
+      console.log(formData.clinicCode)
       for (let i = 0; i < formData.patients.length; i++) {
         const patient = formData.patients[i];
         
@@ -1003,7 +1005,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           createdByName: currentUser.displayName || nurseData.name,
           clinicId: currentUser.uid,
           clinicName: nurseData.name,
-          clinicCode: nurseData.clinicCode,
+          clinicCode: formData.clinicCode || nurseData.clinicCode,
           partnerName: nurseData.partnerName,
           assignedDoctors: {
             primary: assignedDoctor.id,
@@ -1360,6 +1362,23 @@ const setupPharmacistStatusListener = (pharmacistId) => {
                     ? "Must contain 'meet.google.com'"
                     : "Must be 10 digits"}
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="clinicCode"
+                  className="text-sm flex items-center"
+                >
+                  <UserPen className="h-4 w-4 mr-2 text-blue-500" />
+                  Add Clinic Code
+                </Label>
+                <Input
+                  id="clinicCode"
+                  name="clinicCode"
+                  value={formData.clinicCode}
+                  onChange={handleChange}
+                  className="focus:border-blue-300 focus:ring-blue-500"
+                  placeholder= 'Manually enter clinic code or leave blank'
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="notes" className="text-sm flex items-center">
