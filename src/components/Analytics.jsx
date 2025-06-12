@@ -989,7 +989,7 @@ const AnalyticsDashboard = ({ currentUser }) => {
         switch (doc.data().availabilityStatus) {
           case "unavailable":
             //check if data has pending case with doctor
-            if (data.some((item) => item.assignedDoctor?.primary === doc.id && item.doctorCompleted === false)) {
+            if (data.some((item) => item.assignedDoctors?.primary === doc.id && item.doctorCompleted === false)) {
               count++;
             }
             break;

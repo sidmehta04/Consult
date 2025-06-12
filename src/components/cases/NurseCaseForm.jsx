@@ -1006,7 +1006,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           clinicId: currentUser.uid,
           clinicName: nurseData.name,
           clinicCode: nurseData.clinicCode,
-          manualClinicCode: formData.clinicCode,
+          manualClinicCode: formData.clinicCode || 'N/A',
           partnerName: nurseData.partnerName,
           assignedDoctors: {
             primary: assignedDoctor.id,
