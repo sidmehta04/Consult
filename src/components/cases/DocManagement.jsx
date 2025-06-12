@@ -1134,6 +1134,8 @@ const DoctorCaseManagement = ({ currentUser }) => {
                             </TableCell>
                             <TableCell>
                               {caseItem.clinicCode ?? caseItem.clinicName}
+                              <br/>
+                              {caseItem.manualClinicCode && (caseItem.manualClinicCode)}
                             </TableCell>
                             <TableCell>
                               <Badge

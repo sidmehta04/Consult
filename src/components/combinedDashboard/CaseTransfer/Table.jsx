@@ -100,11 +100,17 @@ const PatientInfoCell = React.memo(({ caseItem }) => (
   </div>
 ));
 
-const ClinicCell = React.memo(({ clinicCode }) => (
-  <div className="flex items-center">
-    <div className="h-2 w-2 bg-purple-500 rounded-full mr-2"></div>
-    <span className="font-medium text-purple-700 text-sm">{clinicCode}</span>
-  </div>
+const ClinicCell = React.memo(({ clinicCode, manualClinicCode }) => (
+  <>
+    <div className="flex items-center">
+      <div className="h-2 w-2 bg-purple-500 rounded-full mr-2"></div>
+      <span className="font-medium text-purple-700 text-sm">{clinicCode}</span>
+    </div>
+    <div className="flex items-center">
+      <div className="h-2 w-2 bg-purple-500 rounded-full mr-2"></div>
+      <span className="font-medium text-purple-700 text-sm">{manualClinicCode ?? "N/A"}</span>
+    </div>
+  </>
 ));
 
 const DoctorCell = React.memo(({ assignedDoctors, transferHistory }) => (
@@ -214,7 +220,7 @@ const CaseTableRow = React.memo(({ caseItem, onTransferClick }) => {
       </TableCell>
 
       <TableCell>
-        <ClinicCell clinicCode={caseItem.clinicCode} />
+        <ClinicCell clinicCode={caseItem.clinicCode} manualClinicCode={caseItem.manualClinicCode} />
       </TableCell>
 
       <TableCell>
@@ -848,7 +854,7 @@ const CaseTransferTable = ({
                   <div><strong>Patient:</strong> {transferDialog.case.patientName}</div>
                   <div><strong>EMR:</strong> {transferDialog.case.emrNumber}</div>
                   <div><strong>Current Doctor:</strong> {transferDialog.case.assignedDoctors?.primaryName || "Not assigned"}</div>
-                  <div><strong>Clinic:</strong> {transferDialog.case.clinicCode}</div>
+                  <div><strong>Clinic:</strong> {transferDialog.case.clinicCode} {transferDialog.case.manualClinicCode ? `(${transferDialog.case.manualClinicCode})` : ""}</div>
                   <div><strong>Complaint:</strong> {transferDialog.case.chiefComplaint}</div>
                   {transferDialog.case.transferCount > 0 && (
                     <div className="text-orange-600">
