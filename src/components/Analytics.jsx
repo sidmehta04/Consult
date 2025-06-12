@@ -398,7 +398,7 @@ const CasesCompletionChart = ({
                 barSize={granularity === 60 ? 40 : 10}
                 radius={granularity === 60 ? [20, 20, 0, 0] : [0, 0, 0, 0]}
                 dataKey="completedCases"
-                fill="#3b82f6"
+                fill="#7EBDC2"
                 name="Completed Cases"
                 stackId="stack"
                 offset={17}
@@ -408,7 +408,7 @@ const CasesCompletionChart = ({
                 barSize={granularity === 60 ? 40 : 10}
                 radius={granularity === 60 ? [20, 20, 0, 0] : [0, 0, 0, 0]}
                 dataKey="avgTAT"
-                fill="#f59e0b"
+                fill="#BB4430"
                 name="Average TAT"
                 yAxisId="right"
                 stackId="stack"
@@ -418,7 +418,7 @@ const CasesCompletionChart = ({
               <Line
                 type="monotone"
                 dataKey="completedCases"
-                stroke="#3b82f6"
+                stroke="#7EBDC2"
                 strokeWidth={2}
                 name="Completed Cases (Line)"
                 dot={{ r: 5 }}
@@ -427,7 +427,7 @@ const CasesCompletionChart = ({
               <Line
                 type="monotone"
                 dataKey="avgTAT"
-                stroke="#f59e0b"
+                stroke="#BB4430"
                 strokeWidth={2}
                 yAxisId="right"
                 name="Average TAT (Line)"
@@ -983,11 +983,45 @@ const AnalyticsDashboard = ({ currentUser }) => {
     );
 
     const unsubscribeDoctors = onSnapshot(doctorsQuery, (snapshot) => {
-      setOnlineDoctors(snapshot.size);
+      //setOnlineDoctors(snapshot.size);
+      let count = 0;
+      snapshot.forEach((doc) => {
+        switch (doc.data().availabilityStatus) {
+          case "unavailable":
+            //check if data has pending case with doctor
+            if (data.some((item) => item.assignedDoctor?.primary === doc.id && item.doctorCompleted === false)) {
+              count++;
+            }
+            break;
+          case "available":
+          case "busy":
+          default:
+            count++;
+            break;
+        }
+      });
+      setOnlineDoctors(count);
     });
 
     const unsubscribePharmacists = onSnapshot(pharmacistsQuery, (snapshot) => {
-      setOnlinePharmacists(snapshot.size);
+      //setOnlinePharmacists(snapshot.size);
+      let count = 0;
+      snapshot.forEach((doc) => {
+        switch (doc.data().availabilityStatus) {
+          case "unavailable":
+            //check if data has pending case with doctor
+            if (data.some((item) => item.pharmacistId === doc.id && item.status === "doctor_completed")) {
+              count++;
+            }
+            break;
+          case "available":
+          case "busy":
+          default:
+            count++;
+            break;
+        }
+      });
+      setOnlinePharmacists(count);
     });
 
     // Cleanup listeners on component unmount
@@ -995,7 +1029,7 @@ const AnalyticsDashboard = ({ currentUser }) => {
       unsubscribeDoctors();
       unsubscribePharmacists();
     };
-  }, [selectedPartner]);
+  }, [selectedPartner, data]);
 
   // Fetch total clinics from users collection where role = nurse
   useEffect(() => {
