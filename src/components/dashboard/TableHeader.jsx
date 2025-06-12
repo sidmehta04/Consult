@@ -102,6 +102,10 @@ const TableHeader = ({
           </Popover>
         </div>
       </th>
+      
+      <th className="p-3 text-left font-medium min-w-[140px]">
+        Manual Clinic Code
+      </th>
 
       {/* Partner Column with Filter */}
       <th className="p-3 text-left font-medium min-w-[100px]">

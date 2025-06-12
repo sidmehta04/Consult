@@ -1005,7 +1005,8 @@ const setupPharmacistStatusListener = (pharmacistId) => {
           createdByName: currentUser.displayName || nurseData.name,
           clinicId: currentUser.uid,
           clinicName: nurseData.name,
-          clinicCode: formData.clinicCode || nurseData.clinicCode,
+          clinicCode: nurseData.clinicCode,
+          manualClinicCode: formData.clinicCode,
           partnerName: nurseData.partnerName,
           assignedDoctors: {
             primary: assignedDoctor.id,
@@ -1374,7 +1375,7 @@ const setupPharmacistStatusListener = (pharmacistId) => {
                 <Input
                   id="clinicCode"
                   name="clinicCode"
-                  value={formData.clinicCode}
+                  value={formData.manualClinicCode}
                   onChange={handleChange}
                   className="focus:border-blue-300 focus:ring-blue-500"
                   placeholder= 'Manually enter clinic code or leave blank'

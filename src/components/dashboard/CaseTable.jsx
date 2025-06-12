@@ -413,6 +413,7 @@ const CasesTable = ({
         onClick={() => handleCaseClick(caseItem)}
       >
         <td className="p-3 font-medium">{caseItem.computed.clinicDisplay}</td>
+        <td className="p-3">{caseItem.manualClinicCode ?? 'N/A'}</td>
         <td className="p-3">{caseItem.computed.partnerDisplay}</td>
         <td className="p-3">{caseItem.computed.doctorDisplay}</td>
         <td className="p-3">{caseItem.computed.doctorJoinedDisplay}</td>
