@@ -266,6 +266,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       
       const updatePromises = [];
       clinicsSnapshot.forEach(async (clinic) => {
+      
         // Create doctor assignments object for each clinic
         const doctorAssignments = {};
         
@@ -283,32 +284,34 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
         const clinicSnapshot = await getDoc(clinicRef);
         const clinicData = clinicSnapshot.data();
 
-        clinicData.assignedDoctors = doctorAssignments;
-
-        updatePromises.push(
-          setDoc(clinicRef, clinicData, { merge: false })
-        );
-        
-        // Also update each doctor's assigned clinics
-        doctorHierarchy.forEach((doctorId) => {
-          const doctorRef = doc(firestore, "users", doctorId);
+        if (clinicData.manuallyAddedDoctors) {}
+        else {
+          clinicData.assignedDoctors = doctorAssignments;
           updatePromises.push(
-            getDoc(doctorRef).then((doctorSnap) => {
-              if (doctorSnap.exists()) {
-                const doctorData = doctorSnap.data();
-                const updatedClinics = {
-                  ...(doctorData.assignedClinics || {}),
-                  [clinic.id]: true
-                };
-                
-                return setDoc(doctorRef, 
-                  { assignedClinics: updatedClinics }, 
-                  { merge: true }
-                );
-              }
-            })
+            setDoc(clinicRef, clinicData, { merge: false })
           );
-        });
+          
+          // Also update each doctor's assigned clinics
+          doctorHierarchy.forEach((doctorId) => {
+            const doctorRef = doc(firestore, "users", doctorId);
+            updatePromises.push(
+              getDoc(doctorRef).then((doctorSnap) => {
+                if (doctorSnap.exists()) {
+                  const doctorData = doctorSnap.data();
+                  const updatedClinics = {
+                    ...(doctorData.assignedClinics || {}),
+                    [clinic.id]: true
+                  };
+                  
+                  return setDoc(doctorRef, 
+                    { assignedClinics: updatedClinics }, 
+                    { merge: true }
+                  );
+                }
+              })
+            );
+          });
+        }        
       });
       
       await Promise.all(updatePromises);

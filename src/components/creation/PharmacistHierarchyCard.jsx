@@ -278,6 +278,7 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
       }
 
       clinicData.assignedPharmacists = newAssignedPharmacists;
+      clinicData.manuallyAddedPharmacists = true;
 
       await setDoc(clinicRef, clinicData, {merge: false});
 

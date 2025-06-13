@@ -23,11 +23,14 @@ import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColum
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 import FeedbackPortal from "./components/Feedback";
+import FeedbackTableQA from "./components/feedback/FeedbackTableQA";
+import { set } from "date-fns";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [isQA, setIsQA] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,6 +47,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
           if (snapshot.exists()) {
             const userData = snapshot.data();
             setUserRole(userData.role);
+            if (userData.isQA) setIsQA(true);
           }
         } catch (error) {
           console.error("Error fetching user role:", error);
@@ -171,6 +175,7 @@ function AppContent() {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [userData, setUserData] = useState(null);
+  const [isQA, setIsQA] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -186,6 +191,7 @@ function AppContent() {
             const data = snapshot.data();
             setUserRole(data.role);
             setUserData(data);
+            if(data.isQA) setIsQA(true);
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -271,6 +277,14 @@ function AppContent() {
         name: "Analytics",
         href: "/analytics",
         icon: <ChartColumnBig className="h-5 w-5" />
+      });
+    }
+
+    if (isQA) {
+      items.push({
+        name: "Tickets Dashboard",
+        href: "/tickets",
+        icon: <MessageSquareText className="h-5 w-5" />
       });
     }
 
@@ -436,6 +450,19 @@ function AppContent() {
                     ]}
                   >
                     <FeedbackPortal currentUser = {{...currentUser, role: userRole, ...userData}}/>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/tickets"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      "teamLeader"
+                    ]}
+                  >
+                    <FeedbackTableQA currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
               />

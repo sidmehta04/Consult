@@ -279,7 +279,8 @@ const saveHierarchy = async () => {
     // Update the clinic data
     const updatedClinicData = {
       ...clinicData,
-      assignedDoctors: newAssignedDoctors
+      assignedDoctors: newAssignedDoctors,
+      manuallyAddedDoctors: true
     };
 
     await setDoc(clinicRef, updatedClinicData, { merge: false });

@@ -283,32 +283,35 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
         const clinicSnapshot = await getDoc(clinicRef);
         const clinicData = clinicSnapshot.data();
 
-        clinicData.assignedPharmacists = pharmacistAssignments;
-
-        updatePromises.push(
-          setDoc(clinicRef, clinicData, { merge: false })
-        );
-        
-        // Also update each pharmacist's assigned clinics
-        pharmacistHierarchy.forEach((pharmacistId) => {
-          const pharmacistRef = doc(firestore, "users", pharmacistId);
+        if(clinicData.manuallyAssignedPharmacists) {}
+        else {
+          clinicData.assignedPharmacists = pharmacistAssignments;
           updatePromises.push(
-            getDoc(pharmacistRef).then((pharmacistSnap) => {
-              if (pharmacistSnap.exists()) {
-                const pharmacistData = pharmacistSnap.data();
-                const updatedClinics = {
-                  ...(pharmacistData.assignedClinics || {}),
-                  [clinic.id]: true
-                };
-                
-                return setDoc(pharmacistRef, 
-                  { assignedClinics: updatedClinics }, 
-                  { merge: true }
-                );
-              }
-            })
+            setDoc(clinicRef, clinicData, { merge: false })
           );
-        });
+          
+          // Also update each pharmacist's assigned clinics
+          pharmacistHierarchy.forEach((pharmacistId) => {
+            const pharmacistRef = doc(firestore, "users", pharmacistId);
+            updatePromises.push(
+              getDoc(pharmacistRef).then((pharmacistSnap) => {
+                if (pharmacistSnap.exists()) {
+                  const pharmacistData = pharmacistSnap.data();
+                  const updatedClinics = {
+                    ...(pharmacistData.assignedClinics || {}),
+                    [clinic.id]: true
+                  };
+                  
+                  return setDoc(pharmacistRef, 
+                    { assignedClinics: updatedClinics }, 
+                    { merge: true }
+                  );
+                }
+              })
+            );
+          });
+
+        }
       });
       
       await Promise.all(updatePromises);

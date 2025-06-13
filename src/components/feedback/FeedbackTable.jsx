@@ -14,6 +14,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+const issueMapping = {
+  "online-team": "Online Team (Agent/Pharmacist/TL)",
+  "offline-team": "Offline Team (DC/Field ops manager)",
+  "sales-diagnostic-team": "Sales & Diagnostic Team (Agent/TL)",
+  "hr-team": "HR Team (Salary/Accounts/Zing)",
+  "branch-issues": "Branch Issues (BM/RM)",
+  "doctor": "Doctor",
+  "clinic-issues": "Clinic issues (Instruments/Tab/Furniture)", 
+  "medicine-issues": "Medicine issues",
+  "sim-card-issues": "Sim card issues"
+}
+
 const FeedbackTable = ({ currentUser }) => {
   const [tickets, setTickets] = useState([]);
 
@@ -48,17 +60,27 @@ const FeedbackTable = ({ currentUser }) => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Title</TableHead>
+                <TableHead>Subject</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created At</TableHead>
+                <TableHead>Updated At</TableHead>
+                <TableHead>Comment</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tickets.map((ticket) => (
                 <TableRow key={ticket.id}>
-                  <TableCell>{ticket.title}</TableCell>
-                  <TableCell>{ticket.status}</TableCell>
+                  <TableCell>{ticket.subject}</TableCell>
+                  <TableCell>{issueMapping[ticket.subject] || ticket.status}</TableCell>
                   <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
+                  <TableCell>
+                    {ticket.lastUpdatedAt ? (
+                      new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
+                    ) : (
+                      "N/A"
+                    )}
+                  </TableCell>
+                  <TableCell>{ticket.comments}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
