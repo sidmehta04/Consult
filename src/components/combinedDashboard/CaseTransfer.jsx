@@ -125,7 +125,7 @@ const CaseTransferMain = ({ currentUser }) => {
         where("isIncomplete", "!=", true),
         orderBy("isIncomplete"),
         orderBy("createdAt", "desc"),
-        limit(500) // Limit to prevent excessive data loading
+        limit(800) // Limit to prevent excessive data loading
       );
 
       const processCaseData = (doc) => {

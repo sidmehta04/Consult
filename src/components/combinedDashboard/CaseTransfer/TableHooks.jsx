@@ -394,9 +394,19 @@ export const useProcessedOptions = (doctors, pharmacists) => {
     }));
   }, [doctors]);
 
+  // NEW: Add pharmacist filter options
+  const pharmacistFilterOptions = useMemo(() => {
+    return pharmacists.map((pharmacist) => ({
+      value: pharmacist.id,
+      label: pharmacist.name,
+      pharmacist,
+    }));
+  }, [pharmacists]);
+
   return {
     doctorOptions,
     pharmacistOptions,
     doctorFilterOptions,
+    pharmacistFilterOptions, // NEW: Export pharmacist filter options
   };
 };

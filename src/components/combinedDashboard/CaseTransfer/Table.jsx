@@ -80,6 +80,7 @@ const CaseTransferTable = ({
 }) => {
   const [transferLoading, setTransferLoading] = useState(false);
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
+  const [selectedPharmacistFilter, setSelectedPharmacistFilter] = useState(null); // NEW: Add pharmacist filter state
   
   // Ref to prevent multiple simultaneous transfers
   const transferInProgressRef = useRef(false);
@@ -89,15 +90,28 @@ const CaseTransferTable = ({
   const transferDialogHook = useTransferDialog();
   const selectStyles = useSelectStyles();
   const dialogSelectStyles = useDialogSelectStyles();
-  const { doctorOptions, pharmacistOptions, doctorFilterOptions } = useProcessedOptions(doctors, pharmacists);
+  const { doctorOptions, pharmacistOptions, doctorFilterOptions, pharmacistFilterOptions } = useProcessedOptions(doctors, pharmacists);
 
-  // Memoize filtered cases to prevent unnecessary recalculation
+  // UPDATED: Enhanced filtered cases to include pharmacist filtering
   const filteredCases = useMemo(() => {
-    if (!selectedDoctorFilter) return cases;
-    return cases.filter(
-      (caseItem) => caseItem.assignedDoctors?.primary === selectedDoctorFilter
-    );
-  }, [cases, selectedDoctorFilter]);
+    let filtered = cases;
+
+    // Filter by doctor
+    if (selectedDoctorFilter) {
+      filtered = filtered.filter(
+        (caseItem) => caseItem.assignedDoctors?.primary === selectedDoctorFilter
+      );
+    }
+
+    // NEW: Filter by pharmacist
+    if (selectedPharmacistFilter) {
+      filtered = filtered.filter(
+        (caseItem) => caseItem.pharmacistId === selectedPharmacistFilter
+      );
+    }
+
+    return filtered;
+  }, [cases, selectedDoctorFilter, selectedPharmacistFilter]);
 
   // Use pagination hook
   const pagination = usePagination(filteredCases);
@@ -123,6 +137,11 @@ const CaseTransferTable = ({
 
   const clearDoctorFilter = useCallback(() => {
     setSelectedDoctorFilter(null);
+  }, []);
+
+  // NEW: Add pharmacist filter clear handler
+  const clearPharmacistFilter = useCallback(() => {
+    setSelectedPharmacistFilter(null);
   }, []);
 
   // Enhanced transfer handler for both doctors and pharmacists
@@ -457,7 +476,7 @@ const CaseTransferTable = ({
           </div>
         </div>
 
-        {/* Filter Section */}
+        {/* UPDATED: Enhanced Filter Section with both doctor and pharmacist filters */}
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -467,6 +486,7 @@ const CaseTransferTable = ({
               </div>
               
               <div className="flex items-center space-x-3">
+                {/* Doctor Filter */}
                 <div className="min-w-0 flex-1" style={{ minWidth: '280px' }}>
                   <Select
                     options={doctorFilterOptions}
@@ -483,33 +503,76 @@ const CaseTransferTable = ({
                   />
                 </div>
                 
-                {selectedDoctorFilter && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearDoctorFilter}
-                    className="flex items-center text-gray-600 hover:text-gray-800"
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Clear
-                  </Button>
+                {/* NEW: Pharmacist Filter */}
+                <div className="min-w-0 flex-1" style={{ minWidth: '280px' }}>
+                  <Select
+                    options={pharmacistFilterOptions}
+                    value={pharmacistFilterOptions.find(option => option.value === selectedPharmacistFilter) || null}
+                    onChange={(selectedOption) => setSelectedPharmacistFilter(selectedOption?.value || null)}
+                    placeholder="Filter by pharmacist..."
+                    isSearchable
+                    isClearable
+                    menuPlacement="bottom"
+                    styles={selectStyles}
+                    filterOption={(option, inputValue) => {
+                      return option.label.toLowerCase().includes(inputValue.toLowerCase());
+                    }}
+                  />
+                </div>
+                
+                {/* Clear Filters */}
+                {(selectedDoctorFilter || selectedPharmacistFilter) && (
+                  <div className="flex items-center space-x-2">
+                    {selectedDoctorFilter && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearDoctorFilter}
+                        className="flex items-center text-gray-600 hover:text-gray-800"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Clear Doctor
+                      </Button>
+                    )}
+                    {selectedPharmacistFilter && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearPharmacistFilter}
+                        className="flex items-center text-gray-600 hover:text-gray-800"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Clear Pharmacist
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Filter Results Summary */}
+            {/* UPDATED: Enhanced Filter Results Summary */}
             <div className="flex items-center space-x-4 text-sm text-gray-600">
-              {selectedDoctorFilter && (
-                <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
+                {selectedDoctorFilter && (
                   <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                     <Stethoscope className="h-3 w-3 mr-1" />
-                    {doctorFilterOptions.find(d => d.value === selectedDoctorFilter)?.label}
+                    Dr. {doctorFilterOptions.find(d => d.value === selectedDoctorFilter)?.label}
                   </Badge>
+                )}
+                
+                {selectedPharmacistFilter && (
+                  <Badge variant="secondary" className="bg-green-50 text-green-700">
+                    <Pill className="h-3 w-3 mr-1" />
+                    {pharmacistFilterOptions.find(p => p.value === selectedPharmacistFilter)?.label}
+                  </Badge>
+                )}
+                
+                {(selectedDoctorFilter || selectedPharmacistFilter) && (
                   <span className="text-xs">
                     {filteredCases.length} of {cases.length} cases
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               
               <div className="flex items-center text-xs text-gray-500">
                 <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
@@ -567,7 +630,7 @@ const CaseTransferTable = ({
                 Showing {pagination.startIndex + 1} to{" "}
                 {Math.min(pagination.endIndex, filteredCases.length)} of{" "}
                 {filteredCases.length} 
-                {selectedDoctorFilter ? ' filtered' : ''} cases
+                {(selectedDoctorFilter || selectedPharmacistFilter) ? ' filtered' : ''} cases
               </span>
               {bulkSelection.bulkMode && bulkSelection.selectionState.hasSelection && (
                 <span className="ml-4 text-blue-600">
