@@ -251,11 +251,7 @@ const CaseTransferHeader = ({
                 Bulk Transfer Tips
               </div>
               <ul className="text-xs space-y-1 ml-6 list-disc">
-                <li>Only cases in the doctor queue can be transferred</li>
-                <li>Select multiple cases using checkboxes, then click "Transfer Selected"</li>
-                <li>Ensure the target doctor can handle the additional case load</li>
                 <li>All transfer history will be preserved for each case</li>
-                <li>Use filters to narrow down cases before bulk selection</li>
               </ul>
             </div>
           </div>

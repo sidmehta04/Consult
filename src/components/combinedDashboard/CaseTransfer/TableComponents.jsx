@@ -223,7 +223,7 @@ export const BulkSelectCheckbox = React.memo(({
         onCheckedChange={onChange}
         disabled={disabled}
         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-        indeterminate={isIndeterminate}
+        indeterminate={isIndeterminate || undefined}
       />
     </div>
   );
