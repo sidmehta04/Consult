@@ -19,9 +19,10 @@ import CaseManagementModule from "./components/CaseManagement";
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import AnalyticsDashboard from "./components/Analytics";
-import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig} from "lucide-react";
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
+import FeedbackPortal from "./components/Feedback";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
@@ -257,6 +258,14 @@ function AppContent() {
       });
     }
 
+    if (userRole === "nurse") {
+      items.push({
+        name: "Feedback",
+        href: "/feedback",
+        icon: <MessageSquareText className="h-5 w-5" />
+      });
+    }
+
     if (userRole === "superAdmin") {
       items.push({
         name: "Analytics",
@@ -414,6 +423,19 @@ function AppContent() {
                     ]}
                   >
                     <CaseManagementModule currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/feedback"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      "nurse"
+                    ]}
+                  >
+                    <FeedbackPortal currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
               />
