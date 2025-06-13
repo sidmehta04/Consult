@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import Select from "react-select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +40,10 @@ import {
   History,
   Filter,
   X,
+  Users,
+  CheckSquare,
+  Square,
+  Minus,
 } from "lucide-react";
 import {
   doc,
@@ -207,14 +212,55 @@ const DateCell = React.memo(({ createdAt, errorFallback = 'N/A' }) => {
   );
 });
 
-// OPTIMIZATION 4: Memoize table row component
-const CaseTableRow = React.memo(({ caseItem, onTransferClick }) => {
+// NEW: Bulk selection checkbox component
+const BulkSelectCheckbox = React.memo(({ 
+  isChecked, 
+  isIndeterminate, 
+  onChange, 
+  disabled = false 
+}) => {
+  return (
+    <div className="flex items-center justify-center">
+      <Checkbox
+        checked={isChecked}
+        onCheckedChange={onChange}
+        disabled={disabled}
+        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+        indeterminate={isIndeterminate}
+      />
+    </div>
+  );
+});
+
+// OPTIMIZATION 4: Memoize table row component with bulk selection
+const CaseTableRow = React.memo(({ 
+  caseItem, 
+  onTransferClick, 
+  isSelected, 
+  onSelectChange, 
+  bulkMode 
+}) => {
   const handleTransferClick = useCallback(() => {
     onTransferClick(caseItem);
   }, [caseItem, onTransferClick]);
 
+  const handleSelectChange = useCallback((checked) => {
+    onSelectChange(caseItem.id, checked);
+  }, [caseItem.id, onSelectChange]);
+
   return (
-    <TableRow className="hover:bg-gray-50 transition-colors duration-200">
+    <TableRow className={`hover:bg-gray-50 transition-colors duration-200 ${isSelected ? 'bg-blue-50' : ''}`}>
+      {/* NEW: Bulk selection column */}
+      {bulkMode && (
+        <TableCell className="w-12">
+          <BulkSelectCheckbox
+            isChecked={isSelected}
+            onChange={handleSelectChange}
+            disabled={caseItem.queue !== "doctor"}
+          />
+        </TableCell>
+      )}
+
       <TableCell>
         <PatientInfoCell caseItem={caseItem} />
       </TableCell>
@@ -361,6 +407,101 @@ const usePagination = (items, itemsPerPage = CASES_PER_PAGE) => {
   };
 };
 
+// NEW: Custom hook for bulk selection management
+const useBulkSelection = (cases) => {
+  const [selectedCases, setSelectedCases] = useState(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+
+  // Filter transferable cases (only doctor queue cases)
+  const transferableCases = useMemo(() => 
+    cases.filter(caseItem => caseItem.queue === "doctor"), 
+    [cases]
+  );
+
+  const transferableCaseIds = useMemo(() => 
+    transferableCases.map(c => c.id), 
+    [transferableCases]
+  );
+
+  // Calculate selection state
+  const selectionState = useMemo(() => {
+    const selectedTransferableCount = Array.from(selectedCases)
+      .filter(id => transferableCaseIds.includes(id)).length;
+    
+    return {
+      selectedCount: selectedTransferableCount,
+      totalTransferable: transferableCases.length,
+      isAllSelected: selectedTransferableCount === transferableCases.length && transferableCases.length > 0,
+      isIndeterminate: selectedTransferableCount > 0 && selectedTransferableCount < transferableCases.length,
+      hasSelection: selectedTransferableCount > 0,
+    };
+  }, [selectedCases, transferableCases, transferableCaseIds]);
+
+  const toggleBulkMode = useCallback(() => {
+    setBulkMode(prev => {
+      if (prev) {
+        // Exiting bulk mode, clear selections
+        setSelectedCases(new Set());
+      }
+      return !prev;
+    });
+  }, []);
+
+  const selectCase = useCallback((caseId, checked) => {
+    setSelectedCases(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(caseId);
+      } else {
+        newSet.delete(caseId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const selectAllTransferable = useCallback((checked) => {
+    setSelectedCases(prev => {
+      const newSet = new Set(prev);
+      transferableCaseIds.forEach(id => {
+        if (checked) {
+          newSet.add(id);
+        } else {
+          newSet.delete(id);
+        }
+      });
+      return newSet;
+    });
+  }, [transferableCaseIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedCases(new Set());
+  }, []);
+
+  const getSelectedCases = useCallback(() => {
+    return transferableCases.filter(caseItem => selectedCases.has(caseItem.id));
+  }, [transferableCases, selectedCases]);
+
+  // Clear selections when cases change significantly
+  useEffect(() => {
+    setSelectedCases(prev => {
+      const validIds = new Set(transferableCaseIds);
+      const filtered = new Set(Array.from(prev).filter(id => validIds.has(id)));
+      return filtered.size === prev.size ? prev : filtered;
+    });
+  }, [transferableCaseIds]);
+
+  return {
+    bulkMode,
+    selectedCases,
+    selectionState,
+    toggleBulkMode,
+    selectCase,
+    selectAllTransferable,
+    clearSelection,
+    getSelectedCases,
+  };
+};
+
 // OPTIMIZATION 6: Main component with optimized state management
 const CaseTransferTable = ({
   cases,
@@ -374,12 +515,17 @@ const CaseTransferTable = ({
   const [transferDialog, setTransferDialog] = useState({
     open: false,
     case: null,
+    cases: [],
     selectedDoctorId: "",
+    isBulk: false,
   });
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState(null);
   
   // Ref to prevent multiple simultaneous transfers
   const transferInProgressRef = useRef(false);
+
+  // NEW: Use bulk selection hook
+  const bulkSelection = useBulkSelection(cases);
 
   // OPTIMIZATION 7: Memoize filtered cases to prevent unnecessary recalculation
   const filteredCases = useMemo(() => {
@@ -422,15 +568,36 @@ const CaseTransferTable = ({
     setTransferDialog({
       open: true,
       case: caseItem,
+      cases: [],
       selectedDoctorId: "",
+      isBulk: false,
     });
   }, []);
+
+  // NEW: Bulk transfer dialog handler
+  const openBulkTransferDialog = useCallback(() => {
+    const selectedCases = bulkSelection.getSelectedCases();
+    if (selectedCases.length === 0) {
+      onError("Please select cases to transfer.");
+      return;
+    }
+
+    setTransferDialog({
+      open: true,
+      case: null,
+      cases: selectedCases,
+      selectedDoctorId: "",
+      isBulk: true,
+    });
+  }, [bulkSelection, onError]);
 
   const closeTransferDialog = useCallback(() => {
     setTransferDialog({
       open: false,
       case: null,
+      cases: [],
       selectedDoctorId: "",
+      isBulk: false,
     });
   }, []);
 
@@ -445,10 +612,19 @@ const CaseTransferTable = ({
     setSelectedDoctorFilter(null);
   }, []);
 
-  // OPTIMIZATION 10: Ultra-optimized transfer handler with batch operations
+  // NEW: Enhanced transfer handler for both single and bulk transfers
   const handleTransferCase = useCallback(async () => {
-    if (!transferDialog.case || !transferDialog.selectedDoctorId) {
-      onError("Please select a doctor to transfer the case to.");
+    const { case: singleCase, cases: multipleCases, selectedDoctorId, isBulk } = transferDialog;
+    
+    if (!selectedDoctorId) {
+      onError("Please select a doctor to transfer the case(s) to.");
+      return;
+    }
+
+    const casesToTransfer = isBulk ? multipleCases : [singleCase];
+    
+    if (casesToTransfer.length === 0) {
+      onError("No cases selected for transfer.");
       return;
     }
 
@@ -463,82 +639,138 @@ const CaseTransferTable = ({
 
     try {
       const selectedDoctor = doctors.find(
-        (doctor) => doctor.id === transferDialog.selectedDoctorId
+        (doctor) => doctor.id === selectedDoctorId
       );
 
       if (!selectedDoctor) {
         throw new Error("Selected doctor not found");
       }
 
-      const caseRef = doc(firestore, "cases", transferDialog.case.id);
+      // Check if doctor can handle all cases
+      const doctorCurrentCases = doctors.find(d => d.id === selectedDoctorId)?.caseCount || 0;
+      if (doctorCurrentCases + casesToTransfer.length > 10) {
+        throw new Error(`Doctor ${selectedDoctor.name} cannot handle ${casesToTransfer.length} additional cases. Current: ${doctorCurrentCases}/10`);
+      }
 
-      // OPTIMIZATION: Use transaction for atomic updates - single read/write operation
-      await runTransaction(firestore, async (transaction) => {
-        const caseSnap = await transaction.get(caseRef);
+      // For bulk transfers, use batch operations for better performance
+      if (isBulk && casesToTransfer.length > 1) {
+        const batch = writeBatch(firestore);
         
-        if (!caseSnap.exists()) {
-          throw new Error("Case not found");
-        }
-
-        const currentCaseData = caseSnap.data();
-        
-        // Get current doctor info for transfer history
-        const currentDoctorId = currentCaseData.assignedDoctors?.primary;
-        const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
-
-        // Minimal transfer history entry with client-side timestamp for speed
-        const transferHistoryEntry = {
-          transferredAt: new Date(),
-          transferredBy: currentUser.uid,
-          transferredByName: currentUser.displayName || currentUser.name,
-          transferredFrom: currentDoctorId || null,
-          transferredFromName: currentDoctorName || "Unassigned",
-          transferredTo: transferDialog.selectedDoctorId,
-          transferredToName: selectedDoctor.name,
-          transferReason: "Case load balancing",
-        };
-
-        // OPTIMIZATION: Minimal update object - only essential fields
-        const updateData = {
-          "assignedDoctors.primary": transferDialog.selectedDoctorId,
-          "assignedDoctors.primaryName": selectedDoctor.name,
-          "assignedDoctors.primaryType": "transferred",
+        casesToTransfer.forEach(caseItem => {
+          const caseRef = doc(firestore, "cases", caseItem.id);
           
-          // Append to transfer history array efficiently
-          transferHistory: [
-            ...(currentCaseData.transferHistory || []), 
-            transferHistoryEntry
-          ],
-          
-          transferCount: (currentCaseData.transferCount || 0) + 1,
-          lastTransferredAt: serverTimestamp(),
-          lastModified: serverTimestamp(),
-        };
+          // Get current doctor info for transfer history
+          const currentDoctorId = caseItem.assignedDoctors?.primary;
+          const currentDoctorName = caseItem.assignedDoctors?.primaryName;
 
-        transaction.update(caseRef, updateData);
+          // Transfer history entry
+          const transferHistoryEntry = {
+            transferredAt: new Date(),
+            transferredBy: currentUser.uid,
+            transferredByName: currentUser.displayName || currentUser.name,
+            transferredFrom: currentDoctorId || null,
+            transferredFromName: currentDoctorName || "Unassigned",
+            transferredTo: selectedDoctorId,
+            transferredToName: selectedDoctor.name,
+            transferReason: "Bulk case load balancing",
+          };
+
+          // Update data
+          const updateData = {
+            "assignedDoctors.primary": selectedDoctorId,
+            "assignedDoctors.primaryName": selectedDoctor.name,
+            "assignedDoctors.primaryType": "bulk_transferred",
+            
+            transferHistory: [
+              ...(caseItem.transferHistory || []), 
+              transferHistoryEntry
+            ],
+            
+            transferCount: (caseItem.transferCount || 0) + 1,
+            lastTransferredAt: serverTimestamp(),
+            lastModified: serverTimestamp(),
+          };
+
+          batch.update(caseRef, updateData);
+        });
+
+        await batch.commit();
+
+        const transferMessage = `Successfully transferred ${casesToTransfer.length} cases to Dr. ${selectedDoctor.name}`;
+        onSuccess(transferMessage);
         
-        return { currentDoctorName, selectedDoctor };
-      });
+        // Clear bulk selection after successful transfer
+        bulkSelection.clearSelection();
+        
+      } else {
+        // Single case transfer using transaction (existing logic)
+        const caseToTransfer = casesToTransfer[0];
+        const caseRef = doc(firestore, "cases", caseToTransfer.id);
 
-      const transferMessage = transferDialog.case.assignedDoctors?.primaryName 
-        ? `Case transferred from Dr. ${transferDialog.case.assignedDoctors.primaryName} to Dr. ${selectedDoctor.name}`
-        : `Case assigned to Dr. ${selectedDoctor.name}`;
+        await runTransaction(firestore, async (transaction) => {
+          const caseSnap = await transaction.get(caseRef);
+          
+          if (!caseSnap.exists()) {
+            throw new Error("Case not found");
+          }
 
-      onSuccess(transferMessage);
+          const currentCaseData = caseSnap.data();
+          
+          const currentDoctorId = currentCaseData.assignedDoctors?.primary;
+          const currentDoctorName = currentCaseData.assignedDoctors?.primaryName;
+
+          const transferHistoryEntry = {
+            transferredAt: new Date(),
+            transferredBy: currentUser.uid,
+            transferredByName: currentUser.displayName || currentUser.name,
+            transferredFrom: currentDoctorId || null,
+            transferredFromName: currentDoctorName || "Unassigned",
+            transferredTo: selectedDoctorId,
+            transferredToName: selectedDoctor.name,
+            transferReason: "Case load balancing",
+          };
+
+          const updateData = {
+            "assignedDoctors.primary": selectedDoctorId,
+            "assignedDoctors.primaryName": selectedDoctor.name,
+            "assignedDoctors.primaryType": "transferred",
+            
+            transferHistory: [
+              ...(currentCaseData.transferHistory || []), 
+              transferHistoryEntry
+            ],
+            
+            transferCount: (currentCaseData.transferCount || 0) + 1,
+            lastTransferredAt: serverTimestamp(),
+            lastModified: serverTimestamp(),
+          };
+
+          transaction.update(caseRef, updateData);
+        });
+
+        const transferMessage = caseToTransfer.assignedDoctors?.primaryName 
+          ? `Case transferred from Dr. ${caseToTransfer.assignedDoctors.primaryName} to Dr. ${selectedDoctor.name}`
+          : `Case assigned to Dr. ${selectedDoctor.name}`;
+
+        onSuccess(transferMessage);
+      }
+
       closeTransferDialog();
       
     } catch (err) {
-      console.error("Error transferring case:", err);
+      console.error("Error transferring case(s):", err);
       
       // More specific error messages
       if (err.code === 'permission-denied') {
-        onError("Permission denied. You may not have rights to transfer this case.");
+        onError("Permission denied. You may not have rights to transfer these cases.");
       } else if (err.code === 'not-found') {
-        onError("Case no longer exists. It may have been deleted or transferred.");
+        onError("One or more cases no longer exist. They may have been deleted or transferred.");
       } else if (err.message.includes("network")) {
         onError("Network error. Please check your connection and try again.");
+      } else if (err.message.includes("cannot handle")) {
+        onError(err.message);
       } else {
-        onError("Transfer failed. Please try again in a moment.");
+        onError(`Transfer failed. Please try again in a moment.`);
       }
     } finally {
       setTransferLoading(false);
@@ -551,6 +783,7 @@ const CaseTransferTable = ({
     onSuccess,
     onError,
     closeTransferDialog,
+    bulkSelection,
   ]);
 
   // OPTIMIZATION 11: Memoize select styles to prevent recreation
@@ -678,6 +911,77 @@ const CaseTransferTable = ({
   return (
     <>
       <div className="space-y-6">
+        {/* NEW: Bulk Actions Bar */}
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant={bulkSelection.bulkMode ? "default" : "outline"}
+                onClick={bulkSelection.toggleBulkMode}
+                className="flex items-center"
+              >
+                {bulkSelection.bulkMode ? (
+                  <CheckSquare className="h-4 w-4 mr-2" />
+                ) : (
+                  <Square className="h-4 w-4 mr-2" />
+                )}
+                {bulkSelection.bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+              </Button>
+
+              {bulkSelection.bulkMode && (
+                <>
+                  <div className="flex items-center space-x-2">
+                    <BulkSelectCheckbox
+                      isChecked={bulkSelection.selectionState.isAllSelected}
+                      isIndeterminate={bulkSelection.selectionState.isIndeterminate}
+                      onChange={bulkSelection.selectAllTransferable}
+                    />
+                    <span className="text-sm text-gray-600">
+                      Select All ({bulkSelection.selectionState.totalTransferable} transferable)
+                    </span>
+                  </div>
+
+                  {bulkSelection.selectionState.hasSelection && (
+                    <div className="flex items-center space-x-3">
+                      <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                        <Users className="h-3 w-3 mr-1" />
+                        {bulkSelection.selectionState.selectedCount} selected
+                      </Badge>
+                      
+                      <Button
+                        size="sm"
+                        onClick={openBulkTransferDialog}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <ArrowRightLeft className="h-4 w-4 mr-2" />
+                        Transfer Selected
+                      </Button>
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={bulkSelection.clearSelection}
+                        className="text-gray-600"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Bulk Mode Instructions */}
+            {bulkSelection.bulkMode && (
+              <div className="text-xs text-gray-500 flex items-center">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                Only cases in doctor queue can be transferred
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Filter Section */}
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center justify-between">
@@ -745,6 +1049,16 @@ const CaseTransferTable = ({
           <Table>
             <TableHeader className="bg-gray-50">
               <TableRow>
+                {/* NEW: Bulk selection header */}
+                {bulkSelection.bulkMode && (
+                  <TableHead className="w-12">
+                    <BulkSelectCheckbox
+                      isChecked={bulkSelection.selectionState.isAllSelected}
+                      isIndeterminate={bulkSelection.selectionState.isIndeterminate}
+                      onChange={bulkSelection.selectAllTransferable}
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="font-semibold">Patient Info</TableHead>
                 <TableHead className="font-semibold">Clinic Code</TableHead>
                 <TableHead className="font-semibold">Current Doctor</TableHead>
@@ -761,6 +1075,9 @@ const CaseTransferTable = ({
                   key={caseItem.id}
                   caseItem={caseItem}
                   onTransferClick={openTransferDialog}
+                  isSelected={bulkSelection.selectedCases.has(caseItem.id)}
+                  onSelectChange={bulkSelection.selectCase}
+                  bulkMode={bulkSelection.bulkMode}
                 />
               ))}
             </TableBody>
@@ -777,6 +1094,11 @@ const CaseTransferTable = ({
                 {filteredCases.length} 
                 {selectedDoctorFilter ? ' filtered' : ''} cases
               </span>
+              {bulkSelection.bulkMode && bulkSelection.selectionState.hasSelection && (
+                <span className="ml-4 text-blue-600">
+                  • {bulkSelection.selectionState.selectedCount} selected for transfer
+                </span>
+              )}
             </div>
 
             <div className="flex items-center space-x-2">
@@ -833,22 +1155,25 @@ const CaseTransferTable = ({
         )}
       </div>
 
-      {/* Enhanced Transfer Dialog */}
+      {/* Enhanced Transfer Dialog - Single & Bulk */}
       <Dialog open={transferDialog.open} onOpenChange={closeTransferDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Search className="h-5 w-5 text-blue-500 mr-2" />
-              Transfer Case
+              {transferDialog.isBulk ? "Bulk Transfer Cases" : "Transfer Case"}
             </DialogTitle>
             <DialogDescription>
-              Select an available doctor to transfer this case to.
+              {transferDialog.isBulk 
+                ? `Select an available doctor to transfer ${transferDialog.cases.length} selected cases to.`
+                : "Select an available doctor to transfer this case to."
+              }
             </DialogDescription>
           </DialogHeader>
 
-          {transferDialog.case && (
-            <div className="space-y-4">
-              {/* Simplified Case Info */}
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {/* Single Case Info */}
+            {!transferDialog.isBulk && transferDialog.case && (
               <div className="bg-gray-50 p-3 rounded-lg">
                 <div className="text-sm space-y-1">
                   <div><strong>Patient:</strong> {transferDialog.case.patientName}</div>
@@ -863,79 +1188,157 @@ const CaseTransferTable = ({
                   )}
                 </div>
               </div>
+            )}
 
-              {/* Transfer History Warning */}
-              {transferDialog.case.transferHistory && transferDialog.case.transferHistory.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="flex items-center mb-2">
-                    <History className="h-4 w-4 text-amber-600 mr-2" />
-                    <span className="text-sm font-medium text-amber-800">Transfer History</span>
-                  </div>
-                  <div className="text-xs text-amber-700">
-                    This case has been transferred {transferDialog.case.transferHistory.length} time(s) previously.
+            {/* Bulk Cases Info */}
+            {transferDialog.isBulk && transferDialog.cases.length > 0 && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium text-gray-900">
+                    Selected Cases ({transferDialog.cases.length})
+                  </h4>
+                  <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                    <Users className="h-3 w-3 mr-1" />
+                    Bulk Transfer
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {transferDialog.cases.map((caseItem, index) => (
+                    <div key={caseItem.id} className="text-sm border-l-2 border-blue-300 pl-3 py-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="font-medium">{caseItem.patientName}</span>
+                          <span className="text-gray-600 ml-2">EMR: {caseItem.emrNumber}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {caseItem.assignedDoctors?.primaryName || "Unassigned"}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {caseItem.clinicCode} • {caseItem.chiefComplaint}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bulk Transfer Summary */}
+                <div className="mt-3 p-2 bg-blue-50 rounded border">
+                  <div className="text-xs text-blue-800">
+                    <strong>Transfer Summary:</strong> All {transferDialog.cases.length} cases will be moved to the selected doctor with full history tracking.
                   </div>
                 </div>
-              )}
-
-              {/* Simplified Doctor Selection */}
-              <div className="space-y-2">
-                <Label>Select New Doctor</Label>
-                <Select
-                  options={doctorOptions}
-                  value={doctorOptions.find(option => option.value === transferDialog.selectedDoctorId) || null}
-                  onChange={handleDoctorSelect}
-                  placeholder="Select doctor..."
-                  isSearchable
-                  isClearable
-                  isOptionDisabled={(option) => option.isDisabled}
-                  menuPlacement="bottom"
-                  menuShouldBlockScroll={true}
-                  styles={dialogSelectStyles}
-                  filterOption={(option, inputValue) => {
-                    return option.label
-                      .toLowerCase()
-                      .includes(inputValue.toLowerCase());
-                  }}
-                />
-                <p className="text-xs text-gray-500">
-                  Available doctors are shown. Doctors at capacity (10+ cases) are disabled.
-                </p>
               </div>
+            )}
 
-              {/* Selected Doctor Preview */}
-              {transferDialog.selectedDoctorId && (
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="flex items-center">
-                    <ArrowRight className="h-4 w-4 text-blue-600 mr-2" />
-                    <span className="text-sm font-medium text-blue-900">
-                      Transferring from:{" "}
-                      {transferDialog.case.assignedDoctors?.primaryName || "Unassigned"} → {" "}
-                      {
-                        doctorOptions.find(
-                          (option) =>
-                            option.value === transferDialog.selectedDoctorId
-                        )?.doctor?.name
-                      }
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center text-xs text-blue-700">
-                    <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse mr-2"></div>
-                    Transfer history will be automatically recorded
-                  </div>
-                </div>
-              )}
-
-              {/* Transfer Notice */}
+            {/* Transfer History Warnings */}
+            {(transferDialog.case?.transferHistory?.length > 0 || 
+              transferDialog.cases.some(c => c.transferHistory?.length > 0)) && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <div className="flex items-start">
-                  <AlertCircle className="h-4 w-4 text-amber-600 mr-2 mt-0.5" />
-                  <div className="text-sm text-amber-800">
-                    <strong>Transfer Tracking:</strong> This transfer will be recorded with full history including previous doctor, timestamp, and reason. The case will immediately appear in the new doctor's queue.
-                  </div>
+                <div className="flex items-center mb-2">
+                  <History className="h-4 w-4 text-amber-600 mr-2" />
+                  <span className="text-sm font-medium text-amber-800">Transfer History Warning</span>
+                </div>
+                <div className="text-xs text-amber-700">
+                  {transferDialog.isBulk 
+                    ? `Some of the selected cases have been transferred before. Transfer history will be preserved.`
+                    : `This case has been transferred ${transferDialog.case?.transferHistory?.length} time(s) previously.`
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* Doctor Selection */}
+            <div className="space-y-2">
+              <Label>Select New Doctor</Label>
+              <Select
+                options={doctorOptions}
+                value={doctorOptions.find(option => option.value === transferDialog.selectedDoctorId) || null}
+                onChange={handleDoctorSelect}
+                placeholder="Select doctor..."
+                isSearchable
+                isClearable
+                isOptionDisabled={(option) => option.isDisabled}
+                menuPlacement="bottom"
+                menuShouldBlockScroll={true}
+                styles={dialogSelectStyles}
+                filterOption={(option, inputValue) => {
+                  return option.label
+                    .toLowerCase()
+                    .includes(inputValue.toLowerCase());
+                }}
+              />
+              <p className="text-xs text-gray-500">
+                Available doctors are shown. Doctors at capacity (10+ cases) are disabled.
+                {transferDialog.isBulk && ` Selected doctor must be able to handle ${transferDialog.cases.length} additional cases.`}
+              </p>
+            </div>
+
+            {/* Doctor Capacity Check for Bulk */}
+            {transferDialog.isBulk && transferDialog.selectedDoctorId && (
+              <div className="bg-blue-50 p-3 rounded-lg">
+                {(() => {
+                  const selectedDoc = doctors.find(d => d.id === transferDialog.selectedDoctorId);
+                  const currentCases = selectedDoc?.caseCount || 0;
+                  const afterTransfer = currentCases + transferDialog.cases.length;
+                  const canHandle = afterTransfer <= 10;
+                  
+                  return (
+                    <div className="flex items-center">
+                      {canHandle ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
+                      )}
+                      <div className="text-sm">
+                        <div className={canHandle ? "text-green-900" : "text-red-900"}>
+                          <strong>Dr. {selectedDoc?.name}</strong> case load: {currentCases} → {afterTransfer}/10
+                        </div>
+                        {!canHandle && (
+                          <div className="text-red-700 text-xs mt-1">
+                            Cannot handle {transferDialog.cases.length} additional cases. Please select a different doctor.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Selected Doctor Preview */}
+            {transferDialog.selectedDoctorId && !transferDialog.isBulk && (
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <div className="flex items-center">
+                  <ArrowRight className="h-4 w-4 text-blue-600 mr-2" />
+                  <span className="text-sm font-medium text-blue-900">
+                    Transferring from:{" "}
+                    {transferDialog.case.assignedDoctors?.primaryName || "Unassigned"} → {" "}
+                    {
+                      doctorOptions.find(
+                        (option) =>
+                          option.value === transferDialog.selectedDoctorId
+                      )?.doctor?.name
+                    }
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center text-xs text-blue-700">
+                  <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse mr-2"></div>
+                  Transfer history will be automatically recorded
+                </div>
+              </div>
+            )}
+
+            {/* Transfer Notice */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="flex items-start">
+                <AlertCircle className="h-4 w-4 text-amber-600 mr-2 mt-0.5" />
+                <div className="text-sm text-amber-800">
+                  <strong>Transfer Tracking:</strong> {transferDialog.isBulk ? "These transfers" : "This transfer"} will be recorded with full history including previous doctor, timestamp, and reason. {transferDialog.isBulk ? "All cases" : "The case"} will immediately appear in the new doctor's queue.
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           <DialogFooter className="pt-4">
             <Button variant="outline" onClick={closeTransferDialog}>
@@ -943,18 +1346,29 @@ const CaseTransferTable = ({
             </Button>
             <Button
               onClick={handleTransferCase}
-              disabled={!transferDialog.selectedDoctorId || transferLoading}
+              disabled={
+                !transferDialog.selectedDoctorId || 
+                transferLoading ||
+                (transferDialog.isBulk && (() => {
+                  const selectedDoc = doctors.find(d => d.id === transferDialog.selectedDoctorId);
+                  const currentCases = selectedDoc?.caseCount || 0;
+                  return currentCases + transferDialog.cases.length > 10;
+                })())
+              }
               className="bg-blue-600 hover:bg-blue-700"
             >
               {transferLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Transferring...
+                  {transferDialog.isBulk ? "Transferring..." : "Transferring..."}
                 </>
               ) : (
                 <>
                   <ArrowRightLeft className="h-4 w-4 mr-2" />
-                  Transfer
+                  {transferDialog.isBulk 
+                    ? `Transfer ${transferDialog.cases.length} Cases` 
+                    : "Transfer"
+                  }
                 </>
               )}
             </Button>

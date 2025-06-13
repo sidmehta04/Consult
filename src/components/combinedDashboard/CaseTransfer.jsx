@@ -101,6 +101,11 @@ const CaseTransferMain = ({ currentUser }) => {
     });
   }, [state.cases, state.searchTerm, state.selectedQueue, state.selectedClinic]);
 
+  // NEW: Calculate transferable cases count for bulk operations
+  const transferableCasesCount = useMemo(() => {
+    return filteredCases.filter(caseItem => caseItem.queue === "doctor").length;
+  }, [filteredCases]);
+
   // Optimized cases listener with reduced database calls
   const setupCasesListener = useCallback(() => {
     try {
@@ -258,8 +263,6 @@ const CaseTransferMain = ({ currentUser }) => {
             return a.caseCount - b.caseCount;
           });
 
-          
-
           doctorsMapRef.current = newDoctorsMap;
           dispatch({ type: 'SET_DOCTORS', payload: doctorsList });
         },
@@ -349,6 +352,20 @@ const CaseTransferMain = ({ currentUser }) => {
     dispatch({ type: 'SET_SUCCESS', payload: "Data refreshed successfully!" });
   }, []);
 
+  // NEW: Enhanced success handler for bulk operations
+  const handleBulkSuccess = useCallback((message, transferredCount = 0) => {
+    const enhancedMessage = transferredCount > 1 
+      ? `${message} (${transferredCount} cases transferred)`
+      : message;
+    
+    dispatch({ type: 'SET_SUCCESS', payload: enhancedMessage });
+    dispatch({ type: 'SET_ERROR', payload: "" });
+    
+    // Show success message for longer on bulk operations
+    const timeout = transferredCount > 1 ? 5000 : 3000;
+    setTimeout(() => dispatch({ type: 'SET_SUCCESS', payload: "" }), timeout);
+  }, []);
+
   // Early returns for error states
   if (!firestore) {
     return (
@@ -385,6 +402,7 @@ const CaseTransferMain = ({ currentUser }) => {
     <div className="space-y-6">
       <CaseTransferHeader
         filteredCasesCount={filteredCases.length}
+        totalCasesCount={state.cases.length}
         error={state.error}
         success={state.success}
         searchTerm={state.searchTerm}
@@ -395,14 +413,16 @@ const CaseTransferMain = ({ currentUser }) => {
         setSelectedClinic={handleClinicChange}
         clinics={state.clinics}
         onRefresh={handleRefresh}
+        // NEW: Pass bulk-related props
+        transferableCasesCount={transferableCasesCount}
       />
 
       <CaseTransferTable
         cases={filteredCases}
-        doctors={state.doctors}x
+        doctors={state.doctors}
         loading={state.loading}
         currentUser={currentUser}
-        onSuccess={handleSuccess}
+        onSuccess={handleBulkSuccess}
         onError={handleError}
       />
     </div>
