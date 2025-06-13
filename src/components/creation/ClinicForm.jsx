@@ -6,6 +6,37 @@ import { Building2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon } from "lucide-react";
 
+
+//NOTE: UP has been turned into Uttar Pradesh East and West, but some clinics just have Uttar Pradesh so keeping as legacy
+//NOTE: Some clinics had 'NA-Agent', so giving option for that
+
+//NOTE: for reference, currently existing entries in db:
+
+// Uttar Pradesh West
+// NA-Agent
+// Karnataka
+// Himachal Pradesh
+// Chhattisgarh
+// Uttarakhand
+// Haryana
+// Delhi
+// Madhya Pradesh
+// Tamil Nadu
+// Assam
+// Rajasthan
+// Maharashtra
+// Kerala
+// Bihar
+// Uttar Pradesh
+// Odisha
+// Uttar Pradesh East
+// Punjab
+// West Bengal
+// Andhra Pradesh
+// Telangana
+// Jharkhand
+// Gujarat
+
 const stateOptions = [
   { value: "Andhra Pradesh", label: "Andhra Pradesh" },
   { value: "Arunachal Pradesh", label: "Arunachal Pradesh" },
@@ -34,6 +65,7 @@ const stateOptions = [
   { value: "Tripura", label: "Tripura" },
   { value: "Uttar Pradesh East", label: "Uttar Pradesh East" },
   { value: "Uttar Pradesh West", label: "Uttar Pradesh West" },
+  { value: "Uttar Pradesh", label: "Uttar Pradesh" },
   { value: "Uttarakhand", label: "Uttarakhand" },
   { value: "West Bengal", label: "West Bengal" },
   { value: "Andaman and Nicobar Islands", label: "Andaman and Nicobar Islands" },
@@ -44,6 +76,7 @@ const stateOptions = [
   { value: "Ladakh", label: "Ladakh" },
   { value: "Lakshadweep", label: "Lakshadweep" },
   { value: "Puducherry", label: "Puducherry" },
+  { value: "NA-Agent", label: "NA-Agent" },
 ];
 
 const ClinicInfoForm = ({ formData, setFormData }) => {
