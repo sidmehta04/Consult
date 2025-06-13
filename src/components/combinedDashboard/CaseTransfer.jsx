@@ -27,6 +27,8 @@ const caseTransferReducer = (state, action) => {
       return { ...state, cases: action.payload };
     case 'SET_DOCTORS':
       return { ...state, doctors: action.payload };
+    case 'SET_PHARMACISTS':
+      return { ...state, pharmacists: action.payload };
     case 'SET_CLINICS':
       return { ...state, clinics: action.payload };
     case 'SET_SEARCH_TERM':
@@ -45,6 +47,7 @@ const caseTransferReducer = (state, action) => {
 const initialState = {
   cases: [],
   doctors: [],
+  pharmacists: [],
   clinics: [],
   loading: true,
   error: "",
@@ -62,6 +65,7 @@ const CaseTransferMain = ({ currentUser }) => {
   const updateTimeoutRef = useRef(null);
   const casesMapRef = useRef(new Map());
   const doctorsMapRef = useRef(new Map());
+  const pharmacistsMapRef = useRef(new Map());
   
   // Memoized permission check
   const canTransferCases = useMemo(() => 
@@ -200,7 +204,7 @@ const CaseTransferMain = ({ currentUser }) => {
     return () => {}; // No cleanup needed for this approach
   }, [state.cases]);
 
-  // FIXED: Heavily optimized doctors listener
+  // UPDATED: Enhanced doctors listener with pharmacist case count calculation
   const setupDoctorsListener = useCallback(() => {
     try {
       const doctorsQuery = query(
@@ -235,11 +239,11 @@ const CaseTransferMain = ({ currentUser }) => {
             }
           });
 
-          // FIXED: Process doctors list with corrected availability check
+          // Process doctors list with availability check
           const doctorsList = doctorsData.map((doctor) => {
             const caseCount = doctorCaseCounts.get(doctor.id) || 0;
             
-            // FIXED: Separate availability status from case count
+            // Separate availability status from case count
             const isAvailable = 
               doctor.availabilityStatus === "available" ||
               doctor.availabilityStatus === "busy";
@@ -280,15 +284,97 @@ const CaseTransferMain = ({ currentUser }) => {
     }
   }, []);
 
+  // NEW: Pharmacists listener setup
+  const setupPharmacistsListener = useCallback(() => {
+    try {
+      const pharmacistsQuery = query(
+        collection(firestore, "users"),
+        where("role", "==", "pharmacist"),
+        limit(400) // Reasonable limit for pharmacists
+      );
+
+      const unsubscribePharmacists = onSnapshot(
+        pharmacistsQuery,
+        (snapshot) => {
+          const pharmacistsData = [];
+          const newPharmacistsMap = new Map();
+          
+          snapshot.forEach((doc) => {
+            const pharmacistData = doc.data();
+            const pharmacist = {
+              id: doc.id,
+              name: pharmacistData.name,
+              availabilityStatus: pharmacistData.availabilityStatus || "available",
+            };
+            pharmacistsData.push(pharmacist);
+            newPharmacistsMap.set(doc.id, pharmacist);
+          });
+          
+          // Calculate pharmacist case counts from cached cases data
+          const pharmacistCaseCounts = new Map();
+          casesMapRef.current.forEach((caseData) => {
+            const pharmacistId = caseData.pharmacistId;
+            if (pharmacistId) {
+              pharmacistCaseCounts.set(pharmacistId, (pharmacistCaseCounts.get(pharmacistId) || 0) + 1);
+            }
+          });
+
+          // Process pharmacists list with availability check
+          const pharmacistsList = pharmacistsData.map((pharmacist) => {
+            const caseCount = pharmacistCaseCounts.get(pharmacist.id) || 0;
+            
+            // Separate availability status from case count
+            const isAvailable = 
+              pharmacist.availabilityStatus === "available" ||
+              pharmacist.availabilityStatus === "busy";
+            
+            // Add separate property for transfer eligibility (pharmacists can handle more cases)
+            const canAcceptCases = isAvailable && caseCount < 15;
+            
+            return {
+              ...pharmacist,
+              caseCount,
+              isAvailable, // Only based on status, not case count
+              canAcceptCases, // Separate property for transfer eligibility
+            };
+          });
+
+          // Single sort operation
+          pharmacistsList.sort((a, b) => {
+            if (a.isAvailable !== b.isAvailable) {
+              return a.isAvailable ? -1 : 1;
+            }
+            return a.caseCount - b.caseCount;
+          });
+
+          pharmacistsMapRef.current = newPharmacistsMap;
+          dispatch({ type: 'SET_PHARMACISTS', payload: pharmacistsList });
+        },
+        (error) => {
+          console.error("Error in pharmacists listener:", error);
+          dispatch({ type: 'SET_ERROR', payload: "Failed to load pharmacists data." });
+        }
+      );
+
+      return [unsubscribePharmacists];
+    } catch (err) {
+      console.error("Error setting up pharmacists listener:", err);
+      dispatch({ type: 'SET_ERROR', payload: "Failed to setup real-time pharmacist updates." });
+      return [];
+    }
+  }, []);
+
   // Setup all listeners with cleanup
   useEffect(() => {
     if (canTransferCases && firestore) {
       const casesListeners = setupCasesListener();
       const doctorsListeners = setupDoctorsListener();
+      const pharmacistsListeners = setupPharmacistsListener();
 
       const allListeners = [
         ...casesListeners,
-        ...doctorsListeners
+        ...doctorsListeners,
+        ...pharmacistsListeners
       ].filter(Boolean);
 
       setListeners(allListeners);
@@ -301,7 +387,7 @@ const CaseTransferMain = ({ currentUser }) => {
         });
       };
     }
-  }, [currentUser, canTransferCases, setupCasesListener, setupDoctorsListener]);
+  }, [currentUser, canTransferCases, setupCasesListener, setupDoctorsListener, setupPharmacistsListener]);
 
   // Update clinics when cases change
   useEffect(() => {
@@ -420,6 +506,7 @@ const CaseTransferMain = ({ currentUser }) => {
       <CaseTransferTable
         cases={filteredCases}
         doctors={state.doctors}
+        pharmacists={state.pharmacists} // NEW: Pass pharmacists data
         loading={state.loading}
         currentUser={currentUser}
         onSuccess={handleBulkSuccess}
