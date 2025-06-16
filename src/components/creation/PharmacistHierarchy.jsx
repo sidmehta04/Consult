@@ -50,7 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const PharmacistHierarchyManagement = ({ currentUser }) => {
@@ -249,6 +249,12 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
 
       // 1. Prepare the data to be saved
       const pharmacistHierarchy = assignedPharmacists.sort((a, b) => a.position - b.position).map(pharm => pharm.id);
+      for(let i = pharmacistHierarchy.length; i < 10; i++){
+        pharmacistHierarchy.push({
+          id: deleteField(),
+          name: deleteField(),
+        });
+      }
       const roRef = doc(firestore, "users", currentUser.uid);
 
       // 2. Save the main hierarchy settings to the RO document first

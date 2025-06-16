@@ -43,7 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const DoctorHierarchyManagement = ({ currentUser }) => {
@@ -159,6 +159,13 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       setSuccess("");
 
       const doctorHierarchy = assignedDoctors.sort((a, b) => a.position - b.position).map(doc => doc.id);
+      for(let i = doctorHierarchy.length; i < 10; i++){
+        doctorHierarchy.push({
+          id: deleteField(),
+          name: deleteField(),
+        });
+      }
+
       const pharmacistRef = doc(firestore, "users", currentUser.uid);
       
       await setDoc(pharmacistRef, { 

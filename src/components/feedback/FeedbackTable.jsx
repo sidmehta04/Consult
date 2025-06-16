@@ -99,9 +99,7 @@ const FeedbackTable = ({ currentUser }) => {
       {selectedTicket && (
         <Dialog open={true} onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Comments</DialogTitle>
-            </DialogHeader>
+            
             <CommentBox ticketItem={selectedTicket} userType="nurse" />
           </DialogContent>
         </Dialog>
