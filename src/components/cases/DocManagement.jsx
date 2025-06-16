@@ -66,6 +66,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
   const [currentCase, setCurrentCase] = useState(null);
   const [activeTab, setActiveTab] = useState("availability");
   const [completingCase, setCompletingCase] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("connected");
   const [doctorStatus, setDoctorStatus] = useState({
     availabilityStatus: "available",
     lastUpdate: null,
@@ -138,7 +139,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
     if (activeCases.length !== undefined && doctorStatus.status && !loading) {
       handleAutoStatusUpdate();
     }
-  }, [activeCases.length, doctorStatus.status, loading]);
+  }, [activeCases.length, doctorStatus.status, loading, currentUser.uid]);
 
   useEffect(() => {
     const fetchDoctorStatus = async () => {
@@ -170,33 +171,43 @@ const DoctorCaseManagement = ({ currentUser }) => {
           where("doctorCompleted", "==", false)
         );
 
-        // Query for completed cases (doctor completed but still waiting for pharmacist)
-        // Exclude cases marked as incomplete
         const completedQuery = query(
           collection(firestore, "cases"),
           where("assignedDoctors.primary", "==", currentUser.uid),
           where("doctorCompleted", "==", true),
           where("pharmacistCompleted", "==", false),
-          where("status", "==", "doctor_completed") // Only show properly completed cases
+          where("status", "==", "doctor_completed")
         );
 
-        // In the activeQuery onSnapshot handler, replace the existing code with:
-        const unsubscribeActive = onSnapshot(activeQuery, (querySnapshot) => {
-          const casesData = [];
-          const linkedCasesMap = {};
+        const unsubscribeActive = onSnapshot(
+          activeQuery,
+          (querySnapshot) => {
+            const casesData = [];
+            const linkedCasesMap = {};
 
-          querySnapshot.forEach((doc) => {
-            const caseData = doc.data();
+            querySnapshot.forEach((doc) => {
+              const caseData = doc.data();
 
-            // Process batch-created cases for linking
-            if (caseData.batchCreated && caseData.batchTimestamp) {
-              const batchKey = caseData.batchTimestamp.toString();
-
-              if (!linkedCasesMap[batchKey]) {
-                linkedCasesMap[batchKey] = [];
+              if (caseData.batchCreated && caseData.batchTimestamp) {
+                const batchKey = caseData.batchTimestamp.toString();
+                if (!linkedCasesMap[batchKey]) {
+                  linkedCasesMap[batchKey] = [];
+                }
+                linkedCasesMap[batchKey].push({
+                  id: doc.id,
+                  ...caseData,
+                  createdAtFormatted:
+                    caseData.createdAt &&
+                    typeof caseData.createdAt.toDate === "function"
+                      ? format(caseData.createdAt.toDate(), "PPpp")
+                      : "Not available",
+                  doctorCompletedAtFormatted: caseData.doctorCompletedAt
+                    ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
+                    : null,
+                });
               }
 
-              linkedCasesMap[batchKey].push({
+              casesData.push({
                 id: doc.id,
                 ...caseData,
                 createdAtFormatted:
@@ -204,34 +215,26 @@ const DoctorCaseManagement = ({ currentUser }) => {
                   typeof caseData.createdAt.toDate === "function"
                     ? format(caseData.createdAt.toDate(), "PPpp")
                     : "Not available",
-                doctorCompletedAtFormatted: caseData.doctorCompletedAt
-                  ? format(caseData.doctorCompletedAt.toDate(), "PPpp")
-                  : null,
               });
-            }
-
-            casesData.push({
-              id: doc.id,
-              ...caseData,
-              createdAtFormatted:
-                caseData.createdAt &&
-                typeof caseData.createdAt.toDate === "function"
-                  ? format(caseData.createdAt.toDate(), "PPpp")
-                  : "Not available",
             });
-          });
 
-          // Sort by creation date (oldest first so doctors see oldest cases first)
-          casesData.sort(
-            (a, b) => a.createdAt?.toDate() - b.createdAt?.toDate()
-          );
-          
-          setActiveCases(casesData);
-          setLinkedCases(linkedCasesMap);
-
-          // Automatically update status to busy if case load is high...
-        });
-        // Add these functions before the return statement
+            casesData.sort(
+              (a, b) => a.createdAt?.toDate() - b.createdAt?.toDate()
+            );
+            setActiveCases(casesData);
+            setLinkedCases(linkedCasesMap);
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Active cases listener error:", error);
+            setError("Connection lost. Reconnecting...");
+            // Auto-retry connection after 2 seconds
+            setTimeout(() => {
+              setError("");
+              fetchCases();
+            }, 2000);
+          }
+        );
 
         const unsubscribeCompleted = onSnapshot(
           completedQuery,
@@ -251,15 +254,21 @@ const DoctorCaseManagement = ({ currentUser }) => {
               });
             });
 
-            // Sort by doctor completion date (newest first)
             casesData.sort(
               (a, b) =>
                 b.doctorCompletedAt?.toDate() - a.doctorCompletedAt?.toDate()
             );
             setCompletedCases(casesData);
-            // Use these same cases for the pendingReviewCases state
             setPendingReviewCases(casesData);
             setLoading(false);
+          },
+          (error) => {
+            console.error("Completed cases listener error:", error);
+            setError("Connection lost. Reconnecting...");
+            setTimeout(() => {
+              setError("");
+              fetchCases();
+            }, 2000);
           }
         );
 
@@ -268,7 +277,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
           unsubscribeCompleted();
         };
       } catch (err) {
-        console.error("Error fetching cases:", err);
+        console.error("Error setting up listeners:", err);
         setError("Failed to load cases");
         setLoading(false);
       }
@@ -459,8 +468,6 @@ const DoctorCaseManagement = ({ currentUser }) => {
       setCompletingCase(false);
       setIsMarkingIncomplete(false);
       setIncompleteReason(""); // Reset reason
-
-      
     } catch (err) {
       console.error("Error completing case:", err);
       setError("Failed to complete case");
@@ -654,11 +661,18 @@ const DoctorCaseManagement = ({ currentUser }) => {
           </Button>
         )}
       </div>
-
-      {error && (
-        <Alert variant="destructive">
+      {(error || connectionStatus === "reconnecting") && (
+        <Alert
+          variant={
+            connectionStatus === "reconnecting" ? "default" : "destructive"
+          }
+        >
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {connectionStatus === "reconnecting"
+              ? "Reconnecting to server..."
+              : error}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -1134,8 +1148,9 @@ const DoctorCaseManagement = ({ currentUser }) => {
                             </TableCell>
                             <TableCell>
                               {caseItem.clinicCode ?? caseItem.clinicName}
-                              <br/>
-                              {caseItem.manualClinicCode && (caseItem.manualClinicCode)}
+                              <br />
+                              {caseItem.manualClinicCode &&
+                                caseItem.manualClinicCode}
                             </TableCell>
                             <TableCell>
                               <Badge
