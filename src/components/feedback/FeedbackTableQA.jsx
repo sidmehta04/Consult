@@ -71,6 +71,14 @@ const FeedbackTableQA = ({ currentUser }) => {
           id: doc.id,
           ...doc.data(),
         }));
+
+        //set closed tickets last
+        fetchedTickets.sort((a, b) => {
+          if (a.status === "closed" && b.status !== "closed") return 1;
+          if (a.status !== "closed" && b.status === "closed") return -1;
+          return 0;
+        });
+
         setTickets(fetchedTickets);
       });
 
@@ -99,59 +107,66 @@ const FeedbackTableQA = ({ currentUser }) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tickets.map((ticket) => (
-                <TableRow key={ticket.id}>
-                  <TableCell>{ticket.name} | {ticket.clinicCode}</TableCell>
-                  <TableCell>{issueMapping[ticket.issue] || ticket.status}</TableCell>
-                  <TableCell>{ticket.subject}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={ticket.status}
-                      onValueChange={(newStatus) => handleStatusChange(ticket.id, newStatus)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="open">Open</SelectItem>
-                        <SelectItem value="in-progress">In Progress</SelectItem>
-                        <SelectItem value="resolved">Resolved</SelectItem>
-                        <SelectItem value="closed">Closed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
-                  <TableCell>
-                    {ticket.lastUpdatedAt ? (
-                      new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
-                    ) : (
-                      "N/A"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {ticket.comments[ticket.comments.length - 1].comment}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSelectedTicket(ticket)}
+              {tickets.map((ticket) => {
+                const lastComment = ticket.comments[ticket.comments.length - 1];
+                let lastCommentStr = lastComment.side === 'nurse' ? 'Nurse: ' : 'QA: '
+                lastCommentStr += lastComment.comment
+                lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
+                
+                return (
+                  <TableRow key={ticket.id}>
+                    <TableCell>{ticket.name} | {ticket.clinicCode}</TableCell>
+                    <TableCell>{issueMapping[ticket.issue] || ticket.status}</TableCell>
+                    <TableCell>{ticket.subject}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={ticket.status}
+                        onValueChange={(newStatus) => handleStatusChange(ticket.id, newStatus)}
                       >
-                        <Plus className="w-2 h-2"/>
-                      </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in-progress">In Progress</SelectItem>
+                          <SelectItem value="resolved">Resolved</SelectItem>
+                          <SelectItem value="closed">Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
+                    <TableCell>
+                      {ticket.lastUpdatedAt ? (
+                        new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
+                      ) : (
+                        "N/A"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {lastCommentStr}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSelectedTicket(ticket)}
+                        >
+                          <Plus className="w-2 h-2"/>
+                        </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
       )}
       {selectedTicket && (
-        <Dialog open={true} onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Comments</DialogTitle>
-            </DialogHeader>
+        <Dialog 
+          className = "p-0"
+          open={true} 
+          onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
+          <DialogContent className="p-0">
             <CommentBox ticketItem={selectedTicket} userType="qa" />
           </DialogContent>
         </Dialog>

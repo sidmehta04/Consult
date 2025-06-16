@@ -23,44 +23,48 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
-// const mappingQA = {
-//   'Bihar': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-//   'Telangana': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-//   'Andhra Pradesh': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-//   'Assam': { 'MSID': 'MS01452', 'nameQA': 'Prasanjit Das', 'emailQA': 'mochakms01452@gmail.com' },
-//   'Odisha': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-//   'Haryana': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-//   'Jharkhand': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-//   'West Bengal': { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' },
-//   'UP West': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-//   'Rajasthan': { 'MSID': 'MS01029', 'nameQA': 'Samyojita Nair', 'emailQA': 'mochakms01029@gmail.com' },
-//   'Karnataka': { 'MSID': 'MS01457', 'nameQA': 'Sneha Huddar', 'emailQA': 'mochakms01457@gmail.com' },
-//   'Tamil Nadu': { 'MSID': 'MS01450', 'nameQA': 'Pooja Dharmendhra', 'emailQA': 'mochakms01450@gmail.com' },
-//   'Kerala': { 'MSID': 'MS00568', 'nameQA': 'Dharshini', 'emailQA': 'mochakms00568@gmail.com' },
-//   'UP East': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-//   'Maharashtra': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-//   'Uttarakhand': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-//   'Chhattisgarh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-//   'Madhya Pradesh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-//   'Gujarat': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-//   'Punjab': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-//   'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-// };
-////NOTE: CHANGE DEFAULT QA
-// const defaultQA = {
-//   'MSID': 'MS00769',
-//   'nameQA': 'Yogesh Kumar',
-//   'emailQA': 'mochakms00769@gmail.com',
-//   'isDefault': true
-// };
+let mappingQA, defaultQA;
+if (process.env.NODE_ENV === "development"){
+  mappingQA = {}
+  defaultQA = {
+    'MSID': 'MS000001',
+    'nameQA': 'Test QA',
+    'emailQA': 'testqa@gmail.com',
+    'isDefault': true
+  };
+} else {
+  mappingQA = {
+    'Bihar': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
+    'Telangana': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
+    'Andhra Pradesh': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
+    'Assam': { 'MSID': 'MS01452', 'nameQA': 'Prasanjit Das', 'emailQA': 'mochakms01452@gmail.com' },
+    'Odisha': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
+    'Haryana': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
+    'Jharkhand': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
+    'West Bengal': { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' },
+    'UP West': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
+    'Rajasthan': { 'MSID': 'MS01029', 'nameQA': 'Samyojita Nair', 'emailQA': 'mochakms01029@gmail.com' },
+    'Karnataka': { 'MSID': 'MS01457', 'nameQA': 'Sneha Huddar', 'emailQA': 'mochakms01457@gmail.com' },
+    'Tamil Nadu': { 'MSID': 'MS01450', 'nameQA': 'Pooja Dharmendhra', 'emailQA': 'mochakms01450@gmail.com' },
+    'Kerala': { 'MSID': 'MS00568', 'nameQA': 'Dharshini', 'emailQA': 'mochakms00568@gmail.com' },
+    'UP East': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
+    'Maharashtra': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
+    'Uttarakhand': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
+    'Chhattisgarh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
+    'Madhya Pradesh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
+    'Gujarat': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
+    'Punjab': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
+    'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
+  };
+  //NOTE: CHANGE DEFAULT QA
+  defaultQA = {
+    'MSID': 'MS00769',
+    'nameQA': 'Yogesh Kumar',
+    'emailQA': 'mochakms00769@gmail.com',
+    'isDefault': true
+  };
+}
 
-const mappingQA = {}
-const defaultQA = {
-  'MSID': 'MS000001',
-  'nameQA': 'Test QA',
-  'emailQA': 'testqa@gmail.com',
-  'isDefault': true
-};
 
 const FeedbackForm = ({ currentUser }) => {
   const [formData, setFormData] = useState({

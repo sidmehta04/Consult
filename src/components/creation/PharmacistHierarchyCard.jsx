@@ -44,7 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
@@ -261,8 +261,11 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
       const clinicSnapshot = await getDoc(clinicRef);
       const clinicData = clinicSnapshot.data();
       
+      const toAssignPharmacists = assignedPharmacists;
+
+
       // Build the new assignedPharmacists object
-      const newAssignedPharmacists = assignedPharmacists.reduce((acc, pharm) => {
+      const newAssignedPharmacists = toAssignPharmacists.reduce((acc, pharm) => {
         const positionKey = getPositionName(pharm.position).toLowerCase();
         acc[positionKey] = pharm.id;
         acc[`${positionKey}Name`] = pharm.name;

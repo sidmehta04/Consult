@@ -44,7 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const DoctorHierarchyCard = ({ currentUser, selectedClinic }) => {
@@ -260,10 +260,12 @@ const saveHierarchy = async () => {
 
     const clinicSnapshot = await getDoc(clinicRef);
     const clinicData = clinicSnapshot.data();
+
+    const toAssignDoctors = assignedDoctors;
     
     // Create the new assignedDoctors object with proper undefined handling
     const newAssignedDoctors = {
-      ...assignedDoctors.reduce((acc, doctor) => {
+      ...toAssignDoctors.reduce((acc, doctor) => {
         const positionKey = getPositionName(doctor.position).toLowerCase();
         acc[positionKey] = doctor.id;
         acc[`${positionKey}Name`] = doctor.name;

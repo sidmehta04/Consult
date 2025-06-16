@@ -43,7 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const DoctorHierarchyManagement = ({ currentUser }) => {
@@ -159,12 +159,16 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       setSuccess("");
 
       const doctorHierarchy = assignedDoctors.sort((a, b) => a.position - b.position).map(doc => doc.id);
+
       const pharmacistRef = doc(firestore, "users", currentUser.uid);
+
+      const oldData = await getDoc(pharmacistRef);
       
-      await setDoc(pharmacistRef, { 
+      await setDoc(pharmacistRef, {
+        ...oldData.data(), 
         doctorHierarchy,
         assignToAnyDoctor 
-      }, { merge: true });
+      }, { merge: false });
 
       const clinicsQuery = query(collection(firestore, "users"), where("role", "==", "nurse"), where("createdBy", "==", currentUser.uid));
       const clinicsSnapshot = await getDocs(clinicsQuery);
@@ -188,7 +192,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
             doctorAssignments[`${positionKey}Name`] = doctor.name;
           });
           doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-          autoUpdatePromises.push(setDoc(clinicRef, { assignedDoctors: doctorAssignments }, { merge: true }));
+          const oldData = await getDoc(clinicRef);
+          autoUpdatePromises.push(setDoc(clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false }));
         }
       }
 
@@ -376,7 +381,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                       doctorAssignments[`${positionKey}Name`] = doctor.name;
                     });
                     doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-                    return setDoc(clinic.clinicRef, { assignedDoctors: doctorAssignments }, { merge: true });
+                    const oldData = clinic.data;
+                    return setDoc(clinic.clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false });
                   });
 
                   await Promise.all(updatePromises);

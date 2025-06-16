@@ -50,7 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteField } from "firebase/firestore";
 import { firestore } from "../../firebase";
 
 const PharmacistHierarchyManagement = ({ currentUser }) => {
@@ -249,13 +249,16 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
 
       // 1. Prepare the data to be saved
       const pharmacistHierarchy = assignedPharmacists.sort((a, b) => a.position - b.position).map(pharm => pharm.id);
+    
       const roRef = doc(firestore, "users", currentUser.uid);
 
       // 2. Save the main hierarchy settings to the RO document first
+      const oldData = await getDoc(roRef);
       await setDoc(roRef, {
+        ...oldData.data(),
         pharmacistHierarchy,
         assignToAnyPharmacist
-      }, { merge: true });
+      }, { merge: false });
 
       // 3. Fetch all clinics to determine which ones to update automatically vs. which need confirmation
       const clinicsQuery = query(
@@ -290,8 +293,9 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
           });
           pharmacistAssignments.assignToAnyPharmacist = assignToAnyPharmacist;
 
+          const oldData = await getDoc(clinicRef);
           autoUpdatePromises.push(
-            setDoc(clinicRef, { assignedPharmacists: pharmacistAssignments }, { merge: true })
+            setDoc(clinicRef, { ...oldData.data(), assignedPharmacists: pharmacistAssignments }, { merge: false })
           );
         }
       }
@@ -614,9 +618,6 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
             </DialogDescription>
           </DialogHeader>
           <div>
-            <p className="mb-4">
-              Confirm pharmacist hierarchy assignment for clinics with manually assigned pharmacists.
-            </p>
             <div className="space-y-2">
               {clinicsForConfirmation.map((clinic, index) => (
                 <div key={clinic.clinicRef.id} className="flex items-center space-x-2">
@@ -647,7 +648,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                 try {
                   const updatePromises = clinicsForConfirmation
                     .filter((clinic) => clinic.checked)
-                    .map((clinic) => {
+                    .map(async (clinic) => {
                       const pharmacistAssignments = {};
                       assignedPharmacists.forEach((pharmacist) => {
                         const positionKey = getPositionName(pharmacist.position).toLowerCase();
@@ -656,10 +657,11 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                       });
                       pharmacistAssignments.assignToAnyPharmacist = assignToAnyPharmacist;
 
+                      const oldData = await getDoc(clinic.clinicRef);
                       return setDoc(
                         clinic.clinicRef,
-                        { assignedPharmacists: pharmacistAssignments },
-                        { merge: true }
+                        { ...oldData.data(), assignedPharmacists: pharmacistAssignments },
+                        { merge: false }
                       );
                     });
 
