@@ -68,38 +68,48 @@ const FeedbackTable = ({ currentUser }) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tickets.map((ticket) => (
-                <TableRow key={ticket.id}>
-                  <TableCell>{ticket.subject}</TableCell>
-                  <TableCell>{statusMapping[ticket.status] || ticket.status}</TableCell>
-                  <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
-                  <TableCell>
-                    {ticket.lastUpdatedAt ? (
-                      new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
-                    ) : (
-                      "N/A"
-                    )}
-                  </TableCell>
-                  <TableCell>{ticket.comments[ticket.comments.length - 1].comment}</TableCell>
-                  <TableCell>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSelectedTicket(ticket)}
-                      >
-                        <Plus className="w-2 h-2"/>
-                      </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {tickets.map((ticket) => {
+                const lastComment = ticket.comments[ticket.comments.length - 1];
+                let lastCommentStr = lastComment.side === 'nurse' ? 'Nurse: ' : 'QA: '
+                lastCommentStr += lastComment.comment
+                lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
+                
+                return (
+                  <TableRow key={ticket.id}>
+                    <TableCell>{ticket.subject}</TableCell>
+                    <TableCell>{statusMapping[ticket.status] || ticket.status}</TableCell>
+                    <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
+                    <TableCell>
+                      {ticket.lastUpdatedAt ? (
+                        new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
+                      ) : (
+                        "N/A"
+                      )}
+                    </TableCell>
+                    <TableCell>{lastCommentStr}</TableCell>
+                    <TableCell>
+                      <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSelectedTicket(ticket)}
+                        >
+                          <Plus className="w-2 h-2"/>
+                        </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
       )}
       {selectedTicket && (
-        <Dialog open={true} onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
-          <DialogContent>
-            
+        <Dialog 
+          className = "p-0 max-h-xl overflow-y-auto"
+          open={true} 
+          onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)
+        }>
+          <DialogContent className="p-0 max-h-xl overflow-y-auto">
             <CommentBox ticketItem={selectedTicket} userType="nurse" />
           </DialogContent>
         </Dialog>

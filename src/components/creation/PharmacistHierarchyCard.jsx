@@ -263,12 +263,6 @@ const PharmacistHierarchyCard = ({ currentUser, selectedClinic }) => {
       
       const toAssignPharmacists = assignedPharmacists;
 
-      for(let i = 0; i < 10 - toAssignPharmacists.length; i++) {
-        toAssignPharmacists.push({
-          id: deleteField(),
-          name: deleteField(),
-        });
-      }
 
       // Build the new assignedPharmacists object
       const newAssignedPharmacists = toAssignPharmacists.reduce((acc, pharm) => {

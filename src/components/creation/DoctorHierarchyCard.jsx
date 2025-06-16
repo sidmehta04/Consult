@@ -262,14 +262,6 @@ const saveHierarchy = async () => {
     const clinicData = clinicSnapshot.data();
 
     const toAssignDoctors = assignedDoctors;
-
-    // Add any missing doctors to the end of the list
-    for (let i = 0; i < 10 - toAssignDoctors.length; i++) {
-      toAssignDoctors.push({
-        id: deleteField(),
-        name: deleteField(),
-      });
-    }
     
     // Create the new assignedDoctors object with proper undefined handling
     const newAssignedDoctors = {

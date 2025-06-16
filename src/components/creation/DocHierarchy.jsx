@@ -159,19 +159,16 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       setSuccess("");
 
       const doctorHierarchy = assignedDoctors.sort((a, b) => a.position - b.position).map(doc => doc.id);
-      for(let i = doctorHierarchy.length; i < 10; i++){
-        doctorHierarchy.push({
-          id: deleteField(),
-          name: deleteField(),
-        });
-      }
 
       const pharmacistRef = doc(firestore, "users", currentUser.uid);
+
+      const oldData = await getDoc(pharmacistRef);
       
-      await setDoc(pharmacistRef, { 
+      await setDoc(pharmacistRef, {
+        ...oldData.data(), 
         doctorHierarchy,
         assignToAnyDoctor 
-      }, { merge: true });
+      }, { merge: false });
 
       const clinicsQuery = query(collection(firestore, "users"), where("role", "==", "nurse"), where("createdBy", "==", currentUser.uid));
       const clinicsSnapshot = await getDocs(clinicsQuery);
@@ -195,7 +192,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
             doctorAssignments[`${positionKey}Name`] = doctor.name;
           });
           doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-          autoUpdatePromises.push(setDoc(clinicRef, { assignedDoctors: doctorAssignments }, { merge: true }));
+          const oldData = await getDoc(clinicRef);
+          autoUpdatePromises.push(setDoc(clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false }));
         }
       }
 
@@ -383,7 +381,8 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                       doctorAssignments[`${positionKey}Name`] = doctor.name;
                     });
                     doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-                    return setDoc(clinic.clinicRef, { assignedDoctors: doctorAssignments }, { merge: true });
+                    const oldData = clinic.data;
+                    return setDoc(clinic.clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false });
                   });
 
                   await Promise.all(updatePromises);
