@@ -24,7 +24,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
 let mappingQA, defaultQA;
-if (process.env.NODE_ENV === "development"){
+if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
   mappingQA = {}
   defaultQA = {
     'MSID': 'MS000001',
