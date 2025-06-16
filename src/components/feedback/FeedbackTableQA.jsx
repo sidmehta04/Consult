@@ -71,6 +71,14 @@ const FeedbackTableQA = ({ currentUser }) => {
           id: doc.id,
           ...doc.data(),
         }));
+
+        //set closed tickets last
+        fetchedTickets.sort((a, b) => {
+          if (a.status === "closed" && b.status !== "closed") return 1;
+          if (a.status !== "closed" && b.status === "closed") return -1;
+          return 0;
+        });
+
         setTickets(fetchedTickets);
       });
 

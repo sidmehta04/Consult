@@ -668,13 +668,14 @@ const Dashboard = ({ currentUser }) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          {["superAdmin", "zonalHead"].includes(currentUser.role) && (
+          {/* REMOVING EXPORT EXCEL
+          ["superAdmin", "zonalHead"].includes(currentUser.role) && (
             <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={!tableData?.cases || tableData.cases.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export Excel
             </Button>
-          )}
-          <Badge variant="outline" className="text-sm px-3 py-1">
+          )*/}
+          <Badge variant="outline" cassName="text-sm px-3 py-1">
             {currentUser.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ""}
           </Badge>
           <div className="flex items-center space-x-2">

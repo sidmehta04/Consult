@@ -618,9 +618,6 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
             </DialogDescription>
           </DialogHeader>
           <div>
-            <p className="mb-4">
-              Confirm pharmacist hierarchy assignment for clinics with manually assigned pharmacists.
-            </p>
             <div className="space-y-2">
               {clinicsForConfirmation.map((clinic, index) => (
                 <div key={clinic.clinicRef.id} className="flex items-center space-x-2">

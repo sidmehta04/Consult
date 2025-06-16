@@ -43,6 +43,14 @@ const FeedbackTable = ({ currentUser }) => {
           id: doc.id,
           ...doc.data(),
         }));
+
+        //set closed tickets last
+        fetchedTickets.sort((a, b) => {
+          if (a.status === "closed" && b.status !== "closed") return 1;
+          if (a.status !== "closed" && b.status === "closed") return -1;
+          return 0;
+        });
+
         setTickets(fetchedTickets);
       });
 
@@ -73,7 +81,7 @@ const FeedbackTable = ({ currentUser }) => {
                 let lastCommentStr = lastComment.side === 'nurse' ? 'Nurse: ' : 'QA: '
                 lastCommentStr += lastComment.comment
                 lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
-                
+
                 return (
                   <TableRow key={ticket.id}>
                     <TableCell>{ticket.subject}</TableCell>
