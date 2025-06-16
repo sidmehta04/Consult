@@ -122,10 +122,8 @@ const CombinedDashboard = ({ currentUser }) => {
   const canTransferCases = useMemo(
     () =>
       currentUser?.role &&
-      ["superAdmin", "teamLeader", "drManager"].includes(
-        currentUser.role
-      ),
-      [currentUser?.role]
+      ["superAdmin", "teamLeader", "drManager"].includes(currentUser.role),
+    [currentUser?.role]
   );
 
   const currentData = useMemo(() => {
@@ -541,7 +539,6 @@ const CombinedDashboard = ({ currentUser }) => {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
           <DashboardSummary
             doctorPharmacist={state.doctorPharmacist}
             doctors={currentData}
