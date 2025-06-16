@@ -21,7 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import CommentBox from "./CommentBox";
 
 const issueMapping = {
   "online-team": "Online Team (Agent/Pharmacist/TL)",
@@ -37,6 +39,7 @@ const issueMapping = {
 
 const FeedbackTableQA = ({ currentUser }) => {
   const [tickets, setTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
 
   const handleStatusChange = async (ticketId, newStatus) => {
     try {
@@ -50,30 +53,6 @@ const FeedbackTableQA = ({ currentUser }) => {
       );
     } catch (error) {
       console.error("Error updating status:", error);
-    }
-  };
-
-  const handleAddComment = async (ticketId) => {
-    const newComment = prompt("Enter your comment:");
-    if (newComment) {
-      try {
-        const ticketRef = doc(firestore, "tickets", ticketId);
-        const updateTime = new Date();
-        await setDoc(
-          ticketRef,
-          { comments: newComment, lastUpdatedAt: updateTime },
-          { merge: true }
-        );
-        setTickets((prevTickets) =>
-          prevTickets.map((ticket) =>
-            ticket.id === ticketId
-              ? { ...ticket, comments: newComment }
-              : ticket
-          )
-        );
-      } catch (error) {
-        console.error("Error adding comment:", error);
-      }
     }
   };
 
@@ -116,14 +95,14 @@ const FeedbackTableQA = ({ currentUser }) => {
                 <TableHead>Status</TableHead>
                 <TableHead>Created At</TableHead>
                 <TableHead>Last Updated At</TableHead>
-                <TableHead>Comment</TableHead>
+                <TableHead>Last Comment</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tickets.map((ticket) => (
                 <TableRow key={ticket.id}>
                   <TableCell>{ticket.name} | {ticket.clinicCode}</TableCell>
-                  <TableCell>{issueMapping[ticket.subject] || ticket.status}</TableCell>
+                  <TableCell>{issueMapping[ticket.issue] || ticket.status}</TableCell>
                   <TableCell>{ticket.subject}</TableCell>
                   <TableCell>
                     <Select
@@ -150,22 +129,32 @@ const FeedbackTableQA = ({ currentUser }) => {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center">
-                      {ticket.comments}
-                      <Button
+                    {ticket.comments[ticket.comments.length - 1].comment}
+                  </TableCell>
+                  <TableCell>
+                    <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleAddComment(ticket.id)}
+                        onClick={() => setSelectedTicket(ticket)}
                       >
                         <Plus className="w-2 h-2"/>
                       </Button>
-                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
+      )}
+      {selectedTicket && (
+        <Dialog open={true} onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Comments</DialogTitle>
+            </DialogHeader>
+            <CommentBox ticketItem={selectedTicket} userType="qa" />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

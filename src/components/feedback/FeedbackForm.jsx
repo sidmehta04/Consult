@@ -107,6 +107,8 @@ const FeedbackForm = ({ currentUser }) => {
         state: currentUser.state,
         name: currentUser.name,
         clinicCode: currentUser.clinicCode,
+        comments: [{'time': new Date(), 'comment': formData.description, 'side': 'nurse'}],
+        subject: formData.subject
       });
       setFormData({ subject: "", description: "" });
       setError("");
