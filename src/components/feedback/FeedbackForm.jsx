@@ -22,49 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-
-let mappingQA, defaultQA;
-if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
-  mappingQA = {}
-  defaultQA = {
-    'MSID': 'MS000001',
-    'nameQA': 'Test QA',
-    'emailQA': 'testqa@gmail.com',
-    'isDefault': true
-  };
-} else {
-  mappingQA = {
-    'Bihar': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-    'Telangana': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-    'Andhra Pradesh': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-    'Assam': { 'MSID': 'MS01452', 'nameQA': 'Prasanjit Das', 'emailQA': 'mochakms01452@gmail.com' },
-    'Odisha': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-    'Haryana': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-    'Jharkhand': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'West Bengal': { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' },
-    'UP West': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-    'Rajasthan': { 'MSID': 'MS01029', 'nameQA': 'Samyojita Nair', 'emailQA': 'mochakms01029@gmail.com' },
-    'Karnataka': { 'MSID': 'MS01457', 'nameQA': 'Sneha Huddar', 'emailQA': 'mochakms01457@gmail.com' },
-    'Tamil Nadu': { 'MSID': 'MS01450', 'nameQA': 'Pooja Dharmendhra', 'emailQA': 'mochakms01450@gmail.com' },
-    'Kerala': { 'MSID': 'MS00568', 'nameQA': 'Dharshini', 'emailQA': 'mochakms00568@gmail.com' },
-    'UP East': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-    'Maharashtra': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-    'Uttarakhand': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-    'Chhattisgarh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'Madhya Pradesh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'Gujarat': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-    'Punjab': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-    'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-  };
-  //NOTE: CHANGE DEFAULT QA
-  defaultQA = {
-    'MSID': 'MS00769',
-    'nameQA': 'Yogesh Kumar',
-    'emailQA': 'mochakms00769@gmail.com',
-    'isDefault': true
-  };
-}
-
+import { mappingQA, defaultQA, categories, subcategories} from "./mappings";
 
 const FeedbackForm = ({ currentUser }) => {
   const [formData, setFormData] = useState({
@@ -73,11 +31,8 @@ const FeedbackForm = ({ currentUser }) => {
   });
   const [error, setError] = useState("");
   const [qaDetails, setQaDetails] = useState(defaultQA);
-  const [selectedIssue, setSelectedIssue] = useState(null);
-
-  const categories =[
-    {'value': '', 'label': ''},
-  ]
+  const [selectedIssue, setSelectedIssue] = useState('none');
+  const [selectedSubIssue, setSelectedSubIssue] = useState(null);
 
   useEffect(() => {
     const details = mappingQA[currentUser.state];
@@ -94,7 +49,7 @@ const FeedbackForm = ({ currentUser }) => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.subject || !formData.description) {
+    if (/*!formData.subject || */!formData.description) {
       setError("Please fill out all fields.");
       return;
     }
@@ -106,13 +61,14 @@ const FeedbackForm = ({ currentUser }) => {
         createdAt: new Date(),
         status: "open",
         issue: selectedIssue,
+        subIssue: selectedSubIssue,
         qaName: qaDetails.nameQA,
         qaEmail: qaDetails.emailQA,
         state: currentUser.state,
         name: currentUser.name,
         clinicCode: currentUser.clinicCode,
         comments: [{'time': new Date(), 'comment': formData.description, 'side': 'nurse'}],
-        subject: formData.subject
+        //subject: formData.subject
       });
       setFormData({ subject: "", description: "" });
       setError("");
@@ -145,24 +101,36 @@ const FeedbackForm = ({ currentUser }) => {
             Issue Category
           </label>
           <Select value={selectedIssue} onValueChange={setSelectedIssue}>
-          <SelectTrigger className="w-[600px]">
-            <SelectValue placeholder="Select a category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="online-team">Online Team (Agent/Pharmacist/TL) (ऑनलाइन टीम (एजेंट/फार्मासिस्ट/टी.एल)</SelectItem>
-            <SelectItem value="offline-team">Offline Team (DC/Field ops manager) (ऑफलाइन टीम (डीसी/फील्ड ऑप्स मैनेजर)</SelectItem>
-            <SelectItem value="sales-diagnostic-team">Sales & Diagnostic Team (Agent/TL) (सेल्स एवं डायग्नॉस्टिक टीम (एजेंट/टी.एल)</SelectItem>
-            <SelectItem value="hr-team"> HR Team (Salary/Accounts/Zing) (एचआर टीम (वेतन/लेखा/जिंग)</SelectItem>
-            <SelectItem value="branch-issues">Branch Issues (BM/RM) (शाखा संबंधित समस्याएं (बी.एम/आर.एम)</SelectItem>
-            <SelectItem value="doctor">Doctor (डॉक्टर)</SelectItem>
-            <SelectItem value="clinic-issues">Clinic issues (Instruments/Tab/Furniture) (क्लिनिक संबंधित समस्याएं (उपकरण/दवा/टैब/फर्नीचर)</SelectItem>
-            <SelectItem value="medicine-issues">Medicine issues ( दवाइयों से संबंधित समस्याएँ)</SelectItem>
-            <SelectItem value="sim-card-issues">Sim card issues (सिम कार्ड से जुड़ी समस्याएं)</SelectItem>
-          </SelectContent>
-        </Select>
-
+            <SelectTrigger className="w-[600px]">
+              <SelectValue placeholder="Select a category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((category) => (
+                <SelectItem value={category.value}>
+                  {category.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
+          <label htmlFor="category" className="block text-sm font-medium text-gray-700">
+            Issue Sub-Category
+          </label>
+          <Select value={selectedSubIssue} onValueChange={setSelectedSubIssue}>
+            <SelectTrigger className="w-[600px]">
+              <SelectValue placeholder="Select a category" />
+            </SelectTrigger>
+            <SelectContent>
+              {subcategories[selectedIssue].map((category) => (
+                <SelectItem value={category.value}>
+                  {category.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {/*<div>
           <label htmlFor="subject" className="block text-sm font-medium text-gray-700">
             Subject
           </label>
@@ -173,7 +141,7 @@ const FeedbackForm = ({ currentUser }) => {
             onChange={handleInputChange}
             placeholder="Enter ticket subject"
           />
-        </div>
+        </div>*/}
         <div>
           <label htmlFor="description" className="block text-sm font-medium text-gray-700">
             Description

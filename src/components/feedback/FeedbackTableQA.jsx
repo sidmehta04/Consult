@@ -24,6 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import CommentBox from "./CommentBox";
+import { categories, subcategories } from "./mappings";
 
 const issueMapping = {
   "online-team": "Online Team (Agent/Pharmacist/TL)",
@@ -99,7 +100,7 @@ const FeedbackTableQA = ({ currentUser }) => {
               <TableRow>
                 <TableHead>Clinic Name</TableHead>
                 <TableHead>Issue Category</TableHead>
-                <TableHead>Subject</TableHead>
+                {/*<TableHead>Subject</TableHead>*/}
                 <TableHead>Status</TableHead>
                 <TableHead>Created At</TableHead>
                 <TableHead>Last Updated At</TableHead>
@@ -113,11 +114,15 @@ const FeedbackTableQA = ({ currentUser }) => {
                 lastCommentStr += lastComment.comment
                 lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
                 
+                
+                const issue = categories.find((item) => item.value === ticket.issue).label.split(' | ')[0];
+                const subissue = subcategories[ticket.issue].find((item) => item.value === ticket.subIssue).label.split(' | ')[0];
+                
                 return (
                   <TableRow key={ticket.id}>
                     <TableCell>{ticket.name} | {ticket.clinicCode}</TableCell>
-                    <TableCell>{issueMapping[ticket.issue] || ticket.status}</TableCell>
-                    <TableCell>{ticket.subject}</TableCell>
+                    <TableCell>{issue + ' | ' + subissue}</TableCell>
+                    {/*<TableCell>{ticket.subject}</TableCell>*/}
                     <TableCell>
                       <Select
                         value={ticket.status}

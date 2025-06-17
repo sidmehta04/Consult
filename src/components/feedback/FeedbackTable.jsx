@@ -18,6 +18,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import CommentBox from "./CommentBox";
 import { set } from "date-fns";
 
+import { categories, subcategories } from "./mappings";
+
 const statusMapping = {
   "open": "Open",
   "in-progress": "In Progress",
@@ -82,9 +84,13 @@ const FeedbackTable = ({ currentUser }) => {
                 lastCommentStr += lastComment.comment
                 lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
 
+                const issue = categories.find((item) => item.value === ticket.issue).label.split(' | ')[0];
+                const subissue = subcategories[ticket.issue].find((item) => item.value === ticket.subIssue).label.split(' | ')[0];
+                                
+
                 return (
                   <TableRow key={ticket.id}>
-                    <TableCell>{ticket.subject}</TableCell>
+                    <TableCell>{issue + ' | ' + subissue}</TableCell>
                     <TableCell>{statusMapping[ticket.status] || ticket.status}</TableCell>
                     <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
                     <TableCell>
