@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +17,7 @@ import {
   UserCheck,
   UserX,
   User,
-  Users,
-  Calendar as CalendarIcon
+  Users
 } from "lucide-react";
 import { doc, getDoc, updateDoc, onSnapshot, collection, query, where, serverTimestamp } from "firebase/firestore";
 import { firestore } from "../../firebase";
@@ -37,6 +36,13 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
   const [availabilityHistory, setAvailabilityHistory] = useState([]);
   const [dialogType, setDialogType] = useState("");
   
+  // New state for break timer management
+  const [breakTimer, setBreakTimer] = useState(null);
+  const [breakEndTime, setBreakEndTime] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const timerRef = useRef(null);
+  const countdownRef = useRef(null);
+  
   useEffect(() => {
     const fetchDoctorStatus = async () => {
       try {
@@ -46,6 +52,26 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
             const userData = docSnap.data();
             setAvailabilityStatus(userData.availabilityStatus || "available");
             setAvailabilityHistory(userData.availabilityHistory || []);
+            
+            // Check if user is on break and has break data
+            if (userData.availabilityStatus === "on_break" && userData.breakStartedAt && userData.breakDuration) {
+              const breakStart = userData.breakStartedAt.toDate();
+              const duration = userData.breakDuration;
+              const breakEnd = new Date(breakStart.getTime() + (duration * 60 * 1000));
+              
+              setBreakEndTime(breakEnd);
+              
+              // If break should have ended already, auto-return to available
+              if (new Date() >= breakEnd) {
+                updateDoctorStatus("available", "Automatically returned from break");
+              } else {
+                // Start countdown timer
+                startBreakCountdown(breakEnd);
+              }
+            } else {
+              // Clear any existing timers if not on break
+              clearBreakTimer();
+            }
           }
           setLoading(false);
         });
@@ -64,7 +90,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
           collection(firestore, "cases"),
           where("assignedDoctors.primary", "==", currentUser.uid),
           where("doctorCompleted", "==", false),
-          where("isIncomplete", "==", false) // Add this condition          
+          where("isIncomplete", "==", false)          
         );
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -85,10 +111,63 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
     const unsubscribeCases = fetchActiveCases();
     
     return () => {
-      unsubscribeStatus;
-      unsubscribeCases;
+      if (typeof unsubscribeStatus === 'function') unsubscribeStatus();
+      if (typeof unsubscribeCases === 'function') unsubscribeCases();
+      clearBreakTimer();
     };
   }, [currentUser.uid]);
+  
+  // Break timer management functions
+  const startBreakCountdown = (endTime) => {
+    clearBreakTimer(); // Clear any existing timer
+    
+    const updateCountdown = () => {
+      const now = new Date();
+      const remaining = endTime - now;
+      
+      if (remaining <= 0) {
+        // Break time is over, automatically return to available
+        updateDoctorStatus("available", "Automatically returned from break");
+        clearBreakTimer();
+      } else {
+        setTimeRemaining(remaining);
+      }
+    };
+    
+    // Update immediately
+    updateCountdown();
+    
+    // Set interval to update every second
+    countdownRef.current = setInterval(updateCountdown, 1000);
+    
+    // Set timeout for the exact end time
+    timerRef.current = setTimeout(() => {
+      updateDoctorStatus("available", "Automatically returned from break");
+      clearBreakTimer();
+    }, endTime - new Date());
+  };
+  
+  const clearBreakTimer = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    setBreakEndTime(null);
+    setTimeRemaining(null);
+  };
+  
+  const formatTimeRemaining = (milliseconds) => {
+    if (!milliseconds || milliseconds <= 0) return "0:00";
+    
+    const minutes = Math.floor(milliseconds / (1000 * 60));
+    const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000);
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
   
   const updateDoctorStatus = async (status, reason = "", duration = null) => {
     try {
@@ -123,25 +202,31 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
         statusChange.expectedReturnTime = returnTime;
       }
       
-      // Only keep the last 50 status changes -REMOVED
-      // const updatedHistory = [statusChange, ...history].slice(0, 50);
       const updatedHistory = [statusChange, ...history];
       
-      // If going on break, set a timestamp for when break started
-      let additionalData = {};
-      if (status === "on_break") {
-        additionalData = {
-          breakStartedAt: timestamp,
-          breakDuration: duration,
-        };
-      }
-      
-      await updateDoc(docRef, {
+      // Prepare update data
+      let updateData = {
         availabilityStatus: status,
         lastStatusUpdate: timestamp,
         availabilityHistory: updatedHistory,
-        ...additionalData
-      });
+      };
+      
+      // If going on break, set break start time and duration
+      if (status === "on_break" && duration) {
+        updateData.breakStartedAt = timestamp;
+        updateData.breakDuration = duration;
+        
+        // Start the countdown timer
+        const endTime = new Date(Date.now() + (duration * 60 * 1000));
+        startBreakCountdown(endTime);
+      } else {
+        // If returning from break or changing to any other status, clear break data
+        updateData.breakStartedAt = null;
+        updateData.breakDuration = null;
+        clearBreakTimer();
+      }
+      
+      await updateDoc(docRef, updateData);
       
       setShowUnavailableDialog(false);
       setShowBreakDialog(false);
@@ -175,7 +260,16 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
       case "unavailable":
         return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Unavailable</Badge>;
       case "on_break":
-        return <Badge className="bg-amber-100 text-amber-800 border-amber-200">On Break</Badge>;
+        return (
+          <div className="flex items-center space-x-2">
+            <Badge className="bg-amber-100 text-amber-800 border-amber-200">On Break</Badge>
+            {timeRemaining && (
+              <Badge variant="outline" className="text-xs">
+                {formatTimeRemaining(timeRemaining)} left
+              </Badge>
+            )}
+          </div>
+        );
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -197,14 +291,12 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
   };
   
   // Auto-update status to busy if case load is high
-  // deprecating busy?
-  ///*
   useEffect(() => {
     if (availabilityStatus === "available" && activeCases.length >= 10) {
       updateDoctorStatus("busy", "Automatically marked as busy due to high case load");
     }
   }, [activeCases, availabilityStatus]);
-  /**/
+  
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
@@ -243,8 +335,28 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                       availabilityStatus === "unavailable" ? "bg-gray-500" :
                       "bg-amber-500"
                     }`}></div>
-                    <p className="font-medium">You are currently {getStatusIndicator()}</p>
+                    <div className="flex items-center">
+                      <p className="font-medium mr-2">You are currently</p>
+                      {getStatusIndicator()}
+                    </div>
                   </div>
+                  
+                  {/* Break countdown display */}
+                  {availabilityStatus === "on_break" && breakEndTime && (
+                    <div className="mt-2 p-2 bg-amber-50 rounded-lg border border-amber-200">
+                      <div className="flex items-center text-sm">
+                        <Clock className="h-4 w-4 text-amber-600 mr-1" />
+                        <span className="text-amber-800">
+                          Break ends at {format(breakEndTime, "h:mm a")}
+                        </span>
+                      </div>
+                      {timeRemaining && (
+                        <div className="text-lg font-mono text-amber-800 mt-1">
+                          {formatTimeRemaining(timeRemaining)} remaining
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex items-center">
@@ -273,7 +385,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 <Button
                   variant={availabilityStatus === "busy" ? "default" : "outline"}
                   className={availabilityStatus === "busy" ? "bg-red-600 hover:bg-red-700" : ""}
-                  //onClick={() => handleStatusChange("busy")}
+                  disabled
                 >
                   <Users className="h-4 w-4 mr-2" />
                   Busy
@@ -298,6 +410,20 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 </Button>
               </div>
               
+              {/* Early return from break button */}
+              {availabilityStatus === "on_break" && (
+                <div className="mt-4">
+                  <Button
+                    variant="outline"
+                    className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                    onClick={() => updateDoctorStatus("available", "Returned early from break")}
+                  >
+                    <ArrowLeftRight className="h-4 w-4 mr-2" />
+                    Return Early from Break
+                  </Button>
+                </div>
+              )}
+              
               <div className="bg-blue-50 p-4 rounded-lg">
                 <div className="flex items-start space-x-3">
                   <div className="bg-blue-100 p-2 rounded-full">
@@ -309,7 +435,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                       <li><span className="font-medium text-green-600">Available:</span> Ready to accept new cases</li>
                       <li><span className="font-medium text-red-600">Busy:</span> Already handling maximum cases</li>
                       <li><span className="font-medium text-gray-600">Unavailable:</span> Off duty or not working</li>
-                      <li><span className="font-medium text-amber-600">Lunch Break:</span> Temporarily unavailable</li>
+                      <li><span className="font-medium text-amber-600">Lunch Break:</span> Temporarily unavailable (auto-return)</li>
                     </ul>
                   </div>
                 </div>
@@ -348,6 +474,8 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                           <span className="text-xs text-gray-500">
                             {item.changedAt instanceof Date 
                               ? format(item.changedAt, "MMM d, h:mm a")
+                              : item.changedAt && item.changedAt.toDate
+                              ? format(item.changedAt.toDate(), "MMM d, h:mm a")
                               : "Recently"}
                           </span>
                         </div>
@@ -361,6 +489,18 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                         {item.expectedDuration && (
                           <p className="text-xs text-gray-500 mt-1">
                             Duration: {item.expectedDuration} minutes
+                          </p>
+                        )}
+                        
+                        {item.expectedReturnTime && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Expected return: {
+                              item.expectedReturnTime instanceof Date 
+                                ? format(item.expectedReturnTime, "h:mm a")
+                                : item.expectedReturnTime && item.expectedReturnTime.toDate
+                                ? format(item.expectedReturnTime.toDate(), "h:mm a")
+                                : "Unknown"
+                            }
                           </p>
                         )}
                         
@@ -446,7 +586,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
               Lunch Break
             </DialogTitle>
             <DialogDescription>
-              Please select how long you'll be on break.
+              Please select how long you'll be on break. Your status will automatically return to "Available" when the time is up.
             </DialogDescription>
           </DialogHeader>
           
@@ -454,7 +594,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
             <div className="space-y-2">
               <Label htmlFor="breakDuration">Break Duration (minutes)</Label>
               <div className="flex space-x-2">
-                {[15, 30, 45, 60].map((duration) => (
+                {[10, 15, 30, 45, 60].map((duration) => (
                   <Button
                     key={duration}
                     type="button"
@@ -468,7 +608,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
               </div>
               
               <p className="text-sm text-gray-500 mt-2">
-                Your status will be marked as "On Break" for {breakDuration} minutes.
+                Your status will automatically change back to "Available" after {breakDuration} minutes.
               </p>
             </div>
           </div>
