@@ -441,7 +441,7 @@ function AppContent() {
                 }
               />
 
-              {/* <Route
+              <Route
                 path="/feedback"
                 element={
                   <ProtectedRoute
