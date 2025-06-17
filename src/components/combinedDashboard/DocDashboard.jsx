@@ -37,6 +37,7 @@ import DashboardHeader from "./Header";
 import DashboardSummary from "./DashboardSummary";
 import DoctorTable from "./Table";
 import DoctorCardsGrid from "./Card";
+import StatusFilter from "./StatusFilter";
 
 // Lazy load the CaseTransferMain component for better performance
 const CaseTransferMain = lazy(() => import("./CaseTransfer"));
@@ -81,6 +82,8 @@ const dashboardReducer = (state, action) => {
       return { ...state, realtimeData: action.payload };
     case "SET_CASES_DATA":
       return { ...state, casesData: action.payload };
+    case "SET_FILTERED_DATA":
+      return { ...state, filteredData: action.payload };
     case "SET_PARTNER_NAMES":
       return { ...state, partnerNames: action.payload };
     case "SET_SELECTED_DOCTOR":
@@ -113,7 +116,8 @@ const initialState = {
   doctorPharmacist: "doctor",
   partnerNames: [],
   selectedPartner: null,
-  caseData: [],
+  casesData: [],
+  filteredData: [],
 };
 
 const CombinedDashboard = ({ currentUser }) => {
@@ -129,11 +133,16 @@ const CombinedDashboard = ({ currentUser }) => {
     [currentUser?.role]
   );
 
-  const currentData = useMemo(() => {
+  const baseData = useMemo(() => {
     return state.doctorPharmacist === "doctor"
       ? state.doctors
       : state.pharmacists;
   }, [state.doctorPharmacist, state.doctors, state.pharmacists]);
+
+  const currentData = useMemo(() => {
+    // Use filtered data if available, otherwise use base data
+    return state.filteredData.length > 0 ? state.filteredData : baseData;
+  }, [baseData, state.filteredData]);
 
   const hasPermission = useMemo(
     () =>
@@ -144,16 +153,47 @@ const CombinedDashboard = ({ currentUser }) => {
     [currentUser?.role]
   );
 
+  // Handle filtered data change from StatusFilter
+  const handleFilteredDataChange = useCallback((filteredData) => {
+    dispatch({ type: "SET_FILTERED_DATA", payload: filteredData });
+  }, []);
+
+  // Fetch today's cases data
+  const fetchTodayCases = useCallback(async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const casesQuery = query(
+        collection(firestore, "cases"),
+        where("createdAt", ">=", Timestamp.fromDate(today)),
+        where("createdAt", "<", Timestamp.fromDate(tomorrow))
+      );
+
+      const snapshot = await getDocs(casesQuery);
+      const casesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      dispatch({ type: "SET_CASES_DATA", payload: casesData });
+    } catch (err) {
+      console.error("Error fetching cases data:", err);
+    }
+  }, []);
+
   // Optimized availability status update with batching
   const updateAvailabilityStatus = useCallback(async () => {
     try {
-      if (currentData.length === 0) return;
+      if (baseData.length === 0) return;
 
-      const userIds = currentData.map((item) => item.id);
+      const userIds = baseData.map((item) => item.id);
 
       // Batch requests to avoid overwhelming Firestore
       const batchSize = 10;
-      const updatedData = [...currentData];
+      const updatedData = [...baseData];
 
       for (let i = 0; i < userIds.length; i += batchSize) {
         const batch = userIds.slice(i, i + batchSize);
@@ -183,36 +223,7 @@ const CombinedDashboard = ({ currentUser }) => {
     } catch (err) {
       console.error("Error fetching availability data:", err);
     }
-  }, [currentData, state.doctorPharmacist]);
-  const fetchTodayCases = useCallback(async () => {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const casesQuery = query(
-        collection(firestore, "cases"),
-        where("createdAt", ">=", Timestamp.fromDate(today)),
-        where("createdAt", "<", Timestamp.fromDate(tomorrow))
-      );
-
-      const snapshot = await getDocs(casesQuery);
-      const casesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      dispatch({ type: "SET_CASES_DATA", payload: casesData });
-    } catch (err) {
-      console.error("Error fetching cases data:", err);
-    }
-  }, []);
-  useEffect(() => {
-    if (hasPermission) {
-      fetchTodayCases();
-    }
-  }, [hasPermission, fetchTodayCases]);
+  }, [baseData, state.doctorPharmacist]);
 
   // Optimized data loading function
   const loadDoctorData = useCallback(
@@ -277,7 +288,7 @@ const CombinedDashboard = ({ currentUser }) => {
 
   // Optimized refresh handler
   const handleRefresh = useCallback(async () => {
-    if (currentData.length > 0) {
+    if (baseData.length > 0) {
       try {
         dispatch({ type: "SET_REFRESHING", payload: true });
 
@@ -292,6 +303,9 @@ const CombinedDashboard = ({ currentUser }) => {
           );
           dispatch({ type: "SET_PHARMACISTS", payload: updatedPharmacists });
         }
+
+        // Refresh cases data as well
+        await fetchTodayCases();
       } catch (err) {
         console.error(`Error refreshing ${state.doctorPharmacist} data:`, err);
         dispatch({
@@ -306,25 +320,33 @@ const CombinedDashboard = ({ currentUser }) => {
       await loadDoctorData(state.doctorPharmacist);
     }
   }, [
-    currentData.length,
+    baseData.length,
     state.doctorPharmacist,
     state.doctors,
     state.pharmacists,
     updateAvailabilityStatus,
     loadDoctorData,
+    fetchTodayCases,
   ]);
 
   // Effect for initial data loading and doctor/pharmacist switching
   useEffect(() => {
-    if (currentData.length === 0 && state.viewMode !== "cases") {
+    if (baseData.length === 0 && state.viewMode !== "cases") {
       loadDoctorData(state.doctorPharmacist);
     }
   }, [
     state.doctorPharmacist,
-    currentData.length,
+    baseData.length,
     loadDoctorData,
     state.viewMode,
   ]);
+
+  // Effect for fetching cases data
+  useEffect(() => {
+    if (hasPermission) {
+      fetchTodayCases();
+    }
+  }, [hasPermission, fetchTodayCases]);
 
   // Effect for permission checking
   useEffect(() => {
@@ -354,7 +376,7 @@ const CombinedDashboard = ({ currentUser }) => {
   useEffect(() => {
     if (
       !hasPermission ||
-      currentData.length === 0 ||
+      baseData.length === 0 ||
       state.viewMode === "cases"
     )
       return;
@@ -363,7 +385,7 @@ const CombinedDashboard = ({ currentUser }) => {
     realtimeListeners.forEach((unsubscribe) => unsubscribe());
 
     // Set up new listeners for real-time status updates
-    const newListeners = currentData.map((item) => {
+    const newListeners = baseData.map((item) => {
       const userRef = doc(firestore, "users", item.id);
       return onSnapshot(
         userRef,
@@ -372,7 +394,7 @@ const CombinedDashboard = ({ currentUser }) => {
             const userData = snapshot.data();
 
             // Update the specific item in state
-            const updatedData = currentData.map((dataItem) =>
+            const updatedData = baseData.map((dataItem) =>
               dataItem.id === item.id
                 ? {
                     ...dataItem,
@@ -402,7 +424,7 @@ const CombinedDashboard = ({ currentUser }) => {
     };
   }, [
     hasPermission,
-    currentData.length,
+    baseData.length,
     state.doctorPharmacist,
     state.viewMode,
   ]);
@@ -411,7 +433,7 @@ const CombinedDashboard = ({ currentUser }) => {
   useEffect(() => {
     if (
       !hasPermission ||
-      currentData.length === 0 ||
+      baseData.length === 0 ||
       state.viewMode === "cases"
     ) {
       return;
@@ -426,7 +448,7 @@ const CombinedDashboard = ({ currentUser }) => {
     return () => clearInterval(interval);
   }, [
     hasPermission,
-    currentData.length,
+    baseData.length,
     state.viewMode,
     state.refreshInterval,
     state.isLoading,
@@ -471,18 +493,20 @@ const CombinedDashboard = ({ currentUser }) => {
         dispatch({ type: "SET_VIEW_MODE", payload: newViewMode });
 
         // Load data if switching back from cases view
-        if (state.viewMode === "cases" && currentData.length === 0) {
+        if (state.viewMode === "cases" && baseData.length === 0) {
           loadDoctorData(state.doctorPharmacist);
         }
       }
     },
-    [state.viewMode, currentData.length, state.doctorPharmacist, loadDoctorData]
+    [state.viewMode, baseData.length, state.doctorPharmacist, loadDoctorData]
   );
 
   const handleDoctorPharmacistChange = useCallback(
     (newType) => {
       if (newType !== state.doctorPharmacist) {
         dispatch({ type: "SET_DOCTOR_PHARMACIST", payload: newType });
+        // Clear filtered data when switching between doctor/pharmacist
+        dispatch({ type: "SET_FILTERED_DATA", payload: [] });
       }
     },
     [state.doctorPharmacist]
@@ -571,15 +595,24 @@ const CombinedDashboard = ({ currentUser }) => {
         </div>
       ) : (
         <>
+          {/* Summary Cards */}
           <DashboardSummary
             doctorPharmacist={state.doctorPharmacist}
-            doctors={currentData}
+            doctors={baseData}
             isRefreshing={state.isRefreshing}
-            casesData={state.casesData} // Add this line
+            casesData={state.casesData}
+          />
+
+          {/* Status Filter Component */}
+          <StatusFilter
+            doctors={baseData}
+            doctorPharmacist={state.doctorPharmacist}
+            onFilteredDataChange={handleFilteredDataChange}
+            casesData={state.casesData}
           />
 
           {/* Main Content */}
-          {currentData.length === 0 ? (
+          {baseData.length === 0 ? (
             <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-lg text-center">
               <p className="text-yellow-700 font-medium mb-2">
                 No {state.doctorPharmacist}s found in your hierarchy
@@ -600,14 +633,14 @@ const CombinedDashboard = ({ currentUser }) => {
           state.viewMode === "table" ? (
             <DoctorTable
               doctorPharmacist={state.doctorPharmacist}
-              doctors={currentData}
+              doctors={currentData} // This now uses filtered data
               onViewDoctorDetails={viewDoctorDetails}
               partnerNames={state.partnerNames}
               isRefreshing={state.isRefreshing}
             />
           ) : state.viewMode === "cards" ? (
             <DoctorCardsGrid
-              doctors={currentData}
+              doctors={currentData} // This now uses filtered data
               onViewDoctorDetails={viewDoctorDetails}
               isRefreshing={state.isRefreshing}
             />
@@ -629,7 +662,8 @@ const CombinedDashboard = ({ currentUser }) => {
         <div className="bg-gray-100 p-2 rounded text-xs text-gray-600">
           <strong>Debug:</strong> Role: {currentUser?.role} | View:{" "}
           {state.viewMode} | Type: {state.doctorPharmacist} | Can Transfer:{" "}
-          {canTransferCases ? "Yes" : "No"} | Data Count: {currentData.length} |
+          {canTransferCases ? "Yes" : "No"} | Base Data Count: {baseData.length} |
+          Filtered Data Count: {currentData.length} |
           Refreshing: {state.isRefreshing ? "Yes" : "No"} | Transitioning:{" "}
           {isTransitioning ? "Yes" : "No"}
         </div>
