@@ -79,6 +79,8 @@ const dashboardReducer = (state, action) => {
       };
     case "SET_REALTIME_DATA":
       return { ...state, realtimeData: action.payload };
+    case "SET_CASES_DATA":
+      return { ...state, casesData: action.payload };
     case "SET_PARTNER_NAMES":
       return { ...state, partnerNames: action.payload };
     case "SET_SELECTED_DOCTOR":
@@ -111,6 +113,7 @@ const initialState = {
   doctorPharmacist: "doctor",
   partnerNames: [],
   selectedPartner: null,
+  caseData: [],
 };
 
 const CombinedDashboard = ({ currentUser }) => {
@@ -181,6 +184,35 @@ const CombinedDashboard = ({ currentUser }) => {
       console.error("Error fetching availability data:", err);
     }
   }, [currentData, state.doctorPharmacist]);
+  const fetchTodayCases = useCallback(async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const casesQuery = query(
+        collection(firestore, "cases"),
+        where("createdAt", ">=", Timestamp.fromDate(today)),
+        where("createdAt", "<", Timestamp.fromDate(tomorrow))
+      );
+
+      const snapshot = await getDocs(casesQuery);
+      const casesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      dispatch({ type: "SET_CASES_DATA", payload: casesData });
+    } catch (err) {
+      console.error("Error fetching cases data:", err);
+    }
+  }, []);
+  useEffect(() => {
+    if (hasPermission) {
+      fetchTodayCases();
+    }
+  }, [hasPermission, fetchTodayCases]);
 
   // Optimized data loading function
   const loadDoctorData = useCallback(
@@ -543,6 +575,7 @@ const CombinedDashboard = ({ currentUser }) => {
             doctorPharmacist={state.doctorPharmacist}
             doctors={currentData}
             isRefreshing={state.isRefreshing}
+            casesData={state.casesData} // Add this line
           />
 
           {/* Main Content */}
