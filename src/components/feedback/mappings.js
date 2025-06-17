@@ -53,9 +53,9 @@ export const categories = [
   {'value':"hr-team", 'label': " HR Team (Salary/Accounts/Zing) | एचआर टीम (वेतन/लेखा/जिंग)"},
   {'value':"branch-issues", 'label': "Branch Issues (BM/RM) | शाखा संबंधित समस्याएं (बी.एम/आर.एम)"},
   {'value':"doctor-issues", 'label': "Doctor | डॉक्टर"},
-  {'value':"clinic-issues", 'label': "Clinic issues (Instruments/Tab/Furniture) | क्लिनिक संबंधित समस्याएं (उपकरण/दवा/टैब/फर्नीचर)"},
-  {'value':"medicine-issues", 'label': "Medicine issues | दवाइयों से संबंधित समस्याएँ"},
-  {'value':"sim-card-issues", 'label': "Sim card issues | सिम कार्ड से जुड़ी समस्याएं"},
+  {'value':"clinic-issues", 'label': "Clinic Issues (Instruments/Tab/Furniture) | क्लिनिक संबंधित समस्याएं (उपकरण/दवा/टैब/फर्नीचर)"},
+  {'value':"medicine-issues", 'label': "Medicine Issues | दवाइयों से संबंधित समस्याएँ"},
+  {'value':"sim-card-issues", 'label': "Sim card Issues | सिम कार्ड से जुड़ी समस्याएं"},
 ]
 
 export const subcategories = {
