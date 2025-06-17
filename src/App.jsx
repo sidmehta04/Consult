@@ -264,13 +264,13 @@ function AppContent() {
       });
     }
 
-    // if (userRole === "nurse") {
-    //   items.push({
-    //     name: "Feedback",
-    //     href: "/feedback",
-    //     icon: <MessageSquareText className="h-5 w-5" />
-    //   });
-    // }
+    if (userRole === "nurse") {
+      items.push({
+        name: "Feedback",
+        href: "/feedback",
+        icon: <MessageSquareText className="h-5 w-5" />
+      });
+    }
 
     if (userRole === "superAdmin") {
       items.push({
@@ -441,7 +441,7 @@ function AppContent() {
                 }
               />
 
-              {/* <Route
+              <Route
                 path="/feedback"
                 element={
                   <ProtectedRoute
@@ -452,9 +452,9 @@ function AppContent() {
                     <FeedbackPortal currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
-              /> */}
+              />
 
-              {/* <Route
+              <Route
                 path="/tickets"
                 element={
                   <ProtectedRoute
@@ -465,7 +465,7 @@ function AppContent() {
                     <FeedbackTableQA currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
-              /> */}
+              />
 
               <Route
                 path="/analytics"
