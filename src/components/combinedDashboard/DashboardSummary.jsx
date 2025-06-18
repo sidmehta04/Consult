@@ -88,9 +88,6 @@ const DashboardSummary = ({ doctors, doctorPharmacist, casesData = [] }) => {
           {unavailableWithCasesCount > 0 && (
             <>, {unavailableWithCasesCount} unavailable but have cases in queue</>
           )}
-           {unavailableWithCasesCount == 0 && (
-            <>, all are unavailable </>
-          )}
         </div>
       </div>
     </div>
