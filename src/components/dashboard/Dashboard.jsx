@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import Select from "react-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Download, ShieldAlert } from "lucide-react";
+import { AlertCircle, Download, ShieldAlert, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -61,7 +61,12 @@ const Dashboard = ({ currentUser }) => {
   const [activeColumnFilter, setActiveColumnFilter] = useState(null);
   const [resetTimestamp, setResetTimestamp] = useState(Date.now());
   const [refresh, setRefresh] = useState(false);
-  
+
+  // Excel export states for superAdmin
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDate, setExportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [exportPartner, setExportPartner] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // OPTIMIZATION 1: Use lazy loading for summary counts
   const [summaryCounts, setSummaryCounts] = useState({
@@ -401,7 +406,76 @@ const Dashboard = ({ currentUser }) => {
     }
   }, [currentUser, applyCountChanges, partnerName, clinicMapping]);
 
-  // Handle excel export
+  // SuperAdmin Excel Export Function with direct Firestore query (no pagination limits)
+  const handleExcelExportForDate = useCallback(async () => {
+    if (!exportDate) {
+      alert("Please select a date for export.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      // Create date range for the selected day
+      const selectedDate = new Date(exportDate);
+      selectedDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(selectedDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      // Build Firestore query directly to get ALL records without pagination
+      const casesRef = collection(firestore, "cases");
+      let queryConstraints = [
+        where("createdAt", ">=", selectedDate),
+        where("createdAt", "<", nextDay),
+        orderBy("createdAt", "desc")
+      ];
+
+      // Add partner filter if selected
+      if (exportPartner) {
+        queryConstraints.unshift(where("partnerName", "==", exportPartner));
+      }
+
+      // Execute query to get ALL documents
+      const querySnapshot = await getDocs(query(casesRef, ...queryConstraints));
+      
+      // Convert to array of case data
+      const allCases = [];
+      querySnapshot.forEach((doc) => {
+        const caseData = doc.data();
+        allCases.push({
+          id: doc.id,
+          ...caseData
+        });
+      });
+
+      console.log(`Found ${allCases.length} cases for export on ${exportDate}`);
+
+      if (allCases.length === 0) {
+        alert(`No cases found for ${exportDate}${exportPartner ? ` for partner: ${exportPartner}` : ''}.`);
+        return;
+      }
+
+      // Generate filename with date and partner info
+      const partnerSuffix = exportPartner ? `_${exportPartner.replace(/\s+/g, '_')}` : '';
+      const fileName = `cases_export_${exportDate}${partnerSuffix}.xlsx`;
+
+      // Export to Excel using the dynamic export function
+      exportCasesToExcel(allCases, fileName);
+      
+      // Close modal
+      setShowExportModal(false);
+      
+      // Show success message
+      alert(`Successfully exported ${allCases.length} cases for ${exportDate}${exportPartner ? ` (Partner: ${exportPartner})` : ''}.`);
+
+    } catch (error) {
+      console.error("Error exporting Excel:", error);
+      alert("Failed to export data. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [exportDate, exportPartner, currentUser, clinicMapping]);
+
+  // Regular excel export for current table data (kept for backward compatibility)
   const handleExcelExport = useCallback(() => {
     if (!tableData?.cases || tableData.cases.length === 0) {
       alert("No data available to export.");
@@ -433,7 +507,7 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, currentFilters);
     }
-  });
+  }, [activeTab, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm]);
 
   // OPTIMIZATION 10: Debounced auto-refresh
   useEffect(() => {
@@ -668,14 +742,19 @@ const Dashboard = ({ currentUser }) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Cases Dashboard</h2>
         <div className="flex items-center gap-2">
-          {/* REMOVING EXPORT EXCEL
-          ["superAdmin", "zonalHead"].includes(currentUser.role) && (
-            <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={!tableData?.cases || tableData.cases.length === 0}>
+          {/* Excel Export for SuperAdmin only */}
+          {currentUser.role === "superAdmin" && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowExportModal(true)}
+              className="bg-green-50 border-green-200 hover:bg-green-100"
+            >
               <Download className="h-4 w-4 mr-2" />
               Export Excel
             </Button>
-          )*/}
-          <Badge variant="outline" cassName="text-sm px-3 py-1">
+          )}
+          <Badge variant="outline" className="text-sm px-3 py-1">
             {currentUser.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1) : ""}
           </Badge>
           <div className="flex items-center space-x-2">
@@ -711,6 +790,95 @@ const Dashboard = ({ currentUser }) => {
           )}
         </div>
       </div>
+
+      {/* Excel Export Modal for SuperAdmin */}
+      {showExportModal && currentUser.role === "superAdmin" && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center">
+                <Calendar className="h-5 w-5 mr-2" />
+                Export Cases by Date
+              </h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+                disabled={isExporting}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Date *
+                </label>
+                <input
+                  type="date"
+                  value={exportDate}
+                  onChange={(e) => setExportDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isExporting}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Filter by Partner (Optional)
+                </label>
+                <Select
+                  options={partnersList}
+                  isClearable
+                  placeholder="All Partners"
+                  value={exportPartner ? { value: exportPartner, label: exportPartner } : null}
+                  onChange={(selectedOption) => setExportPartner(selectedOption ? selectedOption.value : null)}
+                  isDisabled={isExporting}
+                />
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <strong>Export Details:</strong>
+                  <br />
+                  • Date: {exportDate ? new Date(exportDate).toLocaleDateString() : 'Not selected'}
+                  <br />
+                  • Partner: {exportPartner || 'All Partners'}
+                  <br />
+                  • File will include all case data for the selected date
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExcelExportForDate}
+                disabled={!exportDate || isExporting}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Excel
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DashboardSummaryCards
         data={summaryCounts}
