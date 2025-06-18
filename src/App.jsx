@@ -264,13 +264,13 @@ function AppContent() {
       });
     }
 
-    /*if (userRole === "nurse") {
+    if (userRole === "nurse") {
       items.push({
         name: "Feedback",
         href: "/feedback",
         icon: <MessageSquareText className="h-5 w-5" />
       });
-    } */
+    }
 
     if (userRole === "superAdmin") {
       items.push({
@@ -280,13 +280,13 @@ function AppContent() {
       });
     }
 
-    /* if (isQA) {
+    if (isQA) {
       items.push({
         name: "Tickets Dashboard",
         href: "/tickets",
         icon: <MessageSquareText className="h-5 w-5" />
       });
-    } */
+    }
 
     return items;
   };
