@@ -274,14 +274,15 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
       // Use a for...of loop to handle async operations correctly inside the loop
       for (const clinicDoc of clinicsSnapshot.docs) {
         const clinicData = clinicDoc.data();
-        const clinicRef = doc(firestore, "users", clinicDoc.id);
 
         if (clinicData.manuallyAddedPharmacists) {
           // This clinic has manual assignments, add it to the list for confirmation
+          // Store only the ID instead of the reference
           clinicsToConfirm.push({
             id: clinicDoc.id,
+            name: clinicData.name,
+            // Don't store the reference - we'll recreate it when needed
             ...clinicData,
-            clinicRef: clinicRef,
           });
         } else {
           // This clinic can be updated automatically
@@ -293,6 +294,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
           });
           pharmacistAssignments.assignToAnyPharmacist = assignToAnyPharmacist;
 
+          const clinicRef = doc(firestore, "users", clinicDoc.id);
           const oldData = await getDoc(clinicRef);
           autoUpdatePromises.push(
             setDoc(clinicRef, { ...oldData.data(), assignedPharmacists: pharmacistAssignments }, { merge: false })
@@ -334,7 +336,52 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
 
   const handleCloseDialog = useCallback(() => {
     setClinicsForConfirmation([]);
+    setIsConfirmationDialogOpen(false);
   }, []);
+
+  const handleUpdateClinics = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      
+      const updatePromises = clinicsForConfirmation
+        .filter((clinic) => clinic.checked)
+        .map(async (clinic) => {
+          const pharmacistAssignments = {};
+          assignedPharmacists.forEach((pharmacist) => {
+            const positionKey = getPositionName(pharmacist.position).toLowerCase();
+            pharmacistAssignments[positionKey] = pharmacist.id;
+            pharmacistAssignments[`${positionKey}Name`] = pharmacist.name;
+          });
+          pharmacistAssignments.assignToAnyPharmacist = assignToAnyPharmacist;
+
+          // Recreate the document reference using the clinic ID
+          const clinicRef = doc(firestore, "users", clinic.id);
+          const oldData = await getDoc(clinicRef);
+          
+          // Check if oldData exists before accessing .data()
+          if (!oldData.exists()) {
+            throw new Error(`Clinic document with ID ${clinic.id} does not exist`);
+          }
+          
+          return setDoc(
+            clinicRef,
+            { ...oldData.data(), assignedPharmacists: pharmacistAssignments },
+            { merge: false }
+          );
+        });
+
+      await Promise.all(updatePromises);
+      setClinicsForConfirmation([]);
+      setIsConfirmationDialogOpen(false);
+      setSuccess("Pharmacist hierarchy saved successfully. All selected clinics have been updated.");
+    } catch (err) {
+      console.error("Error updating clinics:", err);
+      setError(`Failed to update clinics: ${err.message}. Please try again.`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -397,7 +444,6 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                     
                     <div className="py-4">
                       <Select
-                        //value={getAvailablePharmacistsForSelect().find(p => p.id === selectedPharmacist) || null}
                         onChange={option => setSelectedPharmacist(option ? option.id : "")}
                         options={getAvailablePharmacistsForSelect().map(pharmacist => ({
                           value: pharmacist.id,
@@ -409,32 +455,12 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                         noOptionsMessage={() => "No available pharmacists to add"}
                       />
                     </div>
-                    {/*<div className="py-4">
-                      <Select value={selectedPharmacist} onValueChange={setSelectedPharmacist}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a pharmacist" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {getAvailablePharmacistsForSelect().length === 0 ? (
-                            <SelectItem value="no-pharmacists" disabled>
-                              No available pharmacists to add
-                            </SelectItem>
-                          ) : (
-                            getAvailablePharmacistsForSelect().map((pharmacist) => (
-                              <SelectItem key={pharmacist.id} value={pharmacist.id}>
-                                {pharmacist.name} ({pharmacist.email})
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>*/}
 
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancel
                       </Button>
-                      <Button onClick={addPharmacist} disabled={!selectedPharmacist || selectedPharmacist === "no-pharmacists"}>
+                      <Button onClick={addPharmacist} disabled={!selectedPharmacist}>
                         Add Pharmacist
                       </Button>
                     </DialogFooter>
@@ -604,7 +630,6 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
         onOpenChange={(open) => {
           if (!open) {
             handleCloseDialog();
-            setIsConfirmationDialogOpen(false);
           }
         }}
       >
@@ -620,7 +645,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
           <div>
             <div className="space-y-2">
               {clinicsForConfirmation.map((clinic, index) => (
-                <div key={clinic.clinicRef.id} className="flex items-center space-x-2">
+                <div key={clinic.id} className="flex items-center space-x-2">
                   <input
                     type="checkbox"
                     id={`clinic-${index}`}
@@ -644,37 +669,36 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
               Cancel
             </Button>
             <Button
-              onClick={async () => {
-                try {
-                  const updatePromises = clinicsForConfirmation
-                    .filter((clinic) => clinic.checked)
-                    .map(async (clinic) => {
-                      const pharmacistAssignments = {};
-                      assignedPharmacists.forEach((pharmacist) => {
-                        const positionKey = getPositionName(pharmacist.position).toLowerCase();
-                        pharmacistAssignments[positionKey] = pharmacist.id;
-                        pharmacistAssignments[`${positionKey}Name`] = pharmacist.name;
-                      });
-                      pharmacistAssignments.assignToAnyPharmacist = assignToAnyPharmacist;
-
-                      const oldData = await getDoc(clinic.clinicRef);
-                      return setDoc(
-                        clinic.clinicRef,
-                        { ...oldData.data(), assignedPharmacists: pharmacistAssignments },
-                        { merge: false }
-                      );
-                    });
-
-                  await Promise.all(updatePromises);
-                  setClinicsForConfirmation([]);
-                  setSuccess("Clinics updated successfully.");
-                } catch (err) {
-                  console.error("Error updating clinics:", err);
-                  setError("Failed to update clinics. Please try again.");
-                }
-              }}
+              onClick={handleUpdateClinics}
+              disabled={saving}
             >
-              Update Clinics
+              {saving ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                "Update Clinics"
+              )}
             </Button>
           </div>
         </DialogContent>
