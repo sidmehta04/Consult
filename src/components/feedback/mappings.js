@@ -34,7 +34,7 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
     'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
   };
 
-  //NOTE: CHANGE DEFAULT QA
+  //NOTE: CHECK DEFAULT QA?
   defaultQA = {
     'MSID': 'MS00769',
     'nameQA': 'Yogesh Kumar',
