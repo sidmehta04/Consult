@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -177,6 +177,7 @@ function AppContent() {
   const [userData, setUserData] = useState(null);
   const [isQA, setIsQA] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeCases, setActiveCases] = useState(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -206,6 +207,43 @@ function AppContent() {
 
     return () => unsubscribe();
   }, []);
+
+  // TODO: Future optimization would be to pass these active cases down to components that use them
+  useEffect(() => {
+    let unsubscribe = null;
+
+    if (currentUser && (userRole === "pharmacist" || userRole === "doctor")) {
+      const activeQuery =
+        userRole === "doctor"
+          ? query(
+              collection(firestore, "cases"),
+              where("assignedDoctors.primary", "==", currentUser.uid),
+              where("doctorCompleted", "==", false)
+            )
+          : query(
+              collection(firestore, "cases"),
+              where("pharmacistId", "==", currentUser.uid),
+              where("pharmacistCompleted", "==", false),
+              where("isIncomplete", "!=", true)
+            );
+
+      unsubscribe = onSnapshot(activeQuery, (snapshot) => {
+        setActiveCases(snapshot.size); //Change this to getting the entire snapshot if passing down to other components.
+      });
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentUser, userRole]);
+  
+  useEffect(() => {
+    if (userRole === "pharmacist" || userRole === "doctor") {
+      if(activeCases) document.title = `(${activeCases}) Consultations Management`;
+      else document.title = "Consultations Management";
+    }
+    
+  }, [currentUser, userRole, activeCases]);
 
   // Define navigation items based on user role
   const getNavigationItems = () => {
