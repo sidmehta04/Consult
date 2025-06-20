@@ -57,7 +57,7 @@ const FeedbackTableQA = ({ currentUser }) => {
 
   // Fetch tickets for the current user
   useEffect(() => {
-    console.log(currentUser.email)
+    console.log("QA Dashboard - Current user email:", currentUser.email)
     if (currentUser) {
       let ticketsQuery;
       
@@ -69,19 +69,42 @@ const FeedbackTableQA = ({ currentUser }) => {
           orderBy("createdAt", "desc")
         );
       } else {
-        // Regular QA users only see their assigned tickets
+        // For regular QAs, we need to fetch all tickets and filter client-side
+        // because Firestore doesn't support complex array queries efficiently
         ticketsQuery = query(
           collection(firestore, "tickets"),
-          where("qaEmail", "==", currentUser.email),
           orderBy("createdAt", "desc")
         );
       }
 
       const unsubscribe = onSnapshot(ticketsQuery, (snapshot) => {
-        const fetchedTickets = snapshot.docs.map((doc) => ({
+        console.log("QA Dashboard - Total tickets from Firebase:", snapshot.docs.length);
+        let fetchedTickets = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
+
+        // Filter tickets for regular QA users (not super QA)
+        if (currentUser.email !== "Akash.das@m-insure.in") {
+          console.log("QA Dashboard - Filtering tickets for regular QA:", currentUser.email);
+          fetchedTickets = fetchedTickets.filter(ticket => {
+            // Check if QA is assigned in the new qaEmails array OR old qaEmail field
+            const isInQaEmails = ticket.qaEmails && Array.isArray(ticket.qaEmails) && 
+                                ticket.qaEmails.includes(currentUser.email);
+            const isOldQaEmail = ticket.qaEmail === currentUser.email;
+            
+            console.log(`Ticket ${ticket.id}:`, {
+              qaEmails: ticket.qaEmails,
+              qaEmail: ticket.qaEmail,
+              isInQaEmails,
+              isOldQaEmail,
+              willShow: isInQaEmails || isOldQaEmail
+            });
+            
+            return isInQaEmails || isOldQaEmail;
+          });
+          console.log("QA Dashboard - Filtered tickets count:", fetchedTickets.length);
+        }
 
         //set closed tickets last
         fetchedTickets.sort((a, b) => {
@@ -206,8 +229,19 @@ const FeedbackTableQA = ({ currentUser }) => {
                       {isSuperQA && (
                         <TableCell>
                           <div className="text-sm">
-                            <div className="font-medium">{ticket.qaName || 'N/A'}</div>
-                            <div className="text-gray-500">{ticket.qaEmail || 'N/A'}</div>
+                            {ticket.qaNames && ticket.qaNames.length > 1 ? (
+                              <div>
+                                <div className="font-medium">{ticket.qaNames.length} QAs Assigned</div>
+                                <div className="text-gray-500 text-xs">
+                                  {ticket.qaNames.join(', ')}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="font-medium">{ticket.qaName || ticket.qaNames?.[0] || 'N/A'}</div>
+                                <div className="text-gray-500">{ticket.qaEmail || ticket.qaEmails?.[0] || 'N/A'}</div>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                       )}
