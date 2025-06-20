@@ -12,6 +12,7 @@ import {
 
 import { firestore } from "../../firebase";
 import { Send, SendHorizontal } from "lucide-react";
+import { categories, subcategories } from "./mappings";
 
 const formatTime = (date) => {
   if (!date) return "";
@@ -69,7 +70,8 @@ const CommentBox = ({ ticketItem, userType }) => {
     const commentsArray = [...comments, commentToAdd]
     setComments(commentsArray);
     updateDoc(ticketRef, {
-      comments: commentsArray
+      comments: commentsArray,
+      lastUpdatedAt: new Date()
     })
 
     setNewComment('');
@@ -82,12 +84,31 @@ const CommentBox = ({ ticketItem, userType }) => {
     }
   };
 
+  // Get issue and subissue labels
+  const getIssueLabels = () => {
+    try {
+      const issue = categories.find((item) => item.value === ticketItem.issue)?.label.split(' | ')[0] || ticketItem.issue;
+      const subissue = subcategories[ticketItem.issue]?.find((item) => item.value === ticketItem.subIssue)?.label.split(' | ')[0] || ticketItem.subIssue;
+      return { issue, subissue };
+    } catch (error) {
+      return { issue: ticketItem.issue, subissue: ticketItem.subIssue };
+    }
+  };
+
+  const { issue, subissue } = getIssueLabels();
+
   return (
     <div className="flex flex-col h-full w-full mx-auto bg-white rounded-xl shadow-lg border border-gray-200">
       {/* Header Section */}
       <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">{ticketItem.subject}</h2>
-        <p className="text-sm text-gray-500">Clinic: {ticketItem.name}</p>
+        <h2 className="text-lg font-semibold text-gray-800">
+          {issue} | {subissue}
+        </h2>
+        <div className="text-sm text-gray-500 mt-1">
+          <div>Clinic: {ticketItem.name} | {ticketItem.clinicCode}</div>
+          <div>State: {ticketItem.state}</div>
+          <div>Status: <span className="capitalize font-medium">{ticketItem.status}</span></div>
+        </div>
       </div>
 
       {/* Comments History Section */}
