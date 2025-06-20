@@ -26,18 +26,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import CommentBox from "./CommentBox";
 import { categories, subcategories } from "./mappings";
 
-const issueMapping = {
-  "online-team": "Online Team (Agent/Pharmacist/TL)",
-  "offline-team": "Offline Team (DC/Field ops manager)",
-  "sales-diagnostic-team": "Sales & Diagnostic Team (Agent/TL)",
-  "hr-team": "HR Team (Salary/Accounts/Zing)",
-  "branch-issues": "Branch Issues (BM/RM)",
-  "doctor": "Doctor",
-  "clinic-issues": "Clinic issues (Instruments/Tab/Furniture)", 
-  "medicine-issues": "Medicine issues",
-  "sim-card-issues": "Sim card issues"
-}
-
 const FeedbackTableQA = ({ currentUser }) => {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -175,7 +163,7 @@ const FeedbackTableQA = ({ currentUser }) => {
           {isSuperQA ? "All Tickets" : "Tickets Assigned to You"}
         </h2>
         <div className="text-sm text-gray-600">
-          Showing {indexOfFirstTicket + 1}-{Math.min(indexOfLastTicket, tickets.length)} of {tickets.length} tickets
+          Showing {Math.min(indexOfFirstTicket + 1, tickets.length)}-{Math.min(indexOfLastTicket, tickets.length)} of {tickets.length} tickets
         </div>
       </div>
       
@@ -204,8 +192,12 @@ const FeedbackTableQA = ({ currentUser }) => {
                   lastCommentStr += lastComment.comment
                   lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
                   
-                  const issue = categories.find((item) => item.value === ticket.issue).label.split(' | ')[0];
-                  const subissue = subcategories[ticket.issue].find((item) => item.value === ticket.subIssue).label.split(' | ')[0];
+                  // Safe category and subcategory lookup with fallbacks
+                  const categoryItem = categories.find((item) => item.value === ticket.issue);
+                  const issue = categoryItem ? categoryItem.label.split(' | ')[0] : ticket.issue;
+                  
+                  const subcategoryItem = subcategories[ticket.issue]?.find((item) => item.value === ticket.subIssue);
+                  const subissue = subcategoryItem ? subcategoryItem.label.split(' | ')[0] : ticket.subIssue;
                   
                   return (
                     <TableRow key={ticket.id}>
@@ -214,8 +206,8 @@ const FeedbackTableQA = ({ currentUser }) => {
                       {isSuperQA && (
                         <TableCell>
                           <div className="text-sm">
-                            <div className="font-medium">{ticket.qaName}</div>
-                            <div className="text-gray-500">{ticket.qaEmail}</div>
+                            <div className="font-medium">{ticket.qaName || 'N/A'}</div>
+                            <div className="text-gray-500">{ticket.qaEmail || 'N/A'}</div>
                           </div>
                         </TableCell>
                       )}

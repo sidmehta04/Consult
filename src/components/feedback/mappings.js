@@ -1,4 +1,3 @@
-
 let mappingQA, defaultQA;
 
 if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
@@ -11,28 +10,70 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
   };
 } else {
   mappingQA = {
-    'Bihar': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-    'Telangana': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-    'Andhra Pradesh': { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' },
-    'Assam': { 'MSID': 'MS01452', 'nameQA': 'Prasanjit Das', 'emailQA': 'mochakms01452@gmail.com' },
-    'Odisha': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-    'Haryana': { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' },
-    'Jharkhand': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'West Bengal': { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' },
-    'UP West': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-    'Rajasthan': { 'MSID': 'MS01029', 'nameQA': 'Samyojita Nair', 'emailQA': 'mochakms01029@gmail.com' },
-    'Karnataka': { 'MSID': 'MS01457', 'nameQA': 'Sneha Huddar', 'emailQA': 'mochakms01457@gmail.com' },
-    'Tamil Nadu': { 'MSID': 'MS01450', 'nameQA': 'Pooja Dharmendhra', 'emailQA': 'mochakms01450@gmail.com' },
-    'Kerala': { 'MSID': 'MS00568', 'nameQA': 'Dharshini', 'emailQA': 'mochakms00568@gmail.com' },
-    'UP East': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-    'Maharashtra': { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
-    'Uttarakhand': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-    'Chhattisgarh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'Madhya Pradesh': { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' },
-    'Gujarat': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
-    'Punjab': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
-    'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
-    
+    'Bihar': [
+      { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' }
+    ],
+    'Telangana': [
+      { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' }
+    ],
+    'Andhra Pradesh': [
+      { 'MSID': 'MS00562', 'nameQA': 'Chakilam Avinash', 'emailQA': 'mochakms00562@gmail.com' }
+    ],
+    'Assam': [
+      { 'MSID': 'MS01452', 'nameQA': 'Prasanjit Das', 'emailQA': 'mochakms01452@gmail.com' }
+    ],
+    'Odisha': [
+      { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' }
+    ],
+    'Haryana': [
+      { 'MSID': 'MS01626', 'nameQA': 'Junaid Azhar', 'emailQA': 'mochakma0211@gmail.com' }
+    ],
+    'Jharkhand': [
+      { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' }
+    ],
+    'West Bengal': [
+      { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' }
+    ],
+    'Uttar Pradesh': [
+      { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
+      { 'MSID': 'MS00640', 'nameQA': 'Chaitanya', 'emailQA': 'mochakms00640@gmail.com' },
+      { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' }
+    ],
+    'Rajasthan': [
+      { 'MSID': 'MS01029', 'nameQA': 'Samyojita Nair', 'emailQA': 'mochakms01029@gmail.com' }
+    ],
+    'Karnataka': [
+      { 'MSID': 'MS01457', 'nameQA': 'Sneha Huddar', 'emailQA': 'mochakms01457@gmail.com' }
+    ],
+    'Tamil Nadu': [
+      { 'MSID': 'MS01450', 'nameQA': 'Pooja Dharmendhra', 'emailQA': 'mochakms01450@gmail.com' }
+    ],
+    'Kerala': [
+      { 'MSID': 'MS00568', 'nameQA': 'Dharshini', 'emailQA': 'mochakms00568@gmail.com' }
+    ],
+
+    'Maharashtra': [
+      { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
+      { 'MSID': 'MS00610', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00610@gmail.com' }
+    ],
+    'Uttarakhand': [
+      { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' }
+    ],
+    'Chhattisgarh': [
+      { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' }
+    ],
+    'Madhya Pradesh': [
+      { 'MSID': 'MS01382', 'nameQA': 'Mehjabin Muzid', 'emailQA': 'mochakms01382@gmail.com' }
+    ],
+    'Gujarat': [
+      { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' }
+    ],
+    'Punjab': [
+      { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' }
+    ],
+    'Himachal Pradesh': [
+      { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' }
+    ],
   };
 
   //NOTE: CHECK DEFAULT QA?
@@ -43,6 +84,37 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
     'isDefault': true
   };
 }
+
+// Helper function to get QA details for a state
+export const getQAForState = (stateName) => {
+  const qaList = mappingQA[stateName];
+  if (!qaList || qaList.length === 0) {
+    return defaultQA;
+  }
+  
+  // For now, return the first QA. You can implement round-robin or other assignment logic here
+  return qaList[0];
+};
+
+// Helper function to get all QAs for a state
+export const getAllQAsForState = (stateName) => {
+  return mappingQA[stateName] || [defaultQA];
+};
+
+// Helper function to add a new QA to a state
+export const addQAToState = (stateName, qaDetails) => {
+  if (!mappingQA[stateName]) {
+    mappingQA[stateName] = [];
+  }
+  mappingQA[stateName].push(qaDetails);
+};
+
+// Helper function to remove a QA from a state
+export const removeQAFromState = (stateName, qaEmail) => {
+  if (mappingQA[stateName]) {
+    mappingQA[stateName] = mappingQA[stateName].filter(qa => qa.emailQA !== qaEmail);
+  }
+};
 
 // Export the variables
 export { mappingQA, defaultQA };
