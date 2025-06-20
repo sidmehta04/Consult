@@ -54,7 +54,7 @@ export const StatusBadge = React.memo(({ queue }) => {
 export const DoctorStatusIcon = React.memo(({ status, caseCount }) => {
   if (status === "unavailable" || status === "on_break") {
     return <AlertCircle className="h-4 w-4 text-red-500" />;
-  } else if (caseCount >= 10) {
+  } else if (caseCount >= 7) {
     return <AlertCircle className="h-4 w-4 text-amber-500" />;
   } else {
     return <CheckCircle className="h-4 w-4 text-green-500" />;

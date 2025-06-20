@@ -416,7 +416,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
             const activeCount = activeCasesSnapshot.size;
 
             const pharmacistData = pharmSnapshot.data();
-            // If pharmacist is busy but now has fewer than 10 active cases, update status
+            // If pharmacist is busy but now has fewer than 7 active cases, update status
             if (
               pharmacistData.availabilityStatus === "busy" &&
               activeCount < 7
@@ -639,7 +639,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
               </span>
               <Badge
                 className={
-                  activeCases.length >= 10
+                  activeCases.length >= 7
                     ? "bg-red-100 text-red-800"
                     : "bg-green-100 text-green-800"
                 }
