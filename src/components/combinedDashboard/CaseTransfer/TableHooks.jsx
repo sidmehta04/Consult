@@ -358,12 +358,12 @@ export const useProcessedOptions = (doctors, pharmacists) => {
     const availableDoctors = doctors.filter((doctor) => doctor.isAvailable);
     
     return availableDoctors.map((doctor) => {
-      const canAcceptMoreCases = doctor.caseCount < 10;
+      const canAcceptMoreCases = doctor.caseCount < 7;
       const statusIndicator = canAcceptMoreCases ? "" : " (At Capacity)";
       
       return {
         value: doctor.id,
-        label: `${doctor.name} (${doctor.caseCount}/10 cases)${statusIndicator}`,
+        label: `${doctor.name} (${doctor.caseCount}/7 cases)${statusIndicator}`,
         person: doctor,
         isDisabled: !canAcceptMoreCases,
       };
