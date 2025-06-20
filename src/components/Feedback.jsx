@@ -12,6 +12,8 @@ const FeedbackPortal = ({ currentUser }) => {
     //console.log("Current user:", currentUser.uid);
   }, [])
   
+  
+  
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
       <h1 className="text-2xl font-semibold text-gray-800 mb-4">Feedback Portal</h1>
