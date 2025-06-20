@@ -32,6 +32,7 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
     'Gujarat': { 'MSID': 'MS00769', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00769@gmail.com' },
     'Punjab': { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' },
     'Himachal Pradesh': { 'MSID': 'MS00014', 'nameQA': 'Yogesh Singh Panwar', 'emailQA': 'mochakma030@gmail.com' },
+    
   };
 
   //NOTE: CHECK DEFAULT QA?

@@ -119,7 +119,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     const isUnavailable =
       doctor.availabilityStatus === "unavailable" ||
       doctor.availabilityStatus === "on_break";
-    const isAtCapacity = realTimeCaseCount >= 10;
+    const isAtCapacity = realTimeCaseCount >= 7;
 
     return !isUnavailable && !isAtCapacity;
   };
@@ -135,7 +135,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     const isUnavailable =
       pharmacist.availabilityStatus === "unavailable" ||
       pharmacist.availabilityStatus === "on_break";
-    const isAtCapacity = realTimeCaseCount >= 10;
+    const isAtCapacity = realTimeCaseCount >= 7;
 
     return !isUnavailable && !isAtCapacity;
   };
@@ -322,7 +322,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       const currentCaseCount = snapshot.docs.length;
 
       console.log(
-        `Doctor ${doctorId} case count updated: ${currentCaseCount}/10`
+        `Doctor ${doctorId} case count updated: ${currentCaseCount}/7`
       );
 
       // Update case count in state
@@ -338,9 +338,9 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }));
 
         // Check if doctor reached capacity
-        if (currentCaseCount >= 10) {
+        if (currentCaseCount >= 7) {
           console.log(
-            `Doctor ${doctorId} reached capacity (${currentCaseCount}/10)`
+            `Doctor ${doctorId} reached capacity (${currentCaseCount}/7)`
           );
           handleDoctorUnavailable();
         }
@@ -424,7 +424,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       const currentCaseCount = snapshot.docs.length;
 
       console.log(
-        `Pharmacist ${pharmacistId} case count updated: ${currentCaseCount}/10`
+        `Pharmacist ${pharmacistId} case count updated: ${currentCaseCount}/7`
       );
 
       // Update case count in state
@@ -440,9 +440,9 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }));
 
         // Check if pharmacist reached capacity
-        if (currentCaseCount >= 10) {
+        if (currentCaseCount >= 7) {
           console.log(
-            `Pharmacist ${pharmacistId} reached capacity (${currentCaseCount}/10)`
+            `Pharmacist ${pharmacistId} reached capacity (${currentCaseCount}/7)`
           );
           handlePharmacistUnavailable();
         }
@@ -497,7 +497,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         if (
           assignedDoctor &&
           assignedDoctor.id === doctorId &&
-          caseCount >= 10
+          caseCount >= 7
         ) {
           console.log(
             `Assigned doctor ${doctorId} reached capacity, triggering reassignment`
@@ -542,7 +542,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         if (
           assignedPharmacist &&
           assignedPharmacist.id === pharmacistId &&
-          caseCount >= 10
+          caseCount >= 7
         ) {
           console.log(
             `Assigned pharmacist ${pharmacistId} reached capacity, triggering reassignment`
@@ -1311,7 +1311,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           //deprecating busy
           ///*
           if (
-            newCaseCount >= 10 &&
+            newCaseCount >= 7 &&
             doctorData.availabilityStatus === "available"
           ) {
             batch.update(doctorRef, {
@@ -1337,7 +1337,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           //deprecating busy
           ///*
           if (
-            newCaseCount >= 10 &&
+            newCaseCount >= 7 &&
             pharmacistData.availabilityStatus === "available"
           ) {
             batch.update(pharmRef, {
@@ -1754,12 +1754,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                               </div>
                               <span
                                 className={`text-xs px-1.5 py-0.5 rounded-full ${
-                                  (doctor.caseCount || 0) >= 10
+                                  (doctor.caseCount || 0) >= 7
                                     ? "bg-red-100 text-red-800"
                                     : "bg-green-100 text-green-800"
                                 }`}
                               >
-                                {doctor.caseCount || 0}/10
+                                {doctor.caseCount || 0}/7
                               </span>
                             </div>
                           )
@@ -1840,12 +1840,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
                               </div>
                               <span
                                 className={`text-xs px-1.5 py-0.5 rounded-full ${
-                                  (pharmacist.caseCount || 0) >= 10
+                                  (pharmacist.caseCount || 0) >= 7
                                     ? "bg-red-100 text-red-800"
                                     : "bg-green-100 text-green-800"
                                 }`}
                               >
-                                {pharmacist.caseCount || 0}/10
+                                {pharmacist.caseCount || 0}/7
                               </span>
                             </div>
                           )

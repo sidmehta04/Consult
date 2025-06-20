@@ -109,7 +109,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
     const handleAutoStatusUpdate = async () => {
       try {
         // Only auto-update if status changes are needed
-        if (activeCases.length >= 10 && doctorStatus.status === "available") {
+        if (activeCases.length >= 7 && doctorStatus.status === "available") {
           // Mark as busy when case load is high
           console.log(
             "Auto-updating status to busy - case count:",
@@ -119,7 +119,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
             "busy",
             "Automatically marked as busy due to high case load"
           );
-        } else if (activeCases.length < 10 && doctorStatus.status === "busy") {
+        } else if (activeCases.length < 7 && doctorStatus.status === "busy") {
           // Mark as available when case load decreases
           console.log(
             "Auto-updating status to available - case count:",
@@ -419,7 +419,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
             // If pharmacist is busy but now has fewer than 10 active cases, update status
             if (
               pharmacistData.availabilityStatus === "busy" &&
-              activeCount < 10
+              activeCount < 7
             ) {
               await updateDoc(pharmacistRef, {
                 availabilityStatus: "available",
@@ -644,7 +644,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
                     : "bg-green-100 text-green-800"
                 }
               >
-                {activeCases.length}/10
+                {activeCases.length}/7
               </Badge>
             </div>
           </div>
