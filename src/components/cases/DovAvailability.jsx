@@ -200,7 +200,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
   // deprecating busy?
   ///*
   useEffect(() => {
-    if (availabilityStatus === "available" && activeCases.length >= 10) {
+    if (availabilityStatus === "available" && activeCases.length >= 7) {
       updateDoctorStatus("busy", "Automatically marked as busy due to high case load");
     }
   }, [activeCases, availabilityStatus]);
@@ -250,12 +250,12 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 <div className="flex items-center">
                   <p className="mr-2 text-sm text-gray-500">
                     Active Cases: 
-                    <span className={`ml-1 font-medium ${activeCases.length >= 10 ? "text-red-600" : "text-green-600"}`}>
+                    <span className={`ml-1 font-medium ${activeCases.length >= 7 ? "text-red-600" : "text-green-600"}`}>
                       {activeCases.length}
                     </span>
                   </p>
-                  <Badge className={activeCases.length >= 10 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}>
-                    {activeCases.length >= 10 ? "High Load" : "Available"}
+                  <Badge className={activeCases.length >= 7 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}>
+                    {activeCases.length >= 7 ? "High Load" : "Available"}
                   </Badge>
                 </div>
               </div>

@@ -109,14 +109,14 @@ const PharmacistCaseManagement = ({ currentUser }) => {
   const handleAutoStatusUpdate = async () => {
     try {
       // Only auto-update if status changes are needed
-      if (activeCases.length >= 10 && pharmacistStatus.status === "available") {
+      if (activeCases.length >= 7 && pharmacistStatus.status === "available") {
         // Mark as busy when case load is high
         console.log("Auto-updating pharmacist status to busy - case count:", activeCases.length);
         await updatePharmacistStatus(
           "busy", 
           "Automatically marked as busy due to high case load"
         );
-      } else if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
+      } else if (activeCases.length < 7 && pharmacistStatus.status === "busy") {
         // Mark as available when case load decreases
         console.log("Auto-updating pharmacist status to available - case count:", activeCases.length);
         await updatePharmacistStatus(
@@ -559,7 +559,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       setCompletingCase(false);
 
       // Status update logic remains the same
-      if (activeCases.length < 10 && pharmacistStatus.status === "busy") {
+      if (activeCases.length < 7 && pharmacistStatus.status === "busy") {
         updatePharmacistStatus(
           "available",
           "Automatically marked as available due to reduced case load"
@@ -735,12 +735,12 @@ const PharmacistCaseManagement = ({ currentUser }) => {
               </span>
               <Badge
                 className={
-                  activeCases.length >= 10
+                  activeCases.length >= 7
                     ? "bg-red-100 text-red-800"
                     : "bg-green-100 text-green-800"
                 }
               >
-                {activeCases.length}/10
+                {activeCases.length}/7
               </Badge>
             </div>
           </div>

@@ -359,7 +359,7 @@ const NurseCaseManagement = ({ currentUser }) => {
         let newStatus = currentStatus;
         let statusChange = null;
         
-        if (activeCaseCount >= 10 && currentStatus === "available") {
+        if (activeCaseCount >= 7 && currentStatus === "available") {
           newStatus = "busy";
           needsUpdate = true;
           statusChange = {
@@ -369,7 +369,7 @@ const NurseCaseManagement = ({ currentUser }) => {
             reason: "Automatically marked as busy due to high case load (via nurse action)",
             casesNo: activeCaseCount,
           };
-        } else if (activeCaseCount < 10 && currentStatus === "busy") {
+        } else if (activeCaseCount < 7 && currentStatus === "busy") {
           newStatus = "available";
           needsUpdate = true;
           statusChange = {

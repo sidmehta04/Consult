@@ -249,7 +249,7 @@ const CaseTransferMain = ({ currentUser }) => {
               doctor.availabilityStatus === "busy";
             
             // Add separate property for transfer eligibility
-            const canAcceptCases = isAvailable && caseCount < 10;
+            const canAcceptCases = isAvailable && caseCount < 7;
             
             return {
               ...doctor,
