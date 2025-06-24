@@ -151,7 +151,6 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
     setAssignedDoctors(updatePositions(newAssigned));
   };
 
-  // REWRITTEN saveHierarchy function
   const saveHierarchy = async () => {
     try {
       setSaving(true);
@@ -178,12 +177,9 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
 
       for (const clinicDoc of clinicsSnapshot.docs) {
         const clinicData = clinicDoc.data();
-        const clinicRef = doc(firestore, "users", clinicDoc.id);
-
-        console.log(clinicData);
 
         if (clinicData.manuallyAddedDoctors) {
-          clinicsToConfirm.push({ id: clinicDoc.id, ...clinicData, clinicRef });
+          clinicsToConfirm.push({ id: clinicDoc.id, ...clinicData });
         } else {
           const doctorAssignments = {};
           assignedDoctors.forEach((doctor) => {
@@ -192,6 +188,7 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
             doctorAssignments[`${positionKey}Name`] = doctor.name;
           });
           doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
+          const clinicRef = doc(firestore, "users", clinicDoc.id);
           const oldData = await getDoc(clinicRef);
           autoUpdatePromises.push(setDoc(clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false }));
         }
@@ -222,7 +219,89 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
 
   const handleCloseDialog = useCallback(() => {
     setClinicsForConfirmation([]);
+    setIsConfirmationDialogOpen(false);
   }, []);
+
+  const handleUpdateClinics = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      
+      const updatePromises = clinicsForConfirmation
+        .filter((clinic) => clinic.checked)
+        .map(async (clinic) => {
+          const doctorAssignments = {};
+          assignedDoctors.forEach((doctor) => {
+            const positionKey = getPositionName(doctor.position).toLowerCase();
+            doctorAssignments[positionKey] = doctor.id;
+            doctorAssignments[`${positionKey}Name`] = doctor.name;
+          });
+          doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
+
+          const clinicRef = doc(firestore, "users", clinic.id);
+          const oldData = await getDoc(clinicRef);
+          
+          if (!oldData.exists()) {
+            throw new Error(`Clinic document with ID ${clinic.id} does not exist`);
+          }
+          
+          return setDoc(
+            clinicRef,
+            { ...oldData.data(), assignedDoctors: doctorAssignments },
+            { merge: false }
+          );
+        });
+
+      await Promise.all(updatePromises);
+      setClinicsForConfirmation([]);
+      setIsConfirmationDialogOpen(false);
+      setSuccess("Doctor hierarchy saved successfully. All selected clinics have been updated.");
+    } catch (err) {
+      console.error("Error updating clinics:", err);
+      setError(`Failed to update clinics: ${err.message}. Please try again.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // New function to handle fallback assignment only
+  const handleFallbackOnlyUpdate = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      
+      const updatePromises = clinicsForConfirmation.map(async (clinic) => {
+        const clinicRef = doc(firestore, "users", clinic.id);
+        const oldData = await getDoc(clinicRef);
+        
+        if (!oldData.exists()) {
+          throw new Error(`Clinic document with ID ${clinic.id} does not exist`);
+        }
+        
+        const clinicData = oldData.data();
+        const updatedAssignedDoctors = {
+          ...clinicData.assignedDoctors,
+          assignToAnyDoctor: assignToAnyDoctor
+        };
+        
+        return setDoc(
+          clinicRef,
+          { ...clinicData, assignedDoctors: updatedAssignedDoctors },
+          { merge: false }
+        );
+      });
+
+      await Promise.all(updatePromises);
+      setClinicsForConfirmation([]);
+      setIsConfirmationDialogOpen(false);
+      setSuccess("Fallback assignment setting updated for all clinics successfully.");
+    } catch (err) {
+      console.error("Error updating fallback assignment:", err);
+      setError(`Failed to update fallback assignment: ${err.message}. Please try again.`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -332,12 +411,12 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
       </Card>
 
       {/* Confirmation Dialog */}
-      <Dialog open={isConfirmationDialogOpen} onOpenChange={(open) => { if (!open) { handleCloseDialog(); setIsConfirmationDialogOpen(false); } }}>
+      <Dialog open={isConfirmationDialogOpen} onOpenChange={(open) => { if (!open) { handleCloseDialog(); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Confirm Hierarchy Override</DialogTitle>
             <DialogDescription>
-              Some clinics have manually assigned doctors. Select which clinics should be updated to use this new hierarchy. Unchecked clinics will keep their existing assignments.
+              Some clinics have manually assigned doctors. Choose how to update them:
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 max-h-80 overflow-y-auto">
@@ -363,39 +442,71 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsConfirmationDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={handleCloseDialog}>Cancel</Button>
             <Button
-              onClick={async () => {
-                try {
-                  const clinicsToUpdate = clinicsForConfirmation.filter((clinic) => clinic.checked);
-                  if (clinicsToUpdate.length === 0) {
-                     setIsConfirmationDialogOpen(false);
-                     return;
-                  }
-
-                  const updatePromises = clinicsToUpdate.map((clinic) => {
-                    const doctorAssignments = {};
-                    assignedDoctors.forEach((doctor) => {
-                      const positionKey = getPositionName(doctor.position).toLowerCase();
-                      doctorAssignments[positionKey] = doctor.id;
-                      doctorAssignments[`${positionKey}Name`] = doctor.name;
-                    });
-                    doctorAssignments.assignToAnyDoctor = assignToAnyDoctor;
-                    const oldData = clinic.data;
-                    return setDoc(clinic.clinicRef, { ...oldData.data(), assignedDoctors: doctorAssignments }, { merge: false });
-                  });
-
-                  await Promise.all(updatePromises);
-                  setIsConfirmationDialogOpen(false);
-                  handleCloseDialog();
-                  setSuccess("Selected clinics have been successfully updated with the new hierarchy.");
-                } catch (err) {
-                  console.error("Error updating clinics:", err);
-                  setError("Failed to update clinics. Please try again.");
-                }
-              }}
+              onClick={handleFallbackOnlyUpdate}
+              disabled={saving}
+              variant="secondary"
             >
-              Update Selected Clinics
+              {saving ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                "Update Fallback Only"
+              )}
+            </Button>
+            <Button
+              onClick={handleUpdateClinics}
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                "Override & Update Selected"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

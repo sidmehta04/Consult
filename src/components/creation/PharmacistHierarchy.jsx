@@ -383,6 +383,45 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
     }
   };
 
+  // New function to handle fallback assignment only
+  const handleFallbackOnlyUpdate = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      
+      const updatePromises = clinicsForConfirmation.map(async (clinic) => {
+        const clinicRef = doc(firestore, "users", clinic.id);
+        const oldData = await getDoc(clinicRef);
+        
+        if (!oldData.exists()) {
+          throw new Error(`Clinic document with ID ${clinic.id} does not exist`);
+        }
+        
+        const clinicData = oldData.data();
+        const updatedAssignedPharmacists = {
+          ...clinicData.assignedPharmacists,
+          assignToAnyPharmacist: assignToAnyPharmacist
+        };
+        
+        return setDoc(
+          clinicRef,
+          { ...clinicData, assignedPharmacists: updatedAssignedPharmacists },
+          { merge: false }
+        );
+      });
+
+      await Promise.all(updatePromises);
+      setClinicsForConfirmation([]);
+      setIsConfirmationDialogOpen(false);
+      setSuccess("Fallback assignment setting updated for all clinics successfully.");
+    } catch (err) {
+      console.error("Error updating fallback assignment:", err);
+      setError(`Failed to update fallback assignment: ${err.message}. Please try again.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <Card className="w-full max-w-4xl mx-auto bg-white shadow-xl">
@@ -639,7 +678,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
           <DialogHeader>
             <DialogTitle>Confirm Clinic Updates</DialogTitle>
             <DialogDescription>
-              The following clinics have manually assigned pharmacists. Select the ones you wish to override with the new hierarchy.
+              The following clinics have manually assigned pharmacists. Choose how to update them:
             </DialogDescription>
           </DialogHeader>
           <div>
@@ -667,6 +706,39 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
           <div className="mt-4 flex justify-end space-x-2">
             <Button variant="outline" onClick={handleCloseDialog}>
               Cancel
+            </Button>
+            <Button
+              onClick={handleFallbackOnlyUpdate}
+              disabled={saving}
+              variant="secondary"
+            >
+              {saving ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                "Update Fallback Only"
+              )}
             </Button>
             <Button
               onClick={handleUpdateClinics}
@@ -697,7 +769,7 @@ const PharmacistHierarchyManagement = ({ currentUser }) => {
                   Updating...
                 </>
               ) : (
-                "Update Clinics"
+                "Override & Update Selected"
               )}
             </Button>
           </div>
