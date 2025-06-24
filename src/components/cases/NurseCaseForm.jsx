@@ -935,11 +935,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   };
   // No available doctors at all
   console.log("No available doctors found - hierarchy and fallback exhausted");
-  setError(
-    assignToAnyDoctor
-      ? "No available doctors found. All doctors in your hierarchy and fallback options are unavailable or at capacity."
-      : "No available doctors found in your hierarchy. All assigned doctors are unavailable or at capacity."
-  );
+  
   useEffect(() => {
     return () => {
       // Cleanup all global listeners on unmount
