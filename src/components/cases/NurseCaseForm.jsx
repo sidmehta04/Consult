@@ -25,7 +25,7 @@ import {
   Coffee,
   CalendarIcon,
   RefreshCw,
-  Plane
+  Plane,
 } from "lucide-react";
 import {
   doc,
@@ -119,7 +119,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
     const isUnavailable =
       doctor.availabilityStatus === "unavailable" ||
-          doctor.availabilityStatus === "on_holiday"||// Add this line
+      doctor.availabilityStatus === "on_holiday" || // Add this line
       doctor.availabilityStatus === "on_break";
     const isAtCapacity = realTimeCaseCount >= 7;
 
@@ -136,7 +136,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
     const isUnavailable =
       pharmacist.availabilityStatus === "unavailable" ||
-      pharmacist.availabilityStatus === "on_break"||
+      pharmacist.availabilityStatus === "on_break" ||
       pharmacist.availabilityStatus === "on_holiday"; // Add this line
     const isAtCapacity = realTimeCaseCount >= 7;
 
@@ -289,7 +289,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           // Check if doctor became unavailable (status change)
           if (
             doctorData.availabilityStatus === "unavailable" ||
-            doctorData.availabilityStatus === "on_break"||
+            doctorData.availabilityStatus === "on_break" ||
             doctorData.availabilityStatus === "on_holiday" // Add this line
           ) {
             console.log(
@@ -392,9 +392,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           // Check if pharmacist became unavailable (status change)
           if (
             pharmacistData.availabilityStatus === "unavailable" ||
-            pharmacistData.availabilityStatus === "on_break"||
-              pharmacistData.availabilityStatus === "on_holiday"  // Add this line
-
+            pharmacistData.availabilityStatus === "on_break" ||
+            pharmacistData.availabilityStatus === "on_holiday" // Add this line
           ) {
             console.log(
               `Pharmacist ${pharmacistData.name} status changed to unavailable`
@@ -889,7 +888,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return true;
       };
 
-      // IMPROVED PRIORITY LOGIC: Try each doctor in the hierarchy order
       for (let i = 0; i < doctorHierarchy.length; i++) {
         const doctorId = doctorHierarchy[i];
         const doctor = doctorsMap[doctorId];
@@ -898,11 +896,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       }
 
-      // If assignToAnyDoctor is enabled, try any other doctor
       if (assignToAnyDoctor) {
+        console.log("Hierarchy exhausted, trying fallback doctors...");
+
+        // Get all available doctors excluding those already in hierarchy
         const availableFallbackDoctors = Object.values(doctorsMap)
           .filter((doctor) => {
-            // Skip hierarchy doctors (already checked)
+            // Skip hierarchy doctors (already checked above)
             if (doctorHierarchy.includes(doctor.id)) {
               return false;
             }
@@ -910,11 +910,15 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             // Check availability
             return isDoctorAvailable(doctor);
           })
-          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0)); // Sort by case count ascending
 
         if (availableFallbackDoctors.length > 0) {
           const bestDoctor = availableFallbackDoctors[0];
-          console.log(`Assigning to fallback doctor ${bestDoctor.name}`);
+          console.log(
+            `No hierarchy doctors available. Assigning to fallback doctor ${
+              bestDoctor.name
+            } (${bestDoctor.caseCount || 0} cases)`
+          );
           return assignDoctor(bestDoctor.id, doctorHierarchy.length);
         }
       }
@@ -929,6 +933,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setError("Failed to find available doctor. Please try again.");
     }
   };
+  // No available doctors at all
+  console.log("No available doctors found - hierarchy and fallback exhausted");
+  setError(
+    assignToAnyDoctor
+      ? "No available doctors found. All doctors in your hierarchy and fallback options are unavailable or at capacity."
+      : "No available doctors found in your hierarchy. All assigned doctors are unavailable or at capacity."
+  );
   useEffect(() => {
     return () => {
       // Cleanup all global listeners on unmount
@@ -1105,11 +1116,15 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       }
 
-      // If assignToAnyPharmacist is enabled, try any other pharmacist
       if (assignToAnyPharmacist) {
+        console.log(
+          "Pharmacist hierarchy exhausted, trying fallback pharmacists..."
+        );
+
+        // Get all available pharmacists excluding those already in hierarchy
         const availableFallbackPharmacists = Object.values(pharmacistsMap)
           .filter((pharmacist) => {
-            // Skip hierarchy pharmacists (already checked)
+            // Skip hierarchy pharmacists (already checked above)
             if (pharmacistHierarchy.includes(pharmacist.id)) {
               return false;
             }
@@ -1117,12 +1132,14 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             // Check availability
             return isPharmacistAvailable(pharmacist);
           })
-          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0)); // Sort by case count ascending
 
         if (availableFallbackPharmacists.length > 0) {
           const bestPharmacist = availableFallbackPharmacists[0];
           console.log(
-            `Assigning to fallback pharmacist ${bestPharmacist.name}`
+            `No hierarchy pharmacists available. Assigning to fallback pharmacist ${
+              bestPharmacist.name
+            } (${bestPharmacist.caseCount || 0} cases)`
           );
           return assignPharmacist(
             bestPharmacist.id,
@@ -1131,10 +1148,14 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       }
 
-      // No available pharmacists
-      console.log("No available pharmacists found");
+      // No available pharmacists at all
+      console.log(
+        "No available pharmacists found - hierarchy and fallback exhausted"
+      );
       setError(
-        "No available pharmacists found. All pharmacists are unavailable or at capacity."
+        assignToAnyPharmacist
+          ? "No available pharmacists found. All pharmacists in your hierarchy and fallback options are unavailable or at capacity."
+          : "No available pharmacists found in your hierarchy. All assigned pharmacists are unavailable or at capacity."
       );
     } catch (err) {
       console.error("Error finding pharmacist:", err);
@@ -1388,8 +1409,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return <UserX className="h-4 w-4 text-gray-600" />;
       case "on_break":
         return <Coffee className="h-4 w-4 text-amber-600" />;
-        case "on_holiday":
-      return <Plane className="h-4 w-4 text-purple-600" />;
+      case "on_holiday":
+        return <Plane className="h-4 w-4 text-purple-600" />;
       default:
         return <UserCheck className="h-4 w-4 text-blue-600" />;
     }
