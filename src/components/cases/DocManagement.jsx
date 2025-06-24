@@ -43,6 +43,7 @@ import {
   ShieldAlert,
   LinkIcon,
   Info,
+  Plane,
 } from "lucide-react";
 import {
   doc,
@@ -579,6 +580,13 @@ const DoctorCaseManagement = ({ currentUser }) => {
           <Badge className="bg-amber-100 text-amber-800 border-amber-200">
             <Coffee className="h-3.5 w-3.5 mr-1.5" />
             On Break
+          </Badge>
+        );
+      case "on_holiday":
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+            <Plane className="h-3.5 w-3.5 mr-1.5" />
+            On Holiday
           </Badge>
         );
       default:

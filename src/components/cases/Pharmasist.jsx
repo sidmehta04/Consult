@@ -7,7 +7,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  
 } from "@/components/ui/table";
 import {
   Dialog,
@@ -44,7 +43,7 @@ import {
   ShieldAlert,
   LinkIcon,
   Info,
-  
+  Plane,
 } from "lucide-react";
 import {
   doc,
@@ -54,7 +53,7 @@ import {
   where,
   onSnapshot,
   updateDoc,
-  getDocs
+  getDocs,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import { format } from "date-fns";
@@ -105,35 +104,51 @@ const PharmacistCaseManagement = ({ currentUser }) => {
     throw lastError;
   };
   useEffect(() => {
-  // Auto-update pharmacist status based on case load
-  const handleAutoStatusUpdate = async () => {
-    try {
-      // Only auto-update if status changes are needed
-      if (activeCases.length >= 7 && pharmacistStatus.status === "available") {
-        // Mark as busy when case load is high
-        console.log("Auto-updating pharmacist status to busy - case count:", activeCases.length);
-        await updatePharmacistStatus(
-          "busy", 
-          "Automatically marked as busy due to high case load"
-        );
-      } else if (activeCases.length < 7 && pharmacistStatus.status === "busy") {
-        // Mark as available when case load decreases
-        console.log("Auto-updating pharmacist status to available - case count:", activeCases.length);
-        await updatePharmacistStatus(
-          "available", 
-          "Automatically marked as available due to reduced case load"
-        );
+    // Auto-update pharmacist status based on case load
+    const handleAutoStatusUpdate = async () => {
+      try {
+        // Only auto-update if status changes are needed
+        if (
+          activeCases.length >= 7 &&
+          pharmacistStatus.status === "available"
+        ) {
+          // Mark as busy when case load is high
+          console.log(
+            "Auto-updating pharmacist status to busy - case count:",
+            activeCases.length
+          );
+          await updatePharmacistStatus(
+            "busy",
+            "Automatically marked as busy due to high case load"
+          );
+        } else if (
+          activeCases.length < 7 &&
+          pharmacistStatus.status === "busy"
+        ) {
+          // Mark as available when case load decreases
+          console.log(
+            "Auto-updating pharmacist status to available - case count:",
+            activeCases.length
+          );
+          await updatePharmacistStatus(
+            "available",
+            "Automatically marked as available due to reduced case load"
+          );
+        }
+      } catch (err) {
+        console.error("Error in pharmacist auto status update:", err);
       }
-    } catch (err) {
-      console.error("Error in pharmacist auto status update:", err);
-    }
-  };
+    };
 
-  // Only run auto-update if we have valid data and avoid infinite loops
-  if (activeCases.length !== undefined && pharmacistStatus.status && !loading) {
-    handleAutoStatusUpdate();
-  }
-}, [activeCases.length, pharmacistStatus.status, loading]);
+    // Only run auto-update if we have valid data and avoid infinite loops
+    if (
+      activeCases.length !== undefined &&
+      pharmacistStatus.status &&
+      !loading
+    ) {
+      handleAutoStatusUpdate();
+    }
+  }, [activeCases.length, pharmacistStatus.status, loading]);
 
   const setPharmacistJoined = async (caseItem) => {
     //console.log(caseItem);
@@ -153,27 +168,27 @@ const PharmacistCaseManagement = ({ currentUser }) => {
       }
 
       const updateData = {
-        pharmacistJoined: timestamp
+        pharmacistJoined: timestamp,
       };
 
-      if(caseData.batchCode){
-          const casesQuery = query(
-                    collection(firestore, "cases"),
-                    where("batchCode", "==", caseData.batchCode)
-          );
-          const batchSnapshot = await getDocs(casesQuery);
-          
-          batchSnapshot.forEach(async (doc) => {
-            const batchCaseRef = doc.ref;
-            await retryOperation(() => updateDoc(batchCaseRef, updateData));
-          });
+      if (caseData.batchCode) {
+        const casesQuery = query(
+          collection(firestore, "cases"),
+          where("batchCode", "==", caseData.batchCode)
+        );
+        const batchSnapshot = await getDocs(casesQuery);
+
+        batchSnapshot.forEach(async (doc) => {
+          const batchCaseRef = doc.ref;
+          await retryOperation(() => updateDoc(batchCaseRef, updateData));
+        });
       } else {
         await retryOperation(() => updateDoc(caseRef, updateData));
       }
     } catch {
-      console.error("Error setting pharmacist joining time: ", err)
+      console.error("Error setting pharmacist joining time: ", err);
     }
-  }
+  };
 
   useEffect(() => {
     const fetchPharmacistStatus = async () => {
@@ -466,7 +481,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
             pharmacistCompletedBy: currentUser.uid,
             pharmacistCompletedByName: currentUser.displayName || "Pharmacist",
             version: currentVersion + 1,
-            isIncomplete: true
+            isIncomplete: true,
           })
         );
       } catch (err) {
@@ -480,15 +495,12 @@ const PharmacistCaseManagement = ({ currentUser }) => {
 
       setCurrentCase(null);
       setCompletingCase(false);
-
-      
     } catch (err) {
       console.error("Error completing case:", err);
       setError("Failed to complete case");
       setCompletingCase(false);
     }
-
-  }
+  };
 
   const handleCompleteCase = async (caseId) => {
     if (!caseId) return;
@@ -673,6 +685,13 @@ const PharmacistCaseManagement = ({ currentUser }) => {
           <Badge className="bg-amber-100 text-amber-800 border-amber-200">
             <Coffee className="h-3.5 w-3.5 mr-1.5" />
             On Break
+          </Badge>
+        );
+      case "on_holiday":
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+            <Plane className="h-3.5 w-3.5 mr-1.5" />
+            On Holiday
           </Badge>
         );
       default:
@@ -1034,9 +1053,14 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                 </div>
 
                 <div className="flex flex-col space-y-3 pt-4">
-                  {!currentCase.pharmacistCompleted && !currentCase.isIncomplete && currentCase.doctorCompleted && !completingCase && (
+                  {!currentCase.pharmacistCompleted &&
+                    !currentCase.isIncomplete &&
+                    currentCase.doctorCompleted &&
+                    !completingCase && (
                       <Button
-                        onClick={() => handlePharmacistIncomplete(currentCase.id)}
+                        onClick={() =>
+                          handlePharmacistIncomplete(currentCase.id)
+                        }
                         disabled={
                           completingCase || !currentCase.doctorCompleted
                         }
@@ -1045,9 +1069,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                         <AlertCircle className="h-4 w-4 mr-2" />
                         Mark as Incomplete
                       </Button>
-                    )
-                  }
-                  
+                    )}
+
                   {!currentCase.pharmacistCompleted &&
                     !currentCase.isIncomplete && (
                       <Button
@@ -1071,8 +1094,7 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                           </>
                         )}
                       </Button>
-                    )
-                  }
+                    )}
 
                   {currentCase.isIncomplete && (
                     <div className="bg-red-50 border border-red-200 p-3 rounded-md">
@@ -1288,7 +1310,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                                     href={`tel:${caseItem.contactInfo}`}
                                     className="flex items-center justify-center"
                                   >
-                                    <Phone className="h-4 w-4 mr-2" /> Call Patient
+                                    <Phone className="h-4 w-4 mr-2" /> Call
+                                    Patient
                                   </a>
                                 </Button>
                               )}
@@ -1389,7 +1412,8 @@ const PharmacistCaseManagement = ({ currentUser }) => {
                               ? "bg-green-100 text-green-800"
                               : caseItem.status === "doctor_completed"
                               ? "bg-amber-100 text-amber-800"
-                              : caseItem.status === "doctor_incomplete" || caseItem.status === "pharmacist_incomplete"
+                              : caseItem.status === "doctor_incomplete" ||
+                                caseItem.status === "pharmacist_incomplete"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }

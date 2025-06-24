@@ -25,6 +25,7 @@ import {
   Coffee,
   CalendarIcon,
   RefreshCw,
+  Plane
 } from "lucide-react";
 import {
   doc,
@@ -118,6 +119,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
     const isUnavailable =
       doctor.availabilityStatus === "unavailable" ||
+          doctor.availabilityStatus === "on_holiday"||// Add this line
       doctor.availabilityStatus === "on_break";
     const isAtCapacity = realTimeCaseCount >= 7;
 
@@ -134,7 +136,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
     const isUnavailable =
       pharmacist.availabilityStatus === "unavailable" ||
-      pharmacist.availabilityStatus === "on_break";
+      pharmacist.availabilityStatus === "on_break"||
+      pharmacist.availabilityStatus === "on_holiday"; // Add this line
     const isAtCapacity = realTimeCaseCount >= 7;
 
     return !isUnavailable && !isAtCapacity;
@@ -286,7 +289,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           // Check if doctor became unavailable (status change)
           if (
             doctorData.availabilityStatus === "unavailable" ||
-            doctorData.availabilityStatus === "on_break"
+            doctorData.availabilityStatus === "on_break"||
+            doctorData.availabilityStatus === "on_holiday" // Add this line
           ) {
             console.log(
               `Doctor ${doctorData.name} status changed to unavailable`
@@ -388,7 +392,9 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           // Check if pharmacist became unavailable (status change)
           if (
             pharmacistData.availabilityStatus === "unavailable" ||
-            pharmacistData.availabilityStatus === "on_break"
+            pharmacistData.availabilityStatus === "on_break"||
+              pharmacistData.availabilityStatus === "on_holiday"  // Add this line
+
           ) {
             console.log(
               `Pharmacist ${pharmacistData.name} status changed to unavailable`
@@ -1382,6 +1388,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return <UserX className="h-4 w-4 text-gray-600" />;
       case "on_break":
         return <Coffee className="h-4 w-4 text-amber-600" />;
+        case "on_holiday":
+      return <Plane className="h-4 w-4 text-purple-600" />;
       default:
         return <UserCheck className="h-4 w-4 text-blue-600" />;
     }

@@ -1,11 +1,6 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { 
-  UserCheck, 
-  UserX, 
-  Users, 
-  Coffee 
-} from "lucide-react";
+import { UserCheck, UserX, Users, Coffee, Plane } from "lucide-react";
 
 const PharmacistStatusIndicator = ({ status, caseCount }) => {
   const getStatusIcon = () => {
@@ -18,11 +13,13 @@ const PharmacistStatusIndicator = ({ status, caseCount }) => {
         return <UserX className="h-3.5 w-3.5 text-gray-600" />;
       case "on_break":
         return <Coffee className="h-3.5 w-3.5 text-amber-600" />;
+      case "on_holiday":
+        return <Plane className="h-3.5 w-3.5 text-purple-600" />;
       default:
         return <UserCheck className="h-3.5 w-3.5 text-blue-600" />;
     }
   };
-  
+
   const getStatusBadge = () => {
     switch (status) {
       case "available":
@@ -49,6 +46,12 @@ const PharmacistStatusIndicator = ({ status, caseCount }) => {
             On Break
           </Badge>
         );
+      case "on_holiday":
+        return (
+          <Badge className="text-xs bg-purple-100 text-purple-800 border-purple-200">
+            On Holiday
+          </Badge>
+        );
       default:
         return (
           <Badge variant="outline" className="text-xs">
@@ -57,10 +60,9 @@ const PharmacistStatusIndicator = ({ status, caseCount }) => {
         );
     }
   };
-  
   const getCaseLoadBadge = () => {
     if (caseCount === undefined || caseCount === null) return null;
-    
+
     if (caseCount >= 7) {
       return (
         <Badge className="text-xs bg-red-100 text-red-800 border-red-200 ml-1">
@@ -81,7 +83,7 @@ const PharmacistStatusIndicator = ({ status, caseCount }) => {
       );
     }
   };
-  
+
   return (
     <div className="flex items-center space-x-2">
       <div className="flex items-center">
