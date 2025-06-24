@@ -14,6 +14,8 @@ const DoctorMiniStatus = ({ status, lastUpdated }) => {
       case "on_break":
         return "bg-blue-100 text-blue-800";
       case "unavailable":
+      case "on_holiday":
+        return "bg-purple-100 text-purple-800";
       default:
         return "bg-red-100 text-red-800";
     }

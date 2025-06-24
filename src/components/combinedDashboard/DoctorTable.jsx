@@ -39,6 +39,7 @@ const DoctorTableRow = ({ doctor, onViewDetails }) => {
       case "busy": return "Busy";
       case "on_break": return "On Break";
       case "unavailable": return "Unavailable";
+      case "on_holiday": return "On Holiday";
       default: return "Unknown";
     }
   };

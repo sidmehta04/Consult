@@ -11,38 +11,40 @@ const StatusFilter = ({
 
   // Calculate status counts
   const statusCounts = useMemo(() => {
-    const counts = {
-      available: 0,
-      busy: 0,
-      on_break: 0,
-      unavailable: 0,
-      unavailable_with_cases: 0
-    };
+  const counts = {
+    available: 0,
+    busy: 0,
+    on_break: 0,
+    on_holiday: 0,  // Add this line
+    unavailable: 0,
+    unavailable_with_cases: 0
+  };
 
-    doctors.forEach(doctor => {
-      const status = doctor.availabilityStatus;
-      if (status === 'unavailable') {
-        // Check if unavailable doctor/pharmacist has pending cases
-        const hasPendingCases = doctorPharmacist === "doctor" 
-          ? casesData.some(item => 
-              item.assignedDoctors?.primary === doctor.id && item.doctorCompleted === false
-            )
-          : casesData.some(item => 
-              item.pharmacistId === doctor.id && item.status === "doctor_completed"
-            );
-        
-        if (hasPendingCases) {
-          counts.unavailable_with_cases++;
-        } else {
-          counts.unavailable++;
-        }
-      } else if (counts.hasOwnProperty(status)) {
-        counts[status]++;
+  doctors.forEach(doctor => {
+    const status = doctor.availabilityStatus;
+    if (status === 'unavailable') {
+      // Check if unavailable doctor/pharmacist has pending cases
+      const hasPendingCases = doctorPharmacist === "doctor" 
+        ? casesData.some(item => 
+            item.assignedDoctors?.primary === doctor.id && item.doctorCompleted === false
+          )
+        : casesData.some(item => 
+            item.pharmacistId === doctor.id && item.status === "doctor_completed"
+          );
+      
+      if (hasPendingCases) {
+        counts.unavailable_with_cases++;
+      } else {
+        counts.unavailable++;
       }
-    });
+    } else if (counts.hasOwnProperty(status)) {
+      counts[status]++;
+    }
+  });
 
-    return counts;
-  }, [doctors, doctorPharmacist, casesData]);
+  return counts;
+}, [doctors, doctorPharmacist, casesData]);
+
 
   // Filter doctors based on selected statuses
   const filteredData = useMemo(() => {
@@ -93,42 +95,47 @@ const StatusFilter = ({
   };
 
   const selectAll = () => {
-    setSelectedStatuses(['available', 'busy', 'on_break', 'unavailable', 'unavailable_with_cases']);
-  };
+  setSelectedStatuses(['available', 'busy', 'on_break', 'on_holiday', 'unavailable', 'unavailable_with_cases']);
+};
 
   const statusOptions = [
-    { 
-      key: 'available', 
-      label: 'Available', 
-      color: 'bg-green-100 text-green-800 border-green-200',
-      icon: '✓'
-    },
-    { 
-      key: 'busy', 
-      label: 'Busy', 
-      color: 'bg-orange-100 text-orange-800 border-orange-200',
-      icon: '⚡'
-    },
-    { 
-      key: 'on_break', 
-      label: 'On Break', 
-      color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      icon: '⏸️'
-    },
-    { 
-      key: 'unavailable', 
-      label: 'Unavailable', 
-      color: 'bg-gray-100 text-gray-800 border-gray-200',
-      icon: '✕'
-    },
-    { 
-      key: 'unavailable_with_cases', 
-      label: 'Unavailable (with cases)', 
-      color: 'bg-red-100 text-red-800 border-red-200',
-      icon: '⚠️'
-    }
-  ];
-
+  { 
+    key: 'available', 
+    label: 'Available', 
+    color: 'bg-green-100 text-green-800 border-green-200',
+    icon: '✓'
+  },
+  { 
+    key: 'busy', 
+    label: 'Busy', 
+    color: 'bg-orange-100 text-orange-800 border-orange-200',
+    icon: '⚡'
+  },
+  { 
+    key: 'on_break', 
+    label: 'On Break', 
+    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    icon: '⏸️'
+  },
+  { 
+    key: 'on_holiday', 
+    label: 'On Holiday', 
+    color: 'bg-purple-100 text-purple-800 border-purple-200',
+    icon: '🏖️'
+  },
+  { 
+    key: 'unavailable', 
+    label: 'Unavailable', 
+    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    icon: '✕'
+  },
+  { 
+    key: 'unavailable_with_cases', 
+    label: 'Unavailable (with cases)', 
+    color: 'bg-red-100 text-red-800 border-red-200',
+    icon: '⚠️'
+  }
+];
   const role = doctorPharmacist.charAt(0).toUpperCase() + doctorPharmacist.slice(1);
 
   return (

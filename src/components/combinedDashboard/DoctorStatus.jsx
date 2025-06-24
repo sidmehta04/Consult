@@ -46,6 +46,7 @@ const DoctorStatusHistory = ({ availabilityHistory = [] }) => {
       case "busy": return "Busy";
       case "on_break": return "On Break";
       case "unavailable": return "Unavailable";
+      case "on_holiday": return "On Holiday";
       default: return status || "Unknown";
     }
   };
