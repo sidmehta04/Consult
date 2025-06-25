@@ -355,7 +355,7 @@ export const enrichPharmacistsWithShiftData = (pharmacists) => {
         shiftTiming: "9AM-6PM",
         shiftType: "Full-Time",
         hourlyTarget: 6.25,
-        dailyTarget: 50
+        dailyTarget: 60
     }));
 };
 
