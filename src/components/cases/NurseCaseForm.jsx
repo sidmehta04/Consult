@@ -148,7 +148,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     const now = Date.now();
 
     // Debounce rapid reassignments (prevent multiple calls within 2 seconds)
-    if (now - lastReassignmentAttempt < 2000) {
+    if (now - lastReassignmentAttempt < 200) {
       console.log("Debouncing doctor reassignment attempt");
       return;
     }
@@ -935,7 +935,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   };
   // No available doctors at all
   console.log("No available doctors found - hierarchy and fallback exhausted");
-  
+
   useEffect(() => {
     return () => {
       // Cleanup all global listeners on unmount
@@ -1183,7 +1183,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-
     // Validate patients data
     for (let i = 0; i < formData.patients.length; i++) {
       const patient = formData.patients[i];
@@ -1256,125 +1255,169 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Get timestamp for all cases
       const timestamp = serverTimestamp();
-
-      // Create a batch for writing multiple cases
-      const batch = writeBatch(firestore);
-
-      // Create separate case for each patient
+      const batchCode = `batch_${Date.now()}`;
       const createdCaseIds = [];
 
-      const batchCode = `batch_${Date.now()}`;
-
-      console.log(formData.clinicCode);
+      // REPLACE THE BATCH LOGIC WITH TRANSACTION FOR EACH CASE
       for (let i = 0; i < formData.patients.length; i++) {
         const patient = formData.patients[i];
-
-        // Create new case ID with timestamp and patient index
         const caseId = `case_${Date.now()}_${i}`;
         createdCaseIds.push(caseId);
-        // Create case document
-        const caseRef = doc(firestore, "cases", caseId);
 
-        // Create case data object
-        const newCase = {
-          id: caseId,
-          patientName: patient.patientName,
-          emrNumber: patient.emrNumber,
-          chiefComplaint: patient.chiefComplaint,
-          consultationType: formData.consultationType,
-          contactInfo: formData.contactInfo,
-          notes: formData.notes,
-          status: "pending",
-          createdAt: timestamp,
-          createdBy: currentUser.uid,
-          createdByName: currentUser.displayName || nurseData.name,
-          clinicId: currentUser.uid,
-          clinicName: nurseData.name,
-          clinicCode: nurseData.clinicCode,
-          manualClinicCode: formData.clinicCode || "N/A",
-          partnerName: nurseData.partnerName,
-          assignedDoctors: {
-            primary: assignedDoctor.id,
-            primaryName: assignedDoctor.name,
-            primaryType: assignedDoctor.type,
-            primaryStatus: assignedDoctor.availabilityStatus,
-          },
-          pharmacistId: assignedPharmacist.id,
-          pharmacistName: assignedPharmacist.name,
-          pharmacistType: assignedPharmacist.type || "primary",
-          pharmacistStatus: assignedPharmacist.availabilityStatus,
-          doctorCompleted: false,
-          pharmacistCompleted: false,
-          doctorCompletedAt: null,
-          pharmacistCompletedAt: null,
-          isIncomplete: false,
-          inPharmacistPendingReview: false,
-          // Track that this case is part of a group (for reference)
-          batchCreated: true,
-          batchTimestamp: timestamp,
-          batchSize: formData.patients.length,
-          batchIndex: i,
-          batchCode: batchCode,
-        };
+        // Use transaction for each case to ensure atomic validation + creation
+        await runTransaction(firestore, async (transaction) => {
+          // 1. Re-check doctor status right before assignment
+          const doctorRef = doc(firestore, "users", assignedDoctor.id);
+          const doctorSnap = await transaction.get(doctorRef);
 
-        // Add to batch
-        batch.set(caseRef, newCase);
-      }
+          if (!doctorSnap.exists()) {
+            throw new Error("Doctor not found");
+          }
 
-      // Update doctor status if they'll be at capacity
-      if (assignedDoctor) {
-        const doctorRef = doc(firestore, "users", assignedDoctor.id);
-        const doctorSnapshot = await getDoc(doctorRef);
-
-        if (doctorSnapshot.exists()) {
-          const doctorData = doctorSnapshot.data();
-          const currentCaseCount = doctorData.caseCount || 0;
-          const newCaseCount = currentCaseCount + formData.patients.length;
-
-          //deprecating busy
-          ///*
+          const currentDoctorStatus = doctorSnap.data().availabilityStatus;
           if (
-            newCaseCount >= 7 &&
-            doctorData.availabilityStatus === "available"
+            currentDoctorStatus === "on_break" ||
+            currentDoctorStatus === "on_holiday" ||
+            currentDoctorStatus === "unavailable"
           ) {
-            batch.update(doctorRef, {
+            throw new Error(
+              `Doctor became unavailable during case creation (status: ${currentDoctorStatus})`
+            );
+          }
+
+          // 2. Re-check pharmacist status right before assignment
+          const pharmacistRef = doc(firestore, "users", assignedPharmacist.id);
+          const pharmacistSnap = await transaction.get(pharmacistRef);
+
+          if (!pharmacistSnap.exists()) {
+            throw new Error("Pharmacist not found");
+          }
+
+          const currentPharmacistStatus =
+            pharmacistSnap.data().availabilityStatus;
+          if (
+            currentPharmacistStatus === "on_break" ||
+            currentPharmacistStatus === "on_holiday" ||
+            currentPharmacistStatus === "unavailable"
+          ) {
+            throw new Error(
+              `Pharmacist became unavailable during case creation (status: ${currentPharmacistStatus})`
+            );
+          }
+
+          // 3. Check case counts to ensure they're not at capacity
+          const doctorCasesQuery = query(
+            collection(firestore, "cases"),
+            where("assignedDoctors.primary", "==", assignedDoctor.id),
+            where("doctorCompleted", "==", false),
+            where("isIncomplete", "!=", true)
+          );
+
+          const pharmacistCasesQuery = query(
+            collection(firestore, "cases"),
+            where("pharmacistId", "==", assignedPharmacist.id),
+            where("pharmacistCompleted", "==", false),
+            where("isIncomplete", "!=", true)
+          );
+
+          const [doctorCasesSnap, pharmacistCasesSnap] = await Promise.all([
+            getDocs(doctorCasesQuery),
+            getDocs(pharmacistCasesQuery),
+          ]);
+
+          const doctorCurrentCases = doctorCasesSnap.docs.length;
+          const pharmacistCurrentCases = pharmacistCasesSnap.docs.length;
+
+          // Account for cases being created in this batch
+          const doctorFinalCaseCount = doctorCurrentCases + (i + 1); // +1 for current case
+          const pharmacistFinalCaseCount = pharmacistCurrentCases + (i + 1);
+
+          if (doctorFinalCaseCount > 7) {
+            throw new Error(
+              `Doctor would exceed capacity (${doctorFinalCaseCount}/7 cases)`
+            );
+          }
+
+          if (pharmacistFinalCaseCount > 7) {
+            throw new Error(
+              `Pharmacist would exceed capacity (${pharmacistFinalCaseCount}/7 cases)`
+            );
+          }
+
+          // 4. Proceed with case creation only if all checks pass
+          const caseRef = doc(firestore, "cases", caseId);
+          const newCase = {
+            id: caseId,
+            patientName: patient.patientName,
+            emrNumber: patient.emrNumber,
+            chiefComplaint: patient.chiefComplaint,
+            consultationType: formData.consultationType,
+            contactInfo: formData.contactInfo,
+            notes: formData.notes,
+            status: "pending",
+            createdAt: timestamp,
+            createdBy: currentUser.uid,
+            createdByName: currentUser.displayName || nurseData.name,
+            clinicId: currentUser.uid,
+            clinicName: nurseData.name,
+            clinicCode: nurseData.clinicCode,
+            manualClinicCode: formData.clinicCode || "N/A",
+            partnerName: nurseData.partnerName,
+            assignedDoctors: {
+              primary: assignedDoctor.id,
+              primaryName: assignedDoctor.name,
+              primaryType: assignedDoctor.type,
+              primaryStatus: currentDoctorStatus, // Use verified status
+            },
+            pharmacistId: assignedPharmacist.id,
+            pharmacistName: assignedPharmacist.name,
+            pharmacistType: assignedPharmacist.type || "primary",
+            pharmacistStatus: currentPharmacistStatus, // Use verified status
+            doctorCompleted: false,
+            pharmacistCompleted: false,
+            doctorCompletedAt: null,
+            pharmacistCompletedAt: null,
+            isIncomplete: false,
+            inPharmacistPendingReview: false,
+            batchCreated: true,
+            batchTimestamp: timestamp,
+            batchSize: formData.patients.length,
+            batchIndex: i,
+            batchCode: batchCode,
+          };
+
+          // Create the case
+          transaction.set(caseRef, newCase);
+
+          // 5. Update professional status if they'll be at capacity (optional - can be removed if you deprecate "busy")
+          if (
+            doctorFinalCaseCount >= 7 &&
+            currentDoctorStatus === "available"
+          ) {
+            transaction.update(doctorRef, {
               availabilityStatus: "busy",
               lastStatusUpdate: timestamp,
               autoStatusChange: true,
             });
           }
-          /**/
-        }
-      }
 
-      // Update pharmacist status if they'll be at capacity
-      if (assignedPharmacist) {
-        const pharmRef = doc(firestore, "users", assignedPharmacist.id);
-        const pharmSnapshot = await getDoc(pharmRef);
-
-        if (pharmSnapshot.exists()) {
-          const pharmacistData = pharmSnapshot.data();
-          const currentCaseCount = pharmacistData.caseCount || 0;
-          const newCaseCount = currentCaseCount + formData.patients.length;
-
-          //deprecating busy
-          ///*
           if (
-            newCaseCount >= 7 &&
-            pharmacistData.availabilityStatus === "available"
+            pharmacistFinalCaseCount >= 7 &&
+            currentPharmacistStatus === "available"
           ) {
-            batch.update(pharmRef, {
+            transaction.update(pharmacistRef, {
               availabilityStatus: "busy",
               lastStatusUpdate: timestamp,
               autoStatusChange: true,
             });
           }
-          /**/
+        });
+
+        // Small delay between cases to prevent rapid-fire assignments
+        if (i < formData.patients.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
-
-      // Commit the batch
-      await batch.commit();
 
       // Reset form after successful creation
       setFormData({
@@ -1388,12 +1431,26 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       onCreateCase({ id: createdCaseIds[0], allIds: createdCaseIds });
     } catch (err) {
       console.error("Error creating cases:", err);
-      setError(err.message || "Failed to create cases");
+
+      // Handle specific error cases
+      if (
+        err.message.includes("became unavailable") ||
+        err.message.includes("exceed capacity")
+      ) {
+        setError(
+          `Assignment failed: ${err.message} Please refresh and try again.`
+        );
+        // Trigger a refresh of assignments
+        if (nurseHierarchyData) {
+          handleRefreshAssignments();
+        }
+      } else {
+        setError(err.message || "Failed to create cases");
+      }
     } finally {
       setLoading(false);
     }
   };
-
   // Function to get status icon for a professional
   const getStatusIcon = (status) => {
     switch (status) {
