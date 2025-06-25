@@ -9,7 +9,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, ChevronLeft, ChevronRight, Crown, Users, Building, Calendar, Clock, MessageCircle, BarChart3 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -17,25 +17,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import CommentBox from "./CommentBox";
+import FeedbackAnalytics from "./FeedBackAnalysis";
 import { categories, subcategories } from "./mappings";
+
+const statusColors = {
+  "open": "bg-red-100 text-red-800 border-red-200",
+  "in-progress": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "resolved": "bg-green-100 text-green-800 border-green-200",
+  "closed": "bg-gray-100 text-gray-800 border-gray-200",
+};
 
 const FeedbackTableQA = ({ currentUser }) => {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSuperQA, setIsSuperQA] = useState(false);
+  const [activeTab, setActiveTab] = useState("tickets");
   const ticketsPerPage = 15;
 
-  // Check if current user is super QA
+  // Check if current user is super QA or has analytics access
   useEffect(() => {
-    if (currentUser.email === "Akash.das@m-insure.in") {
+    if (currentUser.email === "Akash.das@m-insure.in" || currentUser.role === "superAdmin") {
       setIsSuperQA(true);
     }
   }, [currentUser]);
@@ -57,20 +66,15 @@ const FeedbackTableQA = ({ currentUser }) => {
 
   // Fetch tickets for the current user
   useEffect(() => {
-    console.log("QA Dashboard - Current user email:", currentUser.email)
     if (currentUser) {
       let ticketsQuery;
       
-      // Special case for the super QA leader
-      if (currentUser.email === "Akash.das@m-insure.in") {
-        // Fetch ALL tickets for the super QA leader
+      if (currentUser.email === "Akash.das@m-insure.in" || currentUser.role === "superAdmin") {
         ticketsQuery = query(
           collection(firestore, "tickets"),
           orderBy("createdAt", "desc")
         );
       } else {
-        // For regular QAs, we need to fetch all tickets and filter client-side
-        // because Firestore doesn't support complex array queries efficiently
         ticketsQuery = query(
           collection(firestore, "tickets"),
           orderBy("createdAt", "desc")
@@ -78,35 +82,22 @@ const FeedbackTableQA = ({ currentUser }) => {
       }
 
       const unsubscribe = onSnapshot(ticketsQuery, (snapshot) => {
-        console.log("QA Dashboard - Total tickets from Firebase:", snapshot.docs.length);
         let fetchedTickets = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // Filter tickets for regular QA users (not super QA)
-        if (currentUser.email !== "Akash.das@m-insure.in") {
-          console.log("QA Dashboard - Filtering tickets for regular QA:", currentUser.email);
+        // Filter tickets for regular QA users
+        if (currentUser.email !== "Akash.das@m-insure.in" && currentUser.role !== "superAdmin") {
           fetchedTickets = fetchedTickets.filter(ticket => {
-            // Check if QA is assigned in the new qaEmails array OR old qaEmail field
             const isInQaEmails = ticket.qaEmails && Array.isArray(ticket.qaEmails) && 
                                 ticket.qaEmails.includes(currentUser.email);
             const isOldQaEmail = ticket.qaEmail === currentUser.email;
-            
-            console.log(`Ticket ${ticket.id}:`, {
-              qaEmails: ticket.qaEmails,
-              qaEmail: ticket.qaEmail,
-              isInQaEmails,
-              isOldQaEmail,
-              willShow: isInQaEmails || isOldQaEmail
-            });
-            
             return isInQaEmails || isOldQaEmail;
           });
-          console.log("QA Dashboard - Filtered tickets count:", fetchedTickets.length);
         }
 
-        //set closed tickets last
+        // Sort: closed tickets last
         fetchedTickets.sort((a, b) => {
           if (a.status === "closed" && b.status !== "closed") return 1;
           if (a.status !== "closed" && b.status === "closed") return -1;
@@ -142,7 +133,6 @@ const FeedbackTableQA = ({ currentUser }) => {
     setCurrentPage(pageNumber);
   };
 
-  // Generate page numbers for pagination
   const getPageNumbers = () => {
     const pageNumbers = [];
     const maxVisiblePages = 5;
@@ -178,178 +168,299 @@ const FeedbackTableQA = ({ currentUser }) => {
     return pageNumbers;
   };
 
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "N/A";
+    return new Date(timestamp.toDate()).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Calculate ticket statistics
+  const ticketStats = {
+    total: tickets.length,
+    open: tickets.filter(t => t.status === 'open').length,
+    inProgress: tickets.filter(t => t.status === 'in-progress').length,
+    resolved: tickets.filter(t => t.status === 'resolved').length,
+    closed: tickets.filter(t => t.status === 'closed').length,
+  };
+
   return (
-    <div className="p-6 bg-white rounded-lg shadow-md">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-4">Feedback Portal</h1>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-700">
-          {isSuperQA ? "All Tickets" : "Tickets Assigned to You"}
-        </h2>
-        <div className="text-sm text-gray-600">
-          Showing {Math.min(indexOfFirstTicket + 1, tickets.length)}-{Math.min(indexOfLastTicket, tickets.length)} of {tickets.length} tickets
-        </div>
-      </div>
-      
-      {tickets.length === 0 ? (
-        <p className="text-gray-500">No tickets found. Submit a new ticket to get started.</p>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Clinic Name</TableHead>
-                  <TableHead>Issue Category</TableHead>
-                  {isSuperQA && <TableHead>QA Assigned</TableHead>}
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead>Last Updated At</TableHead>
-                  <TableHead>Last Comment</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentTickets.map((ticket) => {
-                  const lastComment = ticket.comments[ticket.comments.length - 1];
-                  let lastCommentStr = lastComment.side === 'nurse' ? 'Nurse: ' : 'QA: '
-                  lastCommentStr += lastComment.comment
-                  lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr
-                  
-                  // Safe category and subcategory lookup with fallbacks
-                  const categoryItem = categories.find((item) => item.value === ticket.issue);
-                  const issue = categoryItem ? categoryItem.label.split(' | ')[0] : ticket.issue;
-                  
-                  const subcategoryItem = subcategories[ticket.issue]?.find((item) => item.value === ticket.subIssue);
-                  const subissue = subcategoryItem ? subcategoryItem.label.split(' | ')[0] : ticket.subIssue;
-                  
-                  return (
-                    <TableRow key={ticket.id}>
-                      <TableCell>{ticket.name} | {ticket.clinicCode}</TableCell>
-                      <TableCell>{issue + ' | ' + subissue}</TableCell>
-                      {isSuperQA && (
-                        <TableCell>
-                          <div className="text-sm">
-                            {ticket.qaNames && ticket.qaNames.length > 1 ? (
-                              <div>
-                                <div className="font-medium">{ticket.qaNames.length} QAs Assigned</div>
-                                <div className="text-gray-500 text-xs">
-                                  {ticket.qaNames.join(', ')}
-                                </div>
-                              </div>
-                            ) : (
-                              <div>
-                                <div className="font-medium">{ticket.qaName || ticket.qaNames?.[0] || 'N/A'}</div>
-                                <div className="text-gray-500">{ticket.qaEmail || ticket.qaEmails?.[0] || 'N/A'}</div>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <Select
-                          value={ticket.status}
-                          onValueChange={(newStatus) => handleStatusChange(ticket.id, newStatus)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="open">Open</SelectItem>
-                            <SelectItem value="in-progress">In Progress</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
-                            <SelectItem value="closed">Closed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>{new Date(ticket.createdAt.toDate()).toLocaleString()}</TableCell>
-                      <TableCell>
-                        {ticket.lastUpdatedAt ? (
-                          new Date(ticket.lastUpdatedAt.toDate()).toLocaleString()
-                        ) : (
-                          "N/A"
-                        )}
-                      </TableCell>
-                      <TableCell>{lastCommentStr}</TableCell>
-                      <TableCell>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setSelectedTicket(ticket)}
-                          >
-                            <Plus className="w-4 h-4"/>
-                          </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrevPage}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous
-                </Button>
-                
-                <div className="flex items-center space-x-1">
-                  {getPageNumbers().map((pageNumber, index) => (
-                    <React.Fragment key={index}>
-                      {pageNumber === '...' ? (
-                        <span className="px-3 py-1 text-gray-500">...</span>
-                      ) : (
-                        <Button
-                          variant={currentPage === pageNumber ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handlePageChange(pageNumber)}
-                          className="min-w-[40px]"
-                        >
-                          {pageNumber}
-                        </Button>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextPage}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-              
-              <div className="text-sm text-gray-600">
-                Page {currentPage} of {totalPages}
+    <div className="max-w-12xl mx-auto p-6">
+      <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
+        <CardHeader className="pb-6 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {isSuperQA && <Crown className="w-6 h-6 text-yellow-500" />}
+              <div>
+                <CardTitle className="text-2xl font-bold text-gray-800">
+                  {isSuperQA ? "Super QA Dashboard" : "QA Dashboard"}
+                </CardTitle>
+                <p className="text-gray-600 mt-1">
+                  {isSuperQA ? "Manage all tickets and view analytics" : "Manage your assigned tickets"}
+                </p>
               </div>
             </div>
-          )}
-        </>
-      )}
+            
+            {/* Ticket Statistics */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 text-center">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <div className="text-lg font-bold text-blue-600">{ticketStats.total}</div>
+                <div className="text-xs text-blue-700">Total</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3">
+                <div className="text-lg font-bold text-red-600">{ticketStats.open}</div>
+                <div className="text-xs text-red-700">Open</div>
+              </div>
+              <div className="bg-yellow-50 rounded-lg p-3">
+                <div className="text-lg font-bold text-yellow-600">{ticketStats.inProgress}</div>
+                <div className="text-xs text-yellow-700">In Progress</div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3">
+                <div className="text-lg font-bold text-green-600">{ticketStats.resolved}</div>
+                <div className="text-xs text-green-700">Resolved</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-lg font-bold text-gray-600">{ticketStats.closed}</div>
+                <div className="text-xs text-gray-700">Closed</div>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="p-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="tickets" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Tickets Management
+              </TabsTrigger>
+              {isSuperQA && (
+                <TabsTrigger value="analytics" className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4" />
+                  Analytics Dashboard
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="tickets" className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-gray-700">
+                  {isSuperQA ? "All Tickets" : "Tickets Assigned to You"}
+                </h2>
+                <div className="text-sm text-gray-600">
+                  Showing {Math.min(indexOfFirstTicket + 1, tickets.length)}-{Math.min(indexOfLastTicket, tickets.length)} of {tickets.length} tickets
+                </div>
+              </div>
+
+              {tickets.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No tickets assigned</h3>
+                  <p className="text-gray-500">Check back later for new support requests.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-hidden rounded-lg border border-gray-200">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold text-gray-700">Clinic</TableHead>
+                          <TableHead className="font-semibold text-gray-700">Issue</TableHead>
+                          {isSuperQA && <TableHead className="font-semibold text-gray-700">QA Assigned</TableHead>}
+                          <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                          <TableHead className="font-semibold text-gray-700">Created</TableHead>
+                          <TableHead className="font-semibold text-gray-700">Updated</TableHead>
+                          <TableHead className="font-semibold text-gray-700">Recent Activity</TableHead>
+                          <TableHead className="font-semibold text-gray-700 text-center">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {currentTickets.map((ticket) => {
+                          const lastComment = ticket.comments[ticket.comments.length - 1];
+                          let lastCommentStr = lastComment.side === 'nurse' ? 'Nurse: ' : 'QA: ';
+                          lastCommentStr += lastComment.comment;
+                          lastCommentStr = lastCommentStr.length > 50 ? lastCommentStr.slice(0, 50) + '...' : lastCommentStr;
+                          
+                          const categoryItem = categories.find((item) => item.value === ticket.issue);
+                          const issue = categoryItem ? categoryItem.label.split(' | ')[0] : ticket.issue;
+                          
+                          const subcategoryItem = subcategories[ticket.issue]?.find((item) => item.value === ticket.subIssue);
+                          const subissue = subcategoryItem ? subcategoryItem.label.split(' | ')[0] : ticket.subIssue;
+                          
+                          return (
+                            <TableRow key={ticket.id} className="hover:bg-gray-50 transition-colors">
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Building className="w-4 h-4 text-gray-400" />
+                                  <div>
+                                    <div className="font-medium text-sm">{ticket.name}</div>
+                                    <div className="text-xs text-gray-500">{ticket.clinicCode}</div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-xs">
+                                <div className="font-medium text-sm truncate">{issue}</div>
+                                <div className="text-xs text-gray-500 truncate">{subissue}</div>
+                              </TableCell>
+                              {isSuperQA && (
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-gray-400" />
+                                    <div>
+                                      {ticket.qaNames && ticket.qaNames.length > 1 ? (
+                                        <div>
+                                          <div className="font-medium text-sm">{ticket.qaNames.length} QAs</div>
+                                          <div className="text-xs text-gray-500">
+                                            {ticket.qaNames.slice(0, 2).join(', ')}
+                                            {ticket.qaNames.length > 2 && '...'}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <div className="font-medium text-sm">{ticket.qaName || ticket.qaNames?.[0] || 'N/A'}</div>
+                                          <div className="text-xs text-gray-500">{ticket.qaEmail || ticket.qaEmails?.[0] || 'N/A'}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                <Select
+                                  value={ticket.status}
+                                  onValueChange={(newStatus) => handleStatusChange(ticket.id, newStatus)}
+                                >
+                                  <SelectTrigger className="w-36">
+                                    <SelectValue>
+                                      <Badge className={`${statusColors[ticket.status]} font-medium`}>
+                                        {ticket.status?.toUpperCase()}
+                                      </Badge>
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="open">Open</SelectItem>
+                                    <SelectItem value="in-progress">In Progress</SelectItem>
+                                    <SelectItem value="resolved">Resolved</SelectItem>
+                                    <SelectItem value="closed">Closed</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                  <Calendar className="w-4 h-4" />
+                                  {formatDate(ticket.createdAt)}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                  <Clock className="w-4 h-4" />
+                                  {formatDate(ticket.lastUpdatedAt)}
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-xs">
+                                <div className="flex items-start gap-2">
+                                  <MessageCircle className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                  <div className="text-sm text-gray-600 truncate">{lastCommentStr}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedTicket(ticket)}
+                                  className="hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-6">
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePrevPage}
+                          disabled={currentPage === 1}
+                          className="hover:bg-gray-50"
+                        >
+                          <ChevronLeft className="w-4 h-4 mr-1" />
+                          Previous
+                        </Button>
+                        
+                        <div className="flex items-center space-x-1">
+                          {getPageNumbers().map((pageNumber, index) => (
+                            <React.Fragment key={index}>
+                              {pageNumber === '...' ? (
+                                <span className="px-3 py-1 text-gray-500">...</span>
+                              ) : (
+                                <Button
+                                  variant={currentPage === pageNumber ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handlePageChange(pageNumber)}
+                                  className="min-w-[40px] hover:bg-gray-50"
+                                >
+                                  {pageNumber}
+                                </Button>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleNextPage}
+                          disabled={currentPage === totalPages}
+                          className="hover:bg-gray-50"
+                        >
+                          Next
+                          <ChevronRight className="w-4 h-4 ml-1" />
+                        </Button>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600">
+                        Page {currentPage} of {totalPages}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+
+            {isSuperQA && (
+              <TabsContent value="analytics" className="space-y-6">
+                <FeedbackAnalytics currentUser={currentUser} />
+              </TabsContent>
+            )}
+          </Tabs>
+        </CardContent>
+      </Card>
       
       {selectedTicket && (
         <Dialog 
-          className = "p-0"
           open={true} 
-          onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}>
-          <DialogContent className="p-0">
+          onOpenChange={(open) => setSelectedTicket(open ? selectedTicket : null)}
+        >
+          <DialogContent className="p-0 max-w-4xl max-h-[90vh] overflow-hidden">
             <CommentBox ticketItem={selectedTicket} userType="qa" />
           </DialogContent>
         </Dialog>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default FeedbackTableQA
+export default FeedbackTableQA;

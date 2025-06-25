@@ -8,7 +8,7 @@ import {
   useLocation
 } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, query, collection, where, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, query, collection, where, onSnapshot, or } from "firebase/firestore";
 import { firestore } from "./firebase";
  
 import { Badge } from "@/components/ui/badge";
@@ -318,7 +318,7 @@ function AppContent() {
       });
     }
 
-    if (isQA) {
+    if (isQA || userRole === "superAdmin") {
       items.push({
         name: "Tickets Dashboard",
         href: "/tickets",
@@ -484,7 +484,8 @@ function AppContent() {
                 element={
                   <ProtectedRoute
                     allowedRoles={[
-                      "nurse"
+                      "nurse",
+                      "superAdmin",
                     ]}
                   >
                     <FeedbackPortal currentUser = {{...currentUser, role: userRole, ...userData}}/>
@@ -497,7 +498,8 @@ function AppContent() {
                 element={
                   <ProtectedRoute
                     allowedRoles={[
-                      "teamLeader"
+                      "teamLeader",
+                      "superAdmin",
                     ]}
                   >
                     <FeedbackTableQA currentUser = {{...currentUser, role: userRole, ...userData}}/>
