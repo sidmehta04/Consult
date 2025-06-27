@@ -1,6 +1,5 @@
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
-
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -41,7 +40,6 @@ import {
   runTransaction,
   writeBatch,
   onSnapshot, // Added for real-time monitoring
-  
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
 import DoctorStatusIndicator from "./DocStatus";
@@ -58,6 +56,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   const [lastReassignmentAttempt, setLastReassignmentAttempt] = useState(0);
   const [doctorCaseCounts, setDoctorCaseCounts] = useState(new Map());
   const [pharmacistCaseCounts, setPharmacistCaseCounts] = useState(new Map());
+  const [assignmentLock, setAssignmentLock] = useState(false);
 
   const addPatient = () => {
     setFormData((prev) => ({
@@ -121,9 +120,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
     const isUnavailable =
       doctor.availabilityStatus === "unavailable" ||
-      doctor.availabilityStatus === "on_holiday" || // Add this line
+      doctor.availabilityStatus === "on_holiday" ||
       doctor.availabilityStatus === "on_break";
-    const isAtCapacity = realTimeCaseCount >= 7;
+
+    // CRITICAL FIX: Use 6 instead of 7 to leave room for assignment
+    const isAtCapacity = realTimeCaseCount >= 6;
 
     return !isUnavailable && !isAtCapacity;
   };
@@ -139,34 +140,42 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     const isUnavailable =
       pharmacist.availabilityStatus === "unavailable" ||
       pharmacist.availabilityStatus === "on_break" ||
-      pharmacist.availabilityStatus === "on_holiday"; // Add this line
-    const isAtCapacity = realTimeCaseCount >= 7;
+      pharmacist.availabilityStatus === "on_holiday";
+
+    // CRITICAL FIX: Use 6 instead of 7 to leave room for assignment
+    const isAtCapacity = realTimeCaseCount >= 6;
 
     return !isUnavailable && !isAtCapacity;
   };
 
-  // 6. REPLACE the existing handleDoctorUnavailable function with debounced version
   const handleDoctorUnavailable = async () => {
     const now = Date.now();
 
-    // Debounce rapid reassignments (prevent multiple calls within 2 seconds)
-    if (now - lastReassignmentAttempt < 2000) {
+    // Prevent multiple simultaneous reassignment attempts
+    if (assignmentLock || isReassigning) {
+      console.log("Assignment locked, skipping doctor reassignment");
+      return;
+    }
+
+    // Debounce rapid reassignments (prevent multiple calls within 3 seconds)
+    if (now - lastReassignmentAttempt < 3000) {
       console.log("Debouncing doctor reassignment attempt");
       return;
     }
 
-    if (isReassigning) {
-      console.log("Already reassigning doctor, skipping");
-      return;
-    }
-
+    setAssignmentLock(true);
     setLastReassignmentAttempt(now);
     setIsReassigning(true);
+
     console.log(
       "Doctor became unavailable/at capacity, attempting reassignment..."
     );
 
     try {
+      // Clear current assignment first to prevent conflicts
+      const currentDoctorId = assignedDoctor?.id;
+      setAssignedDoctor(null);
+
       // Get latest case counts for all doctors
       const updatedDoctorsData = await Promise.all(
         doctorsData.map(async (doctor) => {
@@ -187,8 +196,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // Update doctors data with latest counts
       setDoctorsData(updatedDoctorsData);
 
-      // Find new available doctor
-      await findAvailableDoctorFast(nurseHierarchyData);
+      // Find new available doctor (excluding current one)
+      await findAvailableDoctorFast(nurseHierarchyData, currentDoctorId);
 
       if (!assignedDoctor) {
         setError(
@@ -204,31 +213,37 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setError("Failed to reassign doctor. Please refresh and try again.");
     } finally {
       setIsReassigning(false);
+      setAssignmentLock(false);
     }
   };
-
-  // 7. REPLACE the existing handlePharmacistUnavailable function
   const handlePharmacistUnavailable = async () => {
     const now = Date.now();
 
+    // Prevent multiple simultaneous reassignment attempts
+    if (assignmentLock || isReassigning) {
+      console.log("Assignment locked, skipping pharmacist reassignment");
+      return;
+    }
+
     // Debounce rapid reassignments
-    if (now - lastReassignmentAttempt < 2000) {
+    if (now - lastReassignmentAttempt < 3000) {
       console.log("Debouncing pharmacist reassignment attempt");
       return;
     }
 
-    if (isReassigning) {
-      console.log("Already reassigning pharmacist, skipping");
-      return;
-    }
-
+    setAssignmentLock(true);
     setLastReassignmentAttempt(now);
     setIsReassigning(true);
+
     console.log(
       "Pharmacist became unavailable/at capacity, attempting reassignment..."
     );
 
     try {
+      // Clear current assignment first to prevent conflicts
+      const currentPharmacistId = assignedPharmacist?.id;
+      setAssignedPharmacist(null);
+
       // Get latest case counts for all pharmacists
       const updatedPharmacistsData = await Promise.all(
         pharmacistsData.map(async (pharmacist) => {
@@ -249,7 +264,10 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // Update pharmacists data with latest counts
       setPharmacistsData(updatedPharmacistsData);
 
-      await findAvailablePharmacistFast(nurseHierarchyData);
+      await findAvailablePharmacistFast(
+        nurseHierarchyData,
+        currentPharmacistId
+      );
 
       if (!assignedPharmacist) {
         setError(
@@ -265,9 +283,10 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setError("Failed to reassign pharmacist. Please refresh and try again.");
     } finally {
       setIsReassigning(false);
+      setAssignmentLock(false);
     }
   };
-
+  // 6. UPDATE the case count monitoring to use higher threshold before triggering reassignment
   const setupDoctorStatusListener = (doctorId) => {
     if (doctorStatusListener) {
       doctorStatusListener();
@@ -288,11 +307,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             availabilityStatus: doctorData.availabilityStatus || "available",
           }));
 
-          // Check if doctor became unavailable (status change)
+          // Check if doctor became unavailable (status change only, not capacity)
           if (
             doctorData.availabilityStatus === "unavailable" ||
             doctorData.availabilityStatus === "on_break" ||
-            doctorData.availabilityStatus === "on_holiday" // Add this line
+            doctorData.availabilityStatus === "on_holiday"
           ) {
             console.log(
               `Doctor ${doctorData.name} status changed to unavailable`
@@ -343,10 +362,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           caseCount: currentCaseCount,
         }));
 
-        // Check if doctor reached capacity
-        if (currentCaseCount >= 7) {
+        // ONLY trigger reassignment if doctor is OVER capacity (not at capacity)
+        // This prevents reassignment during normal case creation
+        if (currentCaseCount > 7) {
           console.log(
-            `Doctor ${doctorId} reached capacity (${currentCaseCount}/7)`
+            `Doctor ${doctorId} exceeded capacity (${currentCaseCount}/7)`
           );
           handleDoctorUnavailable();
         }
@@ -369,7 +389,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     setDoctorStatusListener(() => combinedUnsubscribe);
   };
 
-  // 3. REPLACE the existing setupPharmacistStatusListener function
+  // 7. UPDATE the pharmacist listener similarly
   const setupPharmacistStatusListener = (pharmacistId) => {
     if (pharmacistStatusListener) {
       pharmacistStatusListener();
@@ -391,11 +411,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               pharmacistData.availabilityStatus || "available",
           }));
 
-          // Check if pharmacist became unavailable (status change)
+          // Check if pharmacist became unavailable (status change only, not capacity)
           if (
             pharmacistData.availabilityStatus === "unavailable" ||
             pharmacistData.availabilityStatus === "on_break" ||
-            pharmacistData.availabilityStatus === "on_holiday" // Add this line
+            pharmacistData.availabilityStatus === "on_holiday"
           ) {
             console.log(
               `Pharmacist ${pharmacistData.name} status changed to unavailable`
@@ -446,10 +466,10 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           caseCount: currentCaseCount,
         }));
 
-        // Check if pharmacist reached capacity
-        if (currentCaseCount >= 7) {
+        // ONLY trigger reassignment if pharmacist is OVER capacity
+        if (currentCaseCount > 7) {
           console.log(
-            `Pharmacist ${pharmacistId} reached capacity (${currentCaseCount}/7)`
+            `Pharmacist ${pharmacistId} exceeded capacity (${currentCaseCount}/7)`
           );
           handlePharmacistUnavailable();
         }
@@ -739,7 +759,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
   // Modified function to support unlimited hierarchy depth
-  const findAvailableDoctorFast = async (userData) => {
+  const findAvailableDoctorFast = async (userData,excludeDoctorId=null) => {
     setDoctorSearchAttempted(true);
     try {
       // IMPROVED: Support for extended hierarchy (beyond tertiary)
@@ -875,7 +895,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       // Function to assign a doctor
       const assignDoctor = (id, hierarchyLevel) => {
         const doctor = doctorsMap[id];
-        if (!doctor) return false;
+        if (!doctor || id === excludeDoctorId) return false; // Skip excluded doctor
 
         // Create a user-friendly level name
         let typeName = getHierarchyLevelName(hierarchyLevel + 1);
@@ -897,14 +917,18 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           return assignDoctor(doctorId, i);
         }
       }
+      const allHierarchyDoctorsUnavailable = doctorHierarchy.every(
+        (doctorId) => {
+          const doctor = doctorsMap[doctorId];
+          return !doctor || !isDoctorAvailable(doctor);
+        }
+      );
 
-      if (assignToAnyDoctor) {
-        console.log("Hierarchy exhausted, trying fallback doctors...");
-
-        // Get all available doctors excluding those already in hierarchy
+      // If assignToAnyDoctor is enabled, try any other doctor
+      if (allHierarchyDoctorsUnavailable && assignToAnyDoctor) {
         const availableFallbackDoctors = Object.values(doctorsMap)
           .filter((doctor) => {
-            // Skip hierarchy doctors (already checked above)
+            // Skip hierarchy doctors (already checked)
             if (doctorHierarchy.includes(doctor.id)) {
               return false;
             }
@@ -912,15 +936,11 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             // Check availability
             return isDoctorAvailable(doctor);
           })
-          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0)); // Sort by case count ascending
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
 
         if (availableFallbackDoctors.length > 0) {
           const bestDoctor = availableFallbackDoctors[0];
-          console.log(
-            `No hierarchy doctors available. Assigning to fallback doctor ${
-              bestDoctor.name
-            } (${bestDoctor.caseCount || 0} cases)`
-          );
+          console.log(`Assigning to fallback doctor ${bestDoctor.name}`);
           return assignDoctor(bestDoctor.id, doctorHierarchy.length);
         }
       }
@@ -935,9 +955,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       setError("Failed to find available doctor. Please try again.");
     }
   };
-  // No available doctors at all
-  console.log("No available doctors found - hierarchy and fallback exhausted");
-  
   useEffect(() => {
     return () => {
       // Cleanup all global listeners on unmount
@@ -1105,7 +1122,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return true;
       };
 
-      // IMPROVED: Try each pharmacist in the hierarchy order
       for (let i = 0; i < pharmacistHierarchy.length; i++) {
         const pharmacistId = pharmacistHierarchy[i];
         const pharmacist = pharmacistsMap[pharmacistId];
@@ -1114,15 +1130,19 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       }
 
-      if (assignToAnyPharmacist) {
-        console.log(
-          "Pharmacist hierarchy exhausted, trying fallback pharmacists..."
-        );
+      // Check if ALL hierarchy pharmacists have been checked and are unavailable
+      const allHierarchyPharmacistsUnavailable = pharmacistHierarchy.every(
+        (pharmacistId) => {
+          const pharmacist = pharmacistsMap[pharmacistId];
+          return !pharmacist || !isPharmacistAvailable(pharmacist);
+        }
+      );
 
-        // Get all available pharmacists excluding those already in hierarchy
+      // If assignToAnyPharmacist is enabled, try any other pharmacist
+      if (allHierarchyPharmacistsUnavailable && assignToAnyPharmacist) {
         const availableFallbackPharmacists = Object.values(pharmacistsMap)
           .filter((pharmacist) => {
-            // Skip hierarchy pharmacists (already checked above)
+            // Skip hierarchy pharmacists (already checked)
             if (pharmacistHierarchy.includes(pharmacist.id)) {
               return false;
             }
@@ -1130,14 +1150,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
             // Check availability
             return isPharmacistAvailable(pharmacist);
           })
-          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0)); // Sort by case count ascending
+          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
 
         if (availableFallbackPharmacists.length > 0) {
           const bestPharmacist = availableFallbackPharmacists[0];
           console.log(
-            `No hierarchy pharmacists available. Assigning to fallback pharmacist ${
-              bestPharmacist.name
-            } (${bestPharmacist.caseCount || 0} cases)`
+            `Assigning to fallback pharmacist ${bestPharmacist.name}`
           );
           return assignPharmacist(
             bestPharmacist.id,
@@ -1146,14 +1164,10 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       }
 
-      // No available pharmacists at all
-      console.log(
-        "No available pharmacists found - hierarchy and fallback exhausted"
-      );
+      // No available pharmacists
+      console.log("No available pharmacists found");
       setError(
-        assignToAnyPharmacist
-          ? "No available pharmacists found. All pharmacists in your hierarchy and fallback options are unavailable or at capacity."
-          : "No available pharmacists found in your hierarchy. All assigned pharmacists are unavailable or at capacity."
+        "No available pharmacists found. All pharmacists are unavailable or at capacity."
       );
     } catch (err) {
       console.error("Error finding pharmacist:", err);
@@ -1182,6 +1196,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
 
+  // 9. COMPLETE handleSubmit function with proper locking
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -1229,7 +1244,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       return;
     }
 
-    // NEW: Final availability check before submitting
+    // Final availability check before submitting
     if (!isDoctorAvailable(assignedDoctor)) {
       setError(
         "Assigned doctor is no longer available. Please wait for reassignment or refresh the page."
@@ -1243,6 +1258,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       return;
     }
 
+    // CRITICAL: Set assignment lock during case creation to prevent conflicts
+    setAssignmentLock(true);
     setLoading(true);
 
     try {
@@ -1264,8 +1281,20 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
 
       // Create separate case for each patient
       const createdCaseIds = [];
-
       const batchCode = `batch_${Date.now()}`;
+
+      // Final check before creating cases - ensure professionals are still available
+      if (!assignedDoctor || !assignedPharmacist) {
+        throw new Error("Healthcare professionals not assigned");
+      }
+
+      // Verify assignments are still valid right before creation
+      if (!isDoctorAvailable(assignedDoctor)) {
+        throw new Error("Assigned doctor is no longer available");
+      }
+      if (!isPharmacistAvailable(assignedPharmacist)) {
+        throw new Error("Assigned pharmacist is no longer available");
+      }
 
       console.log(formData.clinicCode);
       for (let i = 0; i < formData.patients.length; i++) {
@@ -1274,6 +1303,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         // Create new case ID with timestamp and patient index
         const caseId = `case_${Date.now()}_${i}`;
         createdCaseIds.push(caseId);
+
         // Create case document
         const caseRef = doc(firestore, "cases", caseId);
 
@@ -1333,8 +1363,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           const currentCaseCount = doctorData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
 
-          //deprecating busy
-          ///*
+          // Only update status if they'll reach exactly 7 cases
           if (
             newCaseCount >= 7 &&
             doctorData.availabilityStatus === "available"
@@ -1345,7 +1374,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               autoStatusChange: true,
             });
           }
-          /**/
         }
       }
 
@@ -1359,8 +1387,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           const currentCaseCount = pharmacistData.caseCount || 0;
           const newCaseCount = currentCaseCount + formData.patients.length;
 
-          //deprecating busy
-          ///*
+          // Only update status if they'll reach exactly 7 cases
           if (
             newCaseCount >= 7 &&
             pharmacistData.availabilityStatus === "available"
@@ -1371,12 +1398,16 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
               autoStatusChange: true,
             });
           }
-          /**/
         }
       }
 
       // Commit the batch
       await batch.commit();
+
+      console.log(
+        `Successfully created ${createdCaseIds.length} cases:`,
+        createdCaseIds
+      );
 
       // Reset form after successful creation
       setFormData({
@@ -1386,13 +1417,14 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         notes: "",
       });
 
-      // Return the first case ID (or we could return all IDs if needed)
+      // Call success callback
       onCreateCase({ id: createdCaseIds[0], allIds: createdCaseIds });
     } catch (err) {
       console.error("Error creating cases:", err);
       setError(err.message || "Failed to create cases");
     } finally {
       setLoading(false);
+      setAssignmentLock(false); // CRITICAL: Always release assignment lock
     }
   };
 
