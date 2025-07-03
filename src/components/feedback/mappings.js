@@ -35,7 +35,7 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
       { 'MSID': 'MS00313', 'nameQA': 'Nupur', 'emailQA': 'mochakms00313@gmail.com' }
     ],
     'Uttar Pradesh': [
-      { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
+      // { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
       { 'MSID': 'MS00640', 'nameQA': 'Chaitanya', 'emailQA': 'mochakms00640@gmail.com' },
       { 'MSID': 'MS00522', 'nameQA': 'Sweta Kaur', 'emailQA': 'mochakms00522@gmail.com' }
     ],
