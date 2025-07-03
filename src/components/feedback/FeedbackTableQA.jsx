@@ -9,7 +9,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { firestore } from "../../firebase";
-import { Eye, ChevronLeft, ChevronRight, Crown, Users, Building, Calendar, Clock, MessageCircle, BarChart3 } from "lucide-react";
+import { Eye, ChevronLeft, ChevronRight, Crown, Users, Building, Calendar, Clock, MessageCircle, BarChart3, Filter, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import CommentBox from "./CommentBox";
 import FeedbackAnalytics from "./FeedBackAnalysis";
 import { categories, subcategories } from "./mappings";
@@ -36,10 +38,17 @@ const statusColors = {
 
 const FeedbackTableQA = ({ currentUser }) => {
   const [tickets, setTickets] = useState([]);
+  const [filteredTickets, setFilteredTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSuperQA, setIsSuperQA] = useState(false);
   const [activeTab, setActiveTab] = useState("tickets");
+  const [filters, setFilters] = useState({
+    clinic: "",
+    issue: "__all__",
+    status: "__all__",
+    qaAssigned: "",
+  });
   const ticketsPerPage = 15;
 
   // Check if current user is super QA or has analytics access
@@ -63,6 +72,77 @@ const FeedbackTableQA = ({ currentUser }) => {
       console.error("Error updating status:", error);
     }
   };
+
+  // Filter tickets based on current filters
+  useEffect(() => {
+    let filtered = tickets;
+
+    if (filters.clinic) {
+      filtered = filtered.filter(ticket => 
+        ticket.name?.toLowerCase().includes(filters.clinic.toLowerCase()) ||
+        ticket.clinicCode?.toLowerCase().includes(filters.clinic.toLowerCase())
+      );
+    }
+
+    if (filters.issue && filters.issue !== "__all__") {
+      const categoryItem = categories.find((item) => item.value === filters.issue);
+      const issueLabel = categoryItem ? categoryItem.label.split(' | ')[0] : filters.issue;
+      filtered = filtered.filter(ticket => {
+        const ticketCategoryItem = categories.find((item) => item.value === ticket.issue);
+        const ticketIssue = ticketCategoryItem ? ticketCategoryItem.label.split(' | ')[0] : ticket.issue;
+        return ticketIssue?.toLowerCase().includes(issueLabel.toLowerCase());
+      });
+    }
+
+    if (filters.status && filters.status !== "__all__") {
+      filtered = filtered.filter(ticket => ticket.status === filters.status);
+    }
+
+    if (filters.qaAssigned && isSuperQA) {
+      filtered = filtered.filter(ticket => 
+        ticket.qaName?.toLowerCase().includes(filters.qaAssigned.toLowerCase()) ||
+        ticket.qaEmail?.toLowerCase().includes(filters.qaAssigned.toLowerCase()) ||
+        ticket.qaNames?.some(name => name?.toLowerCase().includes(filters.qaAssigned.toLowerCase())) ||
+        ticket.qaEmails?.some(email => email?.toLowerCase().includes(filters.qaAssigned.toLowerCase()))
+      );
+    }
+
+    setFilteredTickets(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [tickets, filters, isSuperQA]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      clinic: "",
+      issue: "__all__",
+      status: "__all__",
+      qaAssigned: "",
+    });
+  };
+
+  // Get unique values for filter options
+  const getUniqueValues = (field) => {
+    const values = new Set();
+    tickets.forEach(ticket => {
+      if (field === 'clinic') {
+        if (ticket.name) values.add(ticket.name);
+      } else if (field === 'issue') {
+        const categoryItem = categories.find((item) => item.value === ticket.issue);
+        const issue = categoryItem ? categoryItem.label.split(' | ')[0] : ticket.issue;
+        if (issue) values.add(issue);
+      } else if (field === 'status') {
+        if (ticket.status) values.add(ticket.status);
+      } else if (field === 'qaAssigned') {
+        if (ticket.qaName) values.add(ticket.qaName);
+        if (ticket.qaNames) ticket.qaNames.forEach(name => values.add(name));
+      }
+    });
+    return Array.from(values).sort();
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = Object.values(filters).some(filter => filter !== "" && filter !== "__all__");
 
   // Fetch tickets for the current user
   useEffect(() => {
@@ -114,8 +194,8 @@ const FeedbackTableQA = ({ currentUser }) => {
   // Calculate pagination
   const indexOfLastTicket = currentPage * ticketsPerPage;
   const indexOfFirstTicket = indexOfLastTicket - ticketsPerPage;
-  const currentTickets = tickets.slice(indexOfFirstTicket, indexOfLastTicket);
-  const totalPages = Math.ceil(tickets.length / ticketsPerPage);
+  const currentTickets = filteredTickets.slice(indexOfFirstTicket, indexOfLastTicket);
+  const totalPages = Math.ceil(filteredTickets.length / ticketsPerPage);
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
@@ -179,13 +259,13 @@ const FeedbackTableQA = ({ currentUser }) => {
     });
   };
 
-  // Calculate ticket statistics
+  // Calculate ticket statistics based on filtered tickets
   const ticketStats = {
-    total: tickets.length,
-    open: tickets.filter(t => t.status === 'open').length,
-    inProgress: tickets.filter(t => t.status === 'in-progress').length,
-    resolved: tickets.filter(t => t.status === 'resolved').length,
-    closed: tickets.filter(t => t.status === 'closed').length,
+    total: filteredTickets.length,
+    open: filteredTickets.filter(t => t.status === 'open').length,
+    inProgress: filteredTickets.filter(t => t.status === 'in-progress').length,
+    resolved: filteredTickets.filter(t => t.status === 'resolved').length,
+    closed: filteredTickets.filter(t => t.status === 'closed').length,
   };
 
   return (
@@ -248,11 +328,25 @@ const FeedbackTableQA = ({ currentUser }) => {
 
             <TabsContent value="tickets" className="space-y-6">
               <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-gray-700">
-                  {isSuperQA ? "All Tickets" : "Tickets Assigned to You"}
-                </h2>
+                <div className="flex items-center gap-4">
+                  <h2 className="text-xl font-semibold text-gray-700">
+                    {isSuperQA ? "All Tickets" : "Tickets Assigned to You"}
+                  </h2>
+                  {hasActiveFilters && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+                    >
+                      <X className="w-4 h-4" />
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
                 <div className="text-sm text-gray-600">
-                  Showing {Math.min(indexOfFirstTicket + 1, tickets.length)}-{Math.min(indexOfLastTicket, tickets.length)} of {tickets.length} tickets
+                  Showing {Math.min(indexOfFirstTicket + 1, filteredTickets.length)}-{Math.min(indexOfLastTicket, filteredTickets.length)} of {filteredTickets.length} tickets
+                  {hasActiveFilters && ` (filtered from ${tickets.length} total)`}
                 </div>
               </div>
 
@@ -268,10 +362,109 @@ const FeedbackTableQA = ({ currentUser }) => {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-semibold text-gray-700">Clinic</TableHead>
-                          <TableHead className="font-semibold text-gray-700">Issue</TableHead>
-                          {isSuperQA && <TableHead className="font-semibold text-gray-700">QA Assigned</TableHead>}
-                          <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                          <TableHead className="font-semibold text-gray-700">
+                            <div className="flex items-center gap-2">
+                              <span>Clinic</span>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                    <Filter className={`w-3 h-3 ${filters.clinic ? 'text-blue-600' : 'text-gray-400'}`} />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-56" align="start">
+                                  <div className="space-y-2">
+                                    <label className="text-sm font-medium">Filter by Clinic</label>
+                                    <Input
+                                      placeholder="Search clinic..."
+                                      value={filters.clinic}
+                                      onChange={(e) => setFilters(prev => ({ ...prev, clinic: e.target.value }))}
+                                    />
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          </TableHead>
+                          <TableHead className="font-semibold text-gray-700">
+                            <div className="flex items-center gap-2">
+                              <span>Issue</span>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                    <Filter className={`w-3 h-3 ${filters.issue ? 'text-blue-600' : 'text-gray-400'}`} />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-56" align="start">
+                                  <div className="space-y-2">
+                                    <label className="text-sm font-medium">Filter by Issue</label>
+                                    <Select value={filters.issue} onValueChange={(value) => setFilters(prev => ({ ...prev, issue: value }))}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select issue..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__all__">All Issues</SelectItem>
+                                        {getUniqueValues('issue').map(issue => (
+                                          <SelectItem key={issue} value={issue}>{issue}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          </TableHead>
+                          {isSuperQA && (
+                            <TableHead className="font-semibold text-gray-700">
+                              <div className="flex items-center gap-2">
+                                <span>QA Assigned</span>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                      <Filter className={`w-3 h-3 ${filters.qaAssigned ? 'text-blue-600' : 'text-gray-400'}`} />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-56" align="start">
+                                    <div className="space-y-2">
+                                      <label className="text-sm font-medium">Filter by QA</label>
+                                      <Input
+                                        placeholder="Search QA..."
+                                        value={filters.qaAssigned}
+                                        onChange={(e) => setFilters(prev => ({ ...prev, qaAssigned: e.target.value }))}
+                                      />
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            </TableHead>
+                          )}
+                          <TableHead className="font-semibold text-gray-700">
+                            <div className="flex items-center gap-2">
+                              <span>Status</span>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                    <Filter className={`w-3 h-3 ${filters.status ? 'text-blue-600' : 'text-gray-400'}`} />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-56" align="start">
+                                  <div className="space-y-2">
+                                    <label className="text-sm font-medium">Filter by Status</label>
+                                    <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select status..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__all__">All Statuses</SelectItem>
+                                        <SelectItem value="open">Open</SelectItem>
+                                        <SelectItem value="in-progress">In Progress</SelectItem>
+                                        <SelectItem value="resolved">Resolved</SelectItem>
+                                        <SelectItem value="closed">Closed</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          </TableHead>
                           <TableHead className="font-semibold text-gray-700">Created</TableHead>
                           <TableHead className="font-semibold text-gray-700">Updated</TableHead>
                           <TableHead className="font-semibold text-gray-700">Recent Activity</TableHead>
