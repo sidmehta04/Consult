@@ -53,7 +53,6 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === 'consulttest-be8ce'){
     ],
 
     'Maharashtra': [
-      { 'MSID': 'MS00777', 'nameQA': 'Rajdeep Kour', 'emailQA': 'mochakms00777@gmail.com' },
       { 'MSID': 'MS00610', 'nameQA': 'Yogesh Kumar', 'emailQA': 'mochakms00610@gmail.com' }
     ],
     'Uttarakhand': [
