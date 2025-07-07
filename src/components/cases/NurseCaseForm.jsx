@@ -759,10 +759,10 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
   // Modified function to support unlimited hierarchy depth
-  const findAvailableDoctorFast = async (userData,excludeDoctorId=null) => {
+  // FIXED: findAvailableDoctorFast function
+  const findAvailableDoctorFast = async (userData, excludeDoctorId = null) => {
     setDoctorSearchAttempted(true);
     try {
-      // IMPROVED: Support for extended hierarchy (beyond tertiary)
       let doctorHierarchy = [];
       let assignToAnyDoctor = userData.assignToAnyDoctor || false;
 
@@ -783,13 +783,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         if (assignedDoctors.tertiary)
           doctorHierarchy.push(assignedDoctors.tertiary);
 
-        // NEW: Handle numbered levels beyond tertiary (if they exist)
+        // Handle numbered levels beyond tertiary (if they exist)
         for (let i = 4; ; i++) {
           const levelKey = getHierarchyLevelName(i);
           if (assignedDoctors[levelKey]) {
             doctorHierarchy.push(assignedDoctors[levelKey]);
           } else {
-            break; // No more levels found
+            break;
           }
         }
 
@@ -798,7 +798,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           assignToAnyDoctor = assignedDoctors.assignToAnyDoctor;
         }
 
-        // LOG THE HIERARCHY
         console.log("Doctor Hierarchy Config:", {
           hierarchyArray: doctorHierarchy,
           hierarchyNames: doctorHierarchy.map(
@@ -810,10 +809,8 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         userData.doctorHierarchy &&
         Array.isArray(userData.doctorHierarchy)
       ) {
-        // Use the array directly - already supports unlimited depth
         doctorHierarchy = userData.doctorHierarchy;
 
-        // LOG THE HIERARCHY
         console.log("Doctor Hierarchy Array:", {
           hierarchyArray: doctorHierarchy,
           hierarchyNames: doctorHierarchy.map(
@@ -827,7 +824,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return;
       }
 
-      // Validate we have at least one doctor
       if (doctorHierarchy.length === 0) {
         console.error("No doctors assigned in the hierarchy");
         setError(
@@ -852,7 +848,7 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           id: doc.id,
           name: doctorData.name || "Doctor",
           availabilityStatus: doctorData.availabilityStatus || "available",
-          caseCount: doctorData.caseCount || 0, // Added case count
+          caseCount: doctorData.caseCount || 0,
         };
       });
 
@@ -876,7 +872,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         }
       });
 
-      // Ensure there's at least one available doctor
       const anyAvailable = Object.values(doctorsMap).some((doctor) =>
         isDoctorAvailable(doctor)
       );
@@ -889,15 +884,13 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return;
       }
 
-      // Store doctors data for UI
       setDoctorsData(Object.values(doctorsMap));
 
       // Function to assign a doctor
       const assignDoctor = (id, hierarchyLevel) => {
         const doctor = doctorsMap[id];
-        if (!doctor || id === excludeDoctorId) return false; // Skip excluded doctor
+        if (!doctor || id === excludeDoctorId) return false;
 
-        // Create a user-friendly level name
         let typeName = getHierarchyLevelName(hierarchyLevel + 1);
 
         setAssignedDoctor({
@@ -910,29 +903,43 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
         return true;
       };
 
+      // FIXED: First try to assign from hierarchy doctors
+      let hierarchyDoctorAssigned = false;
       for (let i = 0; i < doctorHierarchy.length; i++) {
         const doctorId = doctorHierarchy[i];
         const doctor = doctorsMap[doctorId];
-        if (doctor && isDoctorAvailable(doctor)) {
-          return assignDoctor(doctorId, i);
+        if (
+          doctor &&
+          isDoctorAvailable(doctor) &&
+          doctorId !== excludeDoctorId
+        ) {
+          console.log(
+            `Assigning hierarchy doctor: ${
+              doctor.name
+            } (${getHierarchyLevelName(i + 1)})`
+          );
+          assignDoctor(doctorId, i);
+          hierarchyDoctorAssigned = true;
+          return; // IMPORTANT: Return immediately after successful assignment
         }
       }
-      const allHierarchyDoctorsUnavailable = doctorHierarchy.every(
-        (doctorId) => {
-          const doctor = doctorsMap[doctorId];
-          return !doctor || !isDoctorAvailable(doctor);
-        }
-      );
 
-      // If assignToAnyDoctor is enabled, try any other doctor
-      if (allHierarchyDoctorsUnavailable && assignToAnyDoctor) {
+      // FIXED: Only use fallback if NO hierarchy doctors are available AND fallback is enabled
+      if (!hierarchyDoctorAssigned && assignToAnyDoctor) {
+        console.log(
+          "No hierarchy doctors available, trying fallback assignment..."
+        );
+
         const availableFallbackDoctors = Object.values(doctorsMap)
           .filter((doctor) => {
             // Skip hierarchy doctors (already checked)
             if (doctorHierarchy.includes(doctor.id)) {
               return false;
             }
-
+            // Skip excluded doctor
+            if (doctor.id === excludeDoctorId) {
+              return false;
+            }
             // Check availability
             return isDoctorAvailable(doctor);
           })
@@ -946,10 +953,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
       }
 
       // No available doctors
-      console.log("No available doctors found");
-      setError(
-        "No available doctors found. All doctors are unavailable or at capacity."
-      );
+      if (!hierarchyDoctorAssigned) {
+        console.log("No available doctors found");
+        setError(
+          "No available doctors found. All doctors are unavailable or at capacity."
+        );
+      }
     } catch (err) {
       console.error("Error finding doctor:", err);
       setError("Failed to find available doctor. Please try again.");
@@ -979,201 +988,191 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     }
   };
 
-  // Similarly update the pharmacist function to support extended hierarchy
-  const findAvailablePharmacistFast = async (userData) => {
-    setPharmacistSearchAttempted(true);
-    try {
-      // IMPROVED: Support for extended hierarchy (beyond tertiary)
-      let pharmacistHierarchy = [];
-      let assignToAnyPharmacist =
-        userData.assignToAnyPharmacist ||
-        userData.assignedPharmacists?.assignToAnyPharmacist ||
-        false;
+  const findAvailablePharmacistFast = async (userData, excludePharmacistId = null) => {
+  setPharmacistSearchAttempted(true);
+  try {
+    let pharmacistHierarchy = [];
+    let assignToAnyPharmacist =
+      userData.assignToAnyPharmacist ||
+      userData.assignedPharmacists?.assignToAnyPharmacist ||
+      false;
 
-      setPharmaFallbackAssignment(assignToAnyPharmacist);
+    setPharmaFallbackAssignment(assignToAnyPharmacist);
 
-      // For nurses with assigned pharmacists from RO
-      if (
-        userData.assignedPharmacists &&
-        Object.keys(userData.assignedPharmacists).length > 0
-      ) {
-        const assignedPharmacists = userData.assignedPharmacists;
+    // For nurses with assigned pharmacists from RO
+    if (
+      userData.assignedPharmacists &&
+      Object.keys(userData.assignedPharmacists).length > 0
+    ) {
+      const assignedPharmacists = userData.assignedPharmacists;
 
-        // Extract explicitly named hierarchy levels
-        if (assignedPharmacists.primary)
-          pharmacistHierarchy.push(assignedPharmacists.primary);
-        if (assignedPharmacists.secondary)
-          pharmacistHierarchy.push(assignedPharmacists.secondary);
-        if (assignedPharmacists.tertiary)
-          pharmacistHierarchy.push(assignedPharmacists.tertiary);
+      // Extract explicitly named hierarchy levels
+      if (assignedPharmacists.primary)
+        pharmacistHierarchy.push(assignedPharmacists.primary);
+      if (assignedPharmacists.secondary)
+        pharmacistHierarchy.push(assignedPharmacists.secondary);
+      if (assignedPharmacists.tertiary)
+        pharmacistHierarchy.push(assignedPharmacists.tertiary);
 
-        // NEW: Handle numbered levels beyond tertiary (if they exist)
-        for (let i = 4; ; i++) {
-          const levelKey = getHierarchyLevelName(i);
-          if (assignedPharmacists[levelKey]) {
-            pharmacistHierarchy.push(assignedPharmacists[levelKey]);
-          } else {
-            break; // No more levels found
-          }
+      // Handle numbered levels beyond tertiary (if they exist)
+      for (let i = 4; ; i++) {
+        const levelKey = getHierarchyLevelName(i);
+        if (assignedPharmacists[levelKey]) {
+          pharmacistHierarchy.push(assignedPharmacists[levelKey]);
+        } else {
+          break;
         }
-
-        // LOG THE HIERARCHY
-        console.log("Pharmacist Hierarchy Config:", {
-          hierarchyArray: pharmacistHierarchy,
-          hierarchyNames: pharmacistHierarchy.map(
-            (id, i) => `${getHierarchyLevelName(i + 1)}: ${id}`
-          ),
-          assignToAnyPharmacist,
-        });
-      } else if (
-        userData.pharmacistHierarchy &&
-        Array.isArray(userData.pharmacistHierarchy)
-      ) {
-        // Use the array directly
-        pharmacistHierarchy = userData.pharmacistHierarchy;
-
-        // LOG THE HIERARCHY
-        console.log("Pharmacist Hierarchy Array:", {
-          hierarchyArray: pharmacistHierarchy,
-          hierarchyNames: pharmacistHierarchy.map(
-            (id, i) => `${getHierarchyLevelName(i + 1)}: ${id}`
-          ),
-          assignToAnyPharmacist,
-        });
       }
 
-      // Validate we have at least one pharmacist
-      if (pharmacistHierarchy.length === 0) {
-        console.error("No pharmacists assigned in the hierarchy");
-        return;
-      }
-
-      // Get all pharmacists
-      const allPharmacistsQuery = query(
-        collection(firestore, "users"),
-        where("role", "==", "pharmacist")
-      );
-
-      const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
-      const pharmacistsMap = {};
-
-      allPharmacistsSnapshot.docs.forEach((doc) => {
-        const pharmacistData = doc.data();
-        pharmacistsMap[doc.id] = {
-          id: doc.id,
-          name: pharmacistData.name || "Pharmacist",
-          availabilityStatus: pharmacistData.availabilityStatus || "available",
-          caseCount: pharmacistData.caseCount || 0, // Added case count
-        };
+      console.log("Pharmacist Hierarchy Config:", {
+        hierarchyArray: pharmacistHierarchy,
+        hierarchyNames: pharmacistHierarchy.map(
+          (id, i) => `${getHierarchyLevelName(i + 1)}: ${id}`
+        ),
+        assignToAnyPharmacist,
       });
+    } else if (
+      userData.pharmacistHierarchy &&
+      Array.isArray(userData.pharmacistHierarchy)
+    ) {
+      pharmacistHierarchy = userData.pharmacistHierarchy;
 
-      // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
-      const activeCasesQuery = query(
-        collection(firestore, "cases"),
-        where("pharmacistCompleted", "==", false),
-        where("isIncomplete", "!=", true)
-      );
-
-      const activeCasesSnapshot = await getDocs(activeCasesQuery);
-
-      // Count cases per pharmacist
-      activeCasesSnapshot.docs.forEach((doc) => {
-        const caseData = doc.data();
-        if (caseData.pharmacistId) {
-          const pharmacistId = caseData.pharmacistId;
-          if (pharmacistsMap[pharmacistId]) {
-            pharmacistsMap[pharmacistId].caseCount =
-              (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
-          }
-        }
+      console.log("Pharmacist Hierarchy Array:", {
+        hierarchyArray: pharmacistHierarchy,
+        hierarchyNames: pharmacistHierarchy.map(
+          (id, i) => `${getHierarchyLevelName(i + 1)}: ${id}`
+        ),
+        assignToAnyPharmacist,
       });
+    }
 
-      // Ensure there's at least one available pharmacist
-      const anyAvailable = Object.values(pharmacistsMap).some((pharmacist) =>
-        isPharmacistAvailable(pharmacist)
-      );
+    if (pharmacistHierarchy.length === 0) {
+      console.error("No pharmacists assigned in the hierarchy");
+      return;
+    }
 
-      if (!anyAvailable) {
-        console.error("No available pharmacists found in the system");
-        setError(
-          "All pharmacists are currently unavailable or at capacity. Please try again later."
-        );
-        return;
-      }
+    // Get all pharmacists
+    const allPharmacistsQuery = query(
+      collection(firestore, "users"),
+      where("role", "==", "pharmacist")
+    );
 
-      // Set pharmacist data for UI
-      setPharmacistsData(Object.values(pharmacistsMap));
+    const allPharmacistsSnapshot = await getDocs(allPharmacistsQuery);
+    const pharmacistsMap = {};
 
-      // Function to assign a pharmacist
-      const assignPharmacist = (id, hierarchyLevel) => {
-        const pharmacist = pharmacistsMap[id];
-        if (!pharmacist) return false;
-
-        // Create a user-friendly level name
-        let typeName = getHierarchyLevelName(hierarchyLevel + 1);
-
-        setAssignedPharmacist({
-          id: id,
-          name: pharmacist.name,
-          type: typeName,
-          availabilityStatus: pharmacist.availabilityStatus,
-          caseCount: pharmacist.caseCount || 0,
-        });
-        return true;
+    allPharmacistsSnapshot.docs.forEach((doc) => {
+      const pharmacistData = doc.data();
+      pharmacistsMap[doc.id] = {
+        id: doc.id,
+        name: pharmacistData.name || "Pharmacist",
+        availabilityStatus: pharmacistData.availabilityStatus || "available",
+        caseCount: pharmacistData.caseCount || 0,
       };
+    });
 
-      for (let i = 0; i < pharmacistHierarchy.length; i++) {
-        const pharmacistId = pharmacistHierarchy[i];
-        const pharmacist = pharmacistsMap[pharmacistId];
-        if (pharmacist && isPharmacistAvailable(pharmacist)) {
-          return assignPharmacist(pharmacistId, i);
+    // Get active cases to count pharmacist workload - EXCLUDE INCOMPLETE CASES
+    const activeCasesQuery = query(
+      collection(firestore, "cases"),
+      where("pharmacistCompleted", "==", false),
+      where("isIncomplete", "!=", true)
+    );
+
+    const activeCasesSnapshot = await getDocs(activeCasesQuery);
+
+    // Count cases per pharmacist
+    activeCasesSnapshot.docs.forEach((doc) => {
+      const caseData = doc.data();
+      if (caseData.pharmacistId) {
+        const pharmacistId = caseData.pharmacistId;
+        if (pharmacistsMap[pharmacistId]) {
+          pharmacistsMap[pharmacistId].caseCount =
+            (pharmacistsMap[pharmacistId].caseCount || 0) + 1;
         }
       }
+    });
 
-      // Check if ALL hierarchy pharmacists have been checked and are unavailable
-      const allHierarchyPharmacistsUnavailable = pharmacistHierarchy.every(
-        (pharmacistId) => {
-          const pharmacist = pharmacistsMap[pharmacistId];
-          return !pharmacist || !isPharmacistAvailable(pharmacist);
-        }
+    const anyAvailable = Object.values(pharmacistsMap).some((pharmacist) =>
+      isPharmacistAvailable(pharmacist)
+    );
+
+    if (!anyAvailable) {
+      console.error("No available pharmacists found in the system");
+      setError(
+        "All pharmacists are currently unavailable or at capacity. Please try again later."
       );
+      return;
+    }
 
-      // If assignToAnyPharmacist is enabled, try any other pharmacist
-      if (allHierarchyPharmacistsUnavailable && assignToAnyPharmacist) {
-        const availableFallbackPharmacists = Object.values(pharmacistsMap)
-          .filter((pharmacist) => {
-            // Skip hierarchy pharmacists (already checked)
-            if (pharmacistHierarchy.includes(pharmacist.id)) {
-              return false;
-            }
+    setPharmacistsData(Object.values(pharmacistsMap));
 
-            // Check availability
-            return isPharmacistAvailable(pharmacist);
-          })
-          .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+    // Function to assign a pharmacist
+    const assignPharmacist = (id, hierarchyLevel) => {
+      const pharmacist = pharmacistsMap[id];
+      if (!pharmacist || id === excludePharmacistId) return false;
 
-        if (availableFallbackPharmacists.length > 0) {
-          const bestPharmacist = availableFallbackPharmacists[0];
-          console.log(
-            `Assigning to fallback pharmacist ${bestPharmacist.name}`
-          );
-          return assignPharmacist(
-            bestPharmacist.id,
-            pharmacistHierarchy.length
-          );
-        }
+      let typeName = getHierarchyLevelName(hierarchyLevel + 1);
+
+      setAssignedPharmacist({
+        id: id,
+        name: pharmacist.name,
+        type: typeName,
+        availabilityStatus: pharmacist.availabilityStatus,
+        caseCount: pharmacist.caseCount || 0,
+      });
+      return true;
+    };
+
+    // FIXED: First try to assign from hierarchy pharmacists
+    let hierarchyPharmacistAssigned = false;
+    for (let i = 0; i < pharmacistHierarchy.length; i++) {
+      const pharmacistId = pharmacistHierarchy[i];
+      const pharmacist = pharmacistsMap[pharmacistId];
+      if (pharmacist && isPharmacistAvailable(pharmacist) && pharmacistId !== excludePharmacistId) {
+        console.log(`Assigning hierarchy pharmacist: ${pharmacist.name} (${getHierarchyLevelName(i + 1)})`);
+        assignPharmacist(pharmacistId, i);
+        hierarchyPharmacistAssigned = true;
+        return; // IMPORTANT: Return immediately after successful assignment
       }
+    }
 
-      // No available pharmacists
+    // FIXED: Only use fallback if NO hierarchy pharmacists are available AND fallback is enabled
+    if (!hierarchyPharmacistAssigned && assignToAnyPharmacist) {
+      console.log("No hierarchy pharmacists available, trying fallback assignment...");
+      
+      const availableFallbackPharmacists = Object.values(pharmacistsMap)
+        .filter((pharmacist) => {
+          // Skip hierarchy pharmacists (already checked)
+          if (pharmacistHierarchy.includes(pharmacist.id)) {
+            return false;
+          }
+          // Skip excluded pharmacist
+          if (pharmacist.id === excludePharmacistId) {
+            return false;
+          }
+          // Check availability
+          return isPharmacistAvailable(pharmacist);
+        })
+        .sort((a, b) => (a.caseCount || 0) - (b.caseCount || 0));
+
+      if (availableFallbackPharmacists.length > 0) {
+        const bestPharmacist = availableFallbackPharmacists[0];
+        console.log(`Assigning to fallback pharmacist ${bestPharmacist.name}`);
+        return assignPharmacist(bestPharmacist.id, pharmacistHierarchy.length);
+      }
+    }
+
+    // No available pharmacists
+    if (!hierarchyPharmacistAssigned) {
       console.log("No available pharmacists found");
       setError(
         "No available pharmacists found. All pharmacists are unavailable or at capacity."
       );
-    } catch (err) {
-      console.error("Error finding pharmacist:", err);
-      setError("Failed to find available pharmacist. Please try again.");
     }
-  };
+  } catch (err) {
+    console.error("Error finding pharmacist:", err);
+    setError("Failed to find available pharmacist. Please try again.");
+  }
+};
 
   const handleChange = (e) => {
     const { name, value } = e.target;
