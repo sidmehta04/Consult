@@ -23,11 +23,15 @@ import {
   Activity,
   BarChart3,
   Clock,
+  Stethoscope,
+  Users2,
 } from "lucide-react";
 import { categories, subcategories } from "./mappings";
+import { doctorCategories, doctorSubcategories } from "./doctorMappings";
 
-const FeedbackAnalytics = ({ currentUser }) => {
-  const [tickets, setTickets] = useState([]);
+const UnifiedFeedbackAnalytics = ({ currentUser }) => {
+  const [nurseTickets, setNurseTickets] = useState([]);
+  const [doctorTickets, setDoctorTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Check if user has access to analytics
@@ -61,15 +65,16 @@ const FeedbackAnalytics = ({ currentUser }) => {
     }
   };
 
+  // Fetch nurse tickets
   useEffect(() => {
     if (!hasAccess) return;
 
-    const ticketsQuery = query(
+    const nurseTicketsQuery = query(
       collection(firestore, "tickets"),
       orderBy("createdAt", "desc")
     );
 
-    const unsubscribe = onSnapshot(ticketsQuery, (snapshot) => {
+    const unsubscribe = onSnapshot(nurseTicketsQuery, (snapshot) => {
       const fetchedTickets = snapshot.docs.map((doc) => {
         const data = doc.data();
         let closedAt = null;
@@ -104,10 +109,65 @@ const FeedbackAnalytics = ({ currentUser }) => {
           ...data,
           closedAt,
           tat,
+          ticketType: 'nurse',
         };
       });
 
-      setTickets(fetchedTickets);
+      setNurseTickets(fetchedTickets);
+    });
+
+    return () => unsubscribe();
+  }, [hasAccess]);
+
+  // Fetch doctor tickets
+  useEffect(() => {
+    if (!hasAccess) return;
+
+    const doctorTicketsQuery = query(
+      collection(firestore, "doctor_tickets"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(doctorTicketsQuery, (snapshot) => {
+      const fetchedTickets = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        let closedAt = null;
+
+        // Find the closed timestamp from comments
+        if (data.comments && Array.isArray(data.comments)) {
+          const closedComment = data.comments
+            .filter((comment) => comment.side === "qa")
+            .find((comment) => {
+              const commentLower = comment.comment.toLowerCase();
+              return (
+                commentLower.includes("closed") ||
+                commentLower.includes("resolved") ||
+                commentLower.includes("completed")
+              );
+            });
+
+          if (closedComment && closedComment.time) {
+            closedAt = closedComment.time;
+          }
+        }
+
+        // If no closed comment found but status is closed, use lastUpdatedAt
+        if (!closedAt && data.status === "closed" && data.lastUpdatedAt) {
+          closedAt = data.lastUpdatedAt;
+        }
+
+        const tat = calculateTAT(data.createdAt, closedAt);
+
+        return {
+          id: doc.id,
+          ...data,
+          closedAt,
+          tat,
+          ticketType: 'doctor',
+        };
+      });
+
+      setDoctorTickets(fetchedTickets);
       setLoading(false);
     });
 
@@ -145,15 +205,21 @@ const FeedbackAnalytics = ({ currentUser }) => {
     );
   }
 
+  // Combine all tickets
+  const allTickets = [...nurseTickets, ...doctorTickets];
+
   // Calculate overall statistics
-  const totalIssues = tickets.length;
-  const statusCounts = tickets.reduce((acc, ticket) => {
+  const totalIssues = allTickets.length;
+  const nurseIssues = nurseTickets.length;
+  const doctorIssues = doctorTickets.length;
+  
+  const statusCounts = allTickets.reduce((acc, ticket) => {
     acc[ticket.status] = (acc[ticket.status] || 0) + 1;
     return acc;
   }, {});
 
   // Calculate TAT statistics
-  const closedTicketsWithTAT = tickets.filter(
+  const closedTicketsWithTAT = allTickets.filter(
     (ticket) => ticket.status === "closed" && ticket.tat !== null
   );
   const avgTAT =
@@ -180,47 +246,41 @@ const FeedbackAnalytics = ({ currentUser }) => {
     }
   });
 
-  // Calculate issue category data
-  const categoryData = categories
+  // Calculate unified issue category data
+  const getAllCategories = () => {
+    const nurseCategories = categories.map(cat => ({ ...cat, type: 'nurse' }));
+    const docCategories = doctorCategories.map(cat => ({ ...cat, type: 'doctor' }));
+    return [...nurseCategories, ...docCategories];
+  };
+
+  const categoryData = getAllCategories()
     .map((category) => {
-      const count = tickets.filter(
-        (ticket) => ticket.issue === category.value
-      ).length;
+      const categoryTickets = allTickets.filter(
+        (ticket) => ticket.issue === category.value && 
+        ((category.type === 'nurse' && ticket.ticketType === 'nurse') ||
+         (category.type === 'doctor' && ticket.ticketType === 'doctor'))
+      );
+      const count = categoryTickets.length;
       return {
         name: category.label.split(" | ")[0],
         count: count,
+        type: category.type,
         fullLabel: category.label,
       };
     })
     .filter((item) => item.count > 0);
 
-  // Calculate subcategory data
-  const subcategoryData = [];
-  Object.keys(subcategories).forEach((categoryKey) => {
-    subcategories[categoryKey].forEach((subcategory) => {
-      const count = tickets.filter(
-        (ticket) =>
-          ticket.issue === categoryKey && ticket.subIssue === subcategory.value
-      ).length;
-      if (count > 0) {
-        subcategoryData.push({
-          name: subcategory.label.split(" | ")[0],
-          count: count,
-          category: categoryKey,
-        });
-      }
-    });
-  });
-
   // Calculate QA assignment data with TAT
   const qaData = {};
-  tickets.forEach((ticket) => {
+  allTickets.forEach((ticket) => {
     if (ticket.qaNames && Array.isArray(ticket.qaNames)) {
       ticket.qaNames.forEach((qaName) => {
         if (!qaData[qaName]) {
           qaData[qaName] = {
             name: qaName,
             total: 0,
+            nurse: 0,
+            doctor: 0,
             open: 0,
             "in-progress": 0,
             resolved: 0,
@@ -230,6 +290,7 @@ const FeedbackAnalytics = ({ currentUser }) => {
           };
         }
         qaData[qaName].total += 1;
+        qaData[qaName][ticket.ticketType] += 1;
         qaData[qaName][ticket.status] += 1;
 
         if (ticket.status === "closed" && ticket.tat !== null) {
@@ -242,6 +303,8 @@ const FeedbackAnalytics = ({ currentUser }) => {
         qaData[ticket.qaName] = {
           name: ticket.qaName,
           total: 0,
+          nurse: 0,
+          doctor: 0,
           open: 0,
           "in-progress": 0,
           resolved: 0,
@@ -251,6 +314,7 @@ const FeedbackAnalytics = ({ currentUser }) => {
         };
       }
       qaData[ticket.qaName].total += 1;
+      qaData[ticket.qaName][ticket.ticketType] += 1;
       qaData[ticket.qaName][ticket.status] += 1;
 
       if (ticket.status === "closed" && ticket.tat !== null) {
@@ -276,9 +340,15 @@ const FeedbackAnalytics = ({ currentUser }) => {
     status: status,
   }));
 
-  // Calculate state-wise data with TAT
+  // Calculate ticket type comparison data
+  const ticketTypeData = [
+    { type: "Nurse", count: nurseIssues, icon: "nurse" },
+    { type: "Doctor", count: doctorIssues, icon: "doctor" },
+  ];
+
+  // Calculate state-wise data with TAT (for nurse tickets)
   const stateData = {};
-  tickets.forEach((ticket) => {
+  nurseTickets.forEach((ticket) => {
     if (ticket.state) {
       if (!stateData[ticket.state]) {
         stateData[ticket.state] = {
@@ -301,11 +371,57 @@ const FeedbackAnalytics = ({ currentUser }) => {
       }
     }
   });
+
+  // Add average TAT to state data
+  Object.values(stateData).forEach((state) => {
+    state.avgTAT = state.tatCount > 0 ? state.totalTAT / state.tatCount : 0;
+  });
+
+  const stateAnalysisData = Object.values(stateData).sort(
+    (a, b) => b.total - a.total
+  );
+
+  // Calculate partner-wise data with TAT (for doctor tickets)
+  const partnerData = {};
+  doctorTickets.forEach((ticket) => {
+    if (ticket.partnerName) {
+      if (!partnerData[ticket.partnerName]) {
+        partnerData[ticket.partnerName] = {
+          name: ticket.partnerName,
+          total: 0,
+          open: 0,
+          "in-progress": 0,
+          resolved: 0,
+          closed: 0,
+          totalTAT: 0,
+          tatCount: 0,
+        };
+      }
+      partnerData[ticket.partnerName].total += 1;
+      partnerData[ticket.partnerName][ticket.status] += 1;
+
+      if (ticket.status === "closed" && ticket.tat !== null) {
+        partnerData[ticket.partnerName].totalTAT += ticket.tat;
+        partnerData[ticket.partnerName].tatCount += 1;
+      }
+    }
+  });
+
+  // Add average TAT to partner data
+  Object.values(partnerData).forEach((partner) => {
+    partner.avgTAT = partner.tatCount > 0 ? partner.totalTAT / partner.tatCount : 0;
+  });
+
+  const partnerAnalysisData = Object.values(partnerData).sort(
+    (a, b) => b.total - a.total
+  );
+
   // Calculate issue category data with TAT
   const issueCategoryTATData = {};
-  tickets.forEach((ticket) => {
+  allTickets.forEach((ticket) => {
     if (ticket.issue) {
-      const categoryItem = categories.find(
+      const ticketCategories = ticket.ticketType === 'doctor' ? doctorCategories : categories;
+      const categoryItem = ticketCategories.find(
         (item) => item.value === ticket.issue
       );
       const issueType = categoryItem
@@ -344,15 +460,6 @@ const FeedbackAnalytics = ({ currentUser }) => {
     .filter((category) => category.total > 0)
     .sort((a, b) => b.avgTAT - a.avgTAT); // Sort by highest TAT first
 
-  // Add average TAT to state data
-  Object.values(stateData).forEach((state) => {
-    state.avgTAT = state.tatCount > 0 ? state.totalTAT / state.tatCount : 0;
-  });
-
-  const stateAnalysisData = Object.values(stateData).sort(
-    (a, b) => b.total - a.total
-  );
-
   return (
     <div className="max-w-12xl mx-auto p-4 space-y-6">
       {/* Header */}
@@ -360,13 +467,16 @@ const FeedbackAnalytics = ({ currentUser }) => {
         <CardHeader className="pb-4">
           <CardTitle className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-600" />
-            Analytics Dashboard
+            Unified Support Analytics Dashboard
           </CardTitle>
+          <p className="text-sm text-gray-600 mt-1">
+            Combined analytics for nurse and doctor support tickets
+          </p>
         </CardHeader>
       </Card>
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card className="border border-gray-200">
           <CardContent className="p-4 text-center">
             <FileText className="w-6 h-6 mx-auto mb-2 text-blue-600" />
@@ -379,21 +489,31 @@ const FeedbackAnalytics = ({ currentUser }) => {
 
         <Card className="border border-gray-200">
           <CardContent className="p-4 text-center">
-            <Activity className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+            <Users2 className="w-6 h-6 mx-auto mb-2 text-green-600" />
             <div className="text-xl font-semibold text-gray-800">
-              {statusCounts.open || 0}
+              {nurseIssues}
             </div>
-            <div className="text-sm text-gray-600">Open Issues</div>
+            <div className="text-sm text-gray-600">Nurse Issues</div>
           </CardContent>
         </Card>
 
         <Card className="border border-gray-200">
           <CardContent className="p-4 text-center">
-            <TrendingUp className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+            <Stethoscope className="w-6 h-6 mx-auto mb-2 text-purple-600" />
             <div className="text-xl font-semibold text-gray-800">
-              {statusCounts["in-progress"] || 0}
+              {doctorIssues}
             </div>
-            <div className="text-sm text-gray-600">In Progress</div>
+            <div className="text-sm text-gray-600">Doctor Issues</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-gray-200">
+          <CardContent className="p-4 text-center">
+            <Activity className="w-6 h-6 mx-auto mb-2 text-red-600" />
+            <div className="text-xl font-semibold text-gray-800">
+              {statusCounts.open || 0}
+            </div>
+            <div className="text-sm text-gray-600">Open Issues</div>
           </CardContent>
         </Card>
 
@@ -418,36 +538,30 @@ const FeedbackAnalytics = ({ currentUser }) => {
         </Card>
       </div>
 
-      <Tabs defaultValue="categories" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="categories">Issue Categories</TabsTrigger>
-          <TabsTrigger value="subcategories">Sub-Categories</TabsTrigger>
-          <TabsTrigger value="states">State Analysis</TabsTrigger>
-          <TabsTrigger value="qa-analysis">QA Analysis</TabsTrigger>
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="categories">Issue Analysis</TabsTrigger>
+          <TabsTrigger value="qa-analysis">QA Performance</TabsTrigger>
+          <TabsTrigger value="state-partner">State/Partner</TabsTrigger>
           <TabsTrigger value="tat-analysis">TAT Analysis</TabsTrigger>
+          <TabsTrigger value="department-tat">Dept TAT</TabsTrigger>
         </TabsList>
 
-        {/* Issue Categories Tab */}
-        <TabsContent value="categories" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="border border-gray-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-medium text-gray-800">
-                  Issue Categories
+                  Ticket Type Distribution
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={categoryData}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={ticketTypeData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={70}
-                      fontSize={11}
-                      stroke="#666"
-                    />
+                    <XAxis dataKey="type" fontSize={12} stroke="#666" />
                     <YAxis fontSize={11} stroke="#666" />
                     <Tooltip
                       contentStyle={{
@@ -470,7 +584,7 @@ const FeedbackAnalytics = ({ currentUser }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={statusData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="name" fontSize={11} stroke="#666" />
@@ -483,424 +597,33 @@ const FeedbackAnalytics = ({ currentUser }) => {
                         fontSize: "12px",
                       }}
                     />
-                    <Bar dataKey="count" fill="#3B82F6" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="count" fill="#10B981" radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
 
-        {/* State Analysis Tab */}
-        <TabsContent value="states" className="space-y-4">
-          {/* State Performance Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {stateAnalysisData.map((state, index) => (
-              <Card key={state.name} className="border border-gray-200">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-gray-800">{state.name}</h4>
-                    <div className="flex gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {state.total} Total
-                      </Badge>
-                      <Badge variant="outline" className="text-xs bg-blue-50">
-                        TAT: {formatTAT(state.avgTAT)}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {state.open}
-                      </div>
-                      <div className="text-gray-600">Open</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {state["in-progress"]}
-                      </div>
-                      <div className="text-gray-600">Progress</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {state.resolved}
-                      </div>
-                      <div className="text-gray-600">Resolved</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {state.closed}
-                      </div>
-                      <div className="text-gray-600">Closed</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
-                      <span>Resolution Rate</span>
-                      <span>
-                        {Math.round(
-                          ((state.resolved + state.closed) / state.total) * 100
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${
-                            ((state.resolved + state.closed) / state.total) *
-                            100
-                          }%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* State Distribution Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="border border-gray-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-medium text-gray-800">
-                  Total Issues by State
+                  QA Workload Overview
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={stateAnalysisData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={70}
-                      fontSize={11}
-                      stroke="#666"
-                    />
-                    <YAxis fontSize={11} stroke="#666" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Bar dataKey="total" fill="#3B82F6" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="border border-gray-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-medium text-gray-800">
-                  State Workload Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={stateAnalysisData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={70}
-                      fontSize={10}
-                      stroke="#666"
-                    />
-                    <YAxis fontSize={11} stroke="#666" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Legend fontSize={12} />
-                    <Bar
-                      dataKey="open"
-                      stackId="a"
-                      fill="#EF4444"
-                      name="Open"
-                    />
-                    <Bar
-                      dataKey="in-progress"
-                      stackId="a"
-                      fill="#F59E0B"
-                      name="In Progress"
-                    />
-                    <Bar
-                      dataKey="resolved"
-                      stackId="a"
-                      fill="#10B981"
-                      name="Resolved"
-                    />
-                    <Bar
-                      dataKey="closed"
-                      stackId="a"
-                      fill="#6B7280"
-                      name="Closed"
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* Sub-Categories Tab */}
-        <TabsContent value="subcategories">
-          <Card className="border border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-medium text-gray-800">
-                Sub-Category Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={subcategoryData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="name"
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    fontSize={10}
-                    stroke="#666"
-                  />
-                  <YAxis fontSize={11} stroke="#666" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "white",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Bar dataKey="count" fill="#3B82F6" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* QA Analysis Tab */}
-        <TabsContent value="qa-analysis" className="space-y-4">
-          {/* QA Performance Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {qaAnalysisData.map((qa, index) => (
-              <Card key={qa.name} className="border border-gray-200">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-gray-800">{qa.name}</h4>
-                    <div className="flex gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {qa.total} Total
-                      </Badge>
-                      <Badge variant="outline" className="text-xs bg-blue-50">
-                        TAT: {formatTAT(qa.avgTAT)}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {qa.open}
-                      </div>
-                      <div className="text-gray-600">Open</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {qa["in-progress"]}
-                      </div>
-                      <div className="text-gray-600">Progress</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {qa.resolved}
-                      </div>
-                      <div className="text-gray-600">Resolved</div>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="font-semibold text-gray-800">
-                        {qa.closed}
-                      </div>
-                      <div className="text-gray-600">Closed</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
-                      <span>Resolution Rate</span>
-                      <span>
-                        {Math.round(
-                          ((qa.resolved + qa.closed) / qa.total) * 100
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${
-                            ((qa.resolved + qa.closed) / qa.total) * 100
-                          }%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* QA Workload Chart */}
-          <Card className="border border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-medium text-gray-800">
-                QA Workload Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={qaAnalysisData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="name"
-                    angle={-45}
-                    textAnchor="end"
-                    height={70}
-                    fontSize={11}
-                    stroke="#666"
-                  />
-                  <YAxis fontSize={11} stroke="#666" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "white",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Legend fontSize={12} />
-                  <Bar dataKey="open" stackId="a" fill="#EF4444" name="Open" />
-                  <Bar
-                    dataKey="in-progress"
-                    stackId="a"
-                    fill="#F59E0B"
-                    name="In Progress"
-                  />
-                  <Bar
-                    dataKey="resolved"
-                    stackId="a"
-                    fill="#10B981"
-                    name="Resolved"
-                  />
-                  <Bar
-                    dataKey="closed"
-                    stackId="a"
-                    fill="#6B7280"
-                    name="Closed"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* TAT Analysis Tab */}
-        <TabsContent value="tat-analysis" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* TAT Distribution Chart */}
-            <Card className="border border-gray-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-medium text-gray-800">
-                  TAT Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={tatRanges}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="range" fontSize={11} stroke="#666" />
-                    <YAxis fontSize={11} stroke="#666" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Bar dataKey="count" fill="#3B82F6" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* TAT Statistics */}
-            <Card className="border border-gray-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-medium text-gray-800">
-                  TAT Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <div className="text-lg font-semibold text-blue-700">
-                      {closedTicketsWithTAT.length}
-                    </div>
-                    <div className="text-sm text-blue-600">Closed Tickets</div>
-                  </div>
-                  <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <div className="text-lg font-semibold text-green-700">
-                      {formatTAT(avgTAT)}
-                    </div>
-                    <div className="text-sm text-green-600">Average TAT</div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-medium text-gray-700">TAT Breakdown:</h4>
-                  {tatRanges.map((range, index) => (
-                    <div
-                      key={range.range}
-                      className="flex justify-between items-center py-1"
-                    >
-                      <span className="text-sm text-gray-600">
-                        {range.range}
-                      </span>
+                <div className="space-y-3">
+                  {qaAnalysisData.slice(0, 5).map((qa, index) => (
+                    <div key={qa.name} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {range.count}
-                        </span>
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                            style={{
-                              width: `${
-                                closedTicketsWithTAT.length > 0
-                                  ? (range.count /
-                                      closedTicketsWithTAT.length) *
-                                    100
-                                  : 0
-                              }%`,
-                            }}
-                          ></div>
-                        </div>
+                        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                        <span className="text-sm font-medium text-gray-700">{qa.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {qa.total} tickets
+                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-blue-50">
+                          {formatTAT(qa.avgTAT)}
+                        </Badge>
                       </div>
                     </div>
                   ))}
@@ -908,6 +631,273 @@ const FeedbackAnalytics = ({ currentUser }) => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* State/Partner Analysis Tab */}
+        <TabsContent value="state-partner" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* State Analysis for Nurse Tickets */}
+            <div className="space-y-4">
+              <Card className="border border-gray-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-medium text-gray-800 flex items-center gap-2">
+                    <Users2 className="w-5 h-5 text-green-600" />
+                    Nurse Tickets by State
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={stateAnalysisData.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        fontSize={10}
+                        stroke="#666"
+                      />
+                      <YAxis fontSize={11} stroke="#666" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                        }}
+                      />
+                      <Bar dataKey="total" fill="#10B981" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* State Performance Cards */}
+              <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                {stateAnalysisData.slice(0, 8).map((state, index) => (
+                  <Card key={state.name} className="border border-gray-200">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium text-gray-800 text-sm">{state.name}</h4>
+                        <div className="flex gap-1">
+                          <Badge variant="outline" className="text-xs">
+                            {state.total} Total
+                          </Badge>
+                          <Badge variant="outline" className="text-xs bg-green-50">
+                            TAT: {formatTAT(state.avgTAT)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1 text-center text-xs">
+                        <div className="p-1 bg-red-50 rounded">
+                          <div className="font-semibold text-red-700">{state.open}</div>
+                          <div className="text-red-600">Open</div>
+                        </div>
+                        <div className="p-1 bg-yellow-50 rounded">
+                          <div className="font-semibold text-yellow-700">{state["in-progress"]}</div>
+                          <div className="text-yellow-600">Progress</div>
+                        </div>
+                        <div className="p-1 bg-green-50 rounded">
+                          <div className="font-semibold text-green-700">{state.resolved}</div>
+                          <div className="text-green-600">Resolved</div>
+                        </div>
+                        <div className="p-1 bg-gray-50 rounded">
+                          <div className="font-semibold text-gray-700">{state.closed}</div>
+                          <div className="text-gray-600">Closed</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Resolution Rate</span>
+                          <span>
+                            {Math.round(((state.resolved + state.closed) / state.total) * 100)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1">
+                          <div
+                            className="bg-green-600 h-1 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${((state.resolved + state.closed) / state.total) * 100}%`,
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Partner Analysis for Doctor Tickets */}
+            <div className="space-y-4">
+              <Card className="border border-gray-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-medium text-gray-800 flex items-center gap-2">
+                    <Stethoscope className="w-5 h-5 text-purple-600" />
+                    Doctor Tickets by Partner
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={partnerAnalysisData.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        fontSize={10}
+                        stroke="#666"
+                      />
+                      <YAxis fontSize={11} stroke="#666" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                        }}
+                      />
+                      <Bar dataKey="total" fill="#8B5CF6" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Partner Performance Cards */}
+              <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                {partnerAnalysisData.slice(0, 8).map((partner, index) => (
+                  <Card key={partner.name} className="border border-gray-200">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium text-gray-800 text-sm">{partner.name}</h4>
+                        <div className="flex gap-1">
+                          <Badge variant="outline" className="text-xs">
+                            {partner.total} Total
+                          </Badge>
+                          <Badge variant="outline" className="text-xs bg-purple-50">
+                            TAT: {formatTAT(partner.avgTAT)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1 text-center text-xs">
+                        <div className="p-1 bg-red-50 rounded">
+                          <div className="font-semibold text-red-700">{partner.open}</div>
+                          <div className="text-red-600">Open</div>
+                        </div>
+                        <div className="p-1 bg-yellow-50 rounded">
+                          <div className="font-semibold text-yellow-700">{partner["in-progress"]}</div>
+                          <div className="text-yellow-600">Progress</div>
+                        </div>
+                        <div className="p-1 bg-green-50 rounded">
+                          <div className="font-semibold text-green-700">{partner.resolved}</div>
+                          <div className="text-green-600">Resolved</div>
+                        </div>
+                        <div className="p-1 bg-gray-50 rounded">
+                          <div className="font-semibold text-gray-700">{partner.closed}</div>
+                          <div className="text-gray-600">Closed</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Resolution Rate</span>
+                          <span>
+                            {Math.round(((partner.resolved + partner.closed) / partner.total) * 100)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1">
+                          <div
+                            className="bg-purple-600 h-1 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${((partner.resolved + partner.closed) / partner.total) * 100}%`,
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Combined State vs Partner TAT Comparison */}
+          <Card className="border border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-medium text-gray-800">
+                State vs Partner TAT Comparison
+              </CardTitle>
+              <p className="text-sm text-gray-600 mt-1">
+                Average resolution time comparison between nurse states and doctor partners
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Top States by TAT (Nurse)</h4>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={stateAnalysisData.filter((state) => state.avgTAT > 0).slice(0, 8)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        fontSize={10}
+                        stroke="#666"
+                      />
+                      <YAxis fontSize={11} stroke="#666" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                        }}
+                        formatter={(value) => [formatTAT(value), "Average TAT"]}
+                      />
+                      <Bar dataKey="avgTAT" fill="#10B981" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Top Partners by TAT (Doctor)</h4>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={partnerAnalysisData.filter((partner) => partner.avgTAT > 0).slice(0, 8)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={70}
+                        fontSize={10}
+                        stroke="#666"
+                      />
+                      <YAxis fontSize={11} stroke="#666" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                        }}
+                        formatter={(value) => [formatTAT(value), "Average TAT"]}
+                      />
+                      <Bar dataKey="avgTAT" fill="#8B5CF6" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Department TAT Analysis Tab */}
+        <TabsContent value="department-tat" className="space-y-4">
           {/* Issue Category TAT Performance */}
           <Card className="border border-gray-200">
             <CardHeader className="pb-3">
@@ -975,16 +965,16 @@ const FeedbackAnalytics = ({ currentUser }) => {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-medium text-gray-800 flex items-center gap-2">
-                        {category.name === "HR" && (
+                        {category.name === "HR Team" && (
                           <Users className="w-4 h-4 text-blue-500" />
                         )}
-                        {category.name === "Medical" && (
+                        {category.name === "Online Team" && (
                           <Activity className="w-4 h-4 text-green-500" />
                         )}
-                        {category.name === "IT" && (
+                        {category.name === "Clinic Issues" && (
                           <BarChart3 className="w-4 h-4 text-purple-500" />
                         )}
-                        {!["HR", "Medical", "IT"].includes(category.name) && (
+                        {!["HR Team", "Online Team", "Clinic Issues"].includes(category.name) && (
                           <FileText className="w-4 h-4 text-gray-500" />
                         )}
                         {category.name}
@@ -1151,12 +1141,234 @@ const FeedbackAnalytics = ({ currentUser }) => {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Issue Categories Tab */}
+        <TabsContent value="categories" className="space-y-4">
+          <Card className="border border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-medium text-gray-800">
+                Issue Categories (Nurse & Doctor Combined)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart data={categoryData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="name"
+                    angle={-45}
+                    textAnchor="end"
+                    height={100}
+                    fontSize={10}
+                    stroke="#666"
+                  />
+                  <YAxis fontSize={11} stroke="#666" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(value, name, props) => [
+                      value,
+                      `Count (${props.payload.type})`
+                    ]}
+                  />
+                  <Bar 
+                    dataKey="count" 
+                    fill={(entry) => entry.type === 'doctor' ? '#8B5CF6' : '#10B981'}
+                    radius={[2, 2, 0, 0]} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* QA Analysis Tab */}
+        <TabsContent value="qa-analysis" className="space-y-4">
+          {/* QA Performance Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {qaAnalysisData.map((qa, index) => (
+              <Card key={qa.name} className="border border-gray-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-gray-800">{qa.name}</h4>
+                    <div className="flex gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {qa.total} Total
+                      </Badge>
+                      <Badge variant="outline" className="text-xs bg-blue-50">
+                        TAT: {formatTAT(qa.avgTAT)}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs mb-3">
+                    <div className="p-2 bg-green-50 rounded">
+                      <div className="font-semibold text-green-700">
+                        {qa.nurse}
+                      </div>
+                      <div className="text-green-600">Nurse</div>
+                    </div>
+                    <div className="p-2 bg-purple-50 rounded">
+                      <div className="font-semibold text-purple-700">
+                        {qa.doctor}
+                      </div>
+                      <div className="text-purple-600">Doctor</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="font-semibold text-gray-800">
+                        {qa.open}
+                      </div>
+                      <div className="text-gray-600">Open</div>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="font-semibold text-gray-800">
+                        {qa["in-progress"]}
+                      </div>
+                      <div className="text-gray-600">Progress</div>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="font-semibold text-gray-800">
+                        {qa.resolved}
+                      </div>
+                      <div className="text-gray-600">Resolved</div>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="font-semibold text-gray-800">
+                        {qa.closed}
+                      </div>
+                      <div className="text-gray-600">Closed</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span>Resolution Rate</span>
+                      <span>
+                        {Math.round(
+                          ((qa.resolved + qa.closed) / qa.total) * 100
+                        )}
+                        %
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div
+                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${
+                            ((qa.resolved + qa.closed) / qa.total) * 100
+                          }%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* TAT Analysis Tab */}
+        <TabsContent value="tat-analysis" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* TAT Distribution Chart */}
+            <Card className="border border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-medium text-gray-800">
+                  TAT Distribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={tatRanges}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="range" fontSize={11} stroke="#666" />
+                    <YAxis fontSize={11} stroke="#666" />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "white",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Bar dataKey="count" fill="#3B82F6" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* TAT Statistics */}
+            <Card className="border border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-medium text-gray-800">
+                  TAT Statistics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-lg font-semibold text-blue-700">
+                      {closedTicketsWithTAT.length}
+                    </div>
+                    <div className="text-sm text-blue-600">Closed Tickets</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-lg font-semibold text-green-700">
+                      {formatTAT(avgTAT)}
+                    </div>
+                    <div className="text-sm text-green-600">Average TAT</div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-700">TAT Breakdown:</h4>
+                  {tatRanges.map((range, index) => (
+                    <div
+                      key={range.range}
+                      className="flex justify-between items-center py-1"
+                    >
+                      <span className="text-sm text-gray-600">
+                        {range.range}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {range.count}
+                        </span>
+                        <div className="w-16 bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${
+                                closedTicketsWithTAT.length > 0
+                                  ? (range.count /
+                                      closedTicketsWithTAT.length) *
+                                    100
+                                  : 0
+                              }%`,
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* QA TAT Performance */}
           <Card className="border border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-medium text-gray-800">
-                QA TAT Performance
+                QA TAT Performance (Combined)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1186,47 +1398,11 @@ const FeedbackAnalytics = ({ currentUser }) => {
               </ResponsiveContainer>
             </CardContent>
           </Card>
-
-          {/* State TAT Performance */}
-          <Card className="border border-gray-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-medium text-gray-800">
-                State TAT Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart
-                  data={stateAnalysisData.filter((state) => state.avgTAT > 0)}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="name"
-                    angle={-45}
-                    textAnchor="end"
-                    height={70}
-                    fontSize={11}
-                    stroke="#666"
-                  />
-                  <YAxis fontSize={11} stroke="#666" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "white",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                    }}
-                    formatter={(value) => [formatTAT(value), "Average TAT"]}
-                  />
-                  <Bar dataKey="avgTAT" fill="#F59E0B" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
 };
 
-export default FeedbackAnalytics;
+
+export default UnifiedFeedbackAnalytics;

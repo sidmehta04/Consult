@@ -19,11 +19,12 @@ import CaseManagementModule from "./components/CaseManagement";
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import AnalyticsDashboard from "./components/Analytics";
-import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText} from "lucide-react";
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText, Stethoscope} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 import FeedbackPortal from "./components/Feedback";
-import FeedbackTableQA from "./components/feedback/FeedbackTableQA";
+import UnifiedQADashboard from "./components/feedback/UnifiedQADashboard.jsx"; // Updated to use unified dashboard
+import DoctorFeedbackPortal from "./components/feedback/DoctorFeedbackPortal"; // New doctor feedback portal
 import { set } from "date-fns";
 
 // Protected route wrapper
@@ -302,11 +303,20 @@ function AppContent() {
       });
     }
 
+    // Individual feedback portals for nurse and doctor
     if (userRole === "nurse") {
       items.push({
-        name: "Feedback",
-        href: "/feedback",
+        name: "Nurse Support",
+        href: "/feedback/nurse",
         icon: <MessageSquareText className="h-5 w-5" />
+      });
+    }
+
+    if (userRole === "doctor") {
+      items.push({
+        name: "Doctor Support",
+        href: "/feedback/doctor",
+        icon: <Stethoscope className="h-5 w-5" />
       });
     }
 
@@ -318,9 +328,10 @@ function AppContent() {
       });
     }
 
+    // Unified tickets dashboard for QAs and superAdmin
     if (isQA || userRole === "superAdmin") {
       items.push({
-        name: "Tickets Dashboard",
+        name: "Support Tickets",
         href: "/tickets",
         icon: <MessageSquareText className="h-5 w-5" />
       });
@@ -479,8 +490,9 @@ function AppContent() {
                 }
               />
 
+              {/* Nurse Feedback Portal */}
               <Route
-                path="/feedback"
+                path="/feedback/nurse"
                 element={
                   <ProtectedRoute
                     allowedRoles={[
@@ -493,6 +505,28 @@ function AppContent() {
                 }
               />
 
+              {/* Doctor Feedback Portal */}
+              <Route
+                path="/feedback/doctor"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      "doctor",
+                      "superAdmin",
+                    ]}
+                  >
+                    <DoctorFeedbackPortal currentUser = {{...currentUser, role: userRole, ...userData}}/>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Legacy route redirect for old feedback path */}
+              <Route
+                path="/feedback"
+                element={<Navigate to="/feedback/nurse" replace />}
+              />
+
+              {/* Unified QA Dashboard for both nurse and doctor tickets */}
               <Route
                 path="/tickets"
                 element={
@@ -502,7 +536,7 @@ function AppContent() {
                       "superAdmin",
                     ]}
                   >
-                    <FeedbackTableQA currentUser = {{...currentUser, role: userRole, ...userData}}/>
+                    <UnifiedQADashboard currentUser = {{...currentUser, role: userRole, ...userData}}/>
                   </ProtectedRoute>
                 }
               />
