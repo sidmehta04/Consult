@@ -13,6 +13,13 @@ import {
   LineChart,
   Line,
 } from "recharts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,8 +40,10 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
   const [nurseTickets, setNurseTickets] = useState([]);
   const [doctorTickets, setDoctorTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Check if user has access to analytics
+  const [activeTab, setActiveTab] = useState("overview");
+  // const [allTickets, setAllTickets] = useState('')
+  const [ticketType, setTicketType] = useState('all')
+   // Check if user has access to analytics
   const hasAccess =
     currentUser.email === "Akash.das@m-insure.in" ||
     currentUser.role === "superAdmin";
@@ -55,7 +64,10 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
   // Helper function to format TAT display
   const formatTAT = (hours) => {
     if (!hours) return "N/A";
-
+    if( hours <1) {
+      const minutes = Math.floor( hours*60 );
+      return `${minutes}min`;
+    } 
     if (hours < 24) {
       return `${hours}h`;
     } else {
@@ -218,6 +230,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
     return acc;
   }, {});
 
+
   // Calculate TAT statistics
   const closedTicketsWithTAT = allTickets.filter(
     (ticket) => ticket.status === "closed" && ticket.tat !== null
@@ -226,6 +239,27 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
     closedTicketsWithTAT.length > 0
       ? closedTicketsWithTAT.reduce((sum, ticket) => sum + ticket.tat, 0) /
         closedTicketsWithTAT.length
+      : 0;
+
+
+    const closedDoctorTicketsWithTAT = doctorTickets.filter(
+    (ticket) => ticket.status === "closed" && ticket.tat !== null
+  );
+
+
+   const closedNurseTicketsWithTAT = nurseTickets.filter(
+    (ticket) => ticket.status === "closed" && ticket.tat !== null
+  );
+  const avgTATofDoctor =
+    closedDoctorTicketsWithTAT.length > 0
+      ? closedDoctorTicketsWithTAT.reduce((sum, ticket) => sum + ticket.tat, 0) /
+        closedDoctorTicketsWithTAT.length
+      : 0;
+      
+  const avgTATofNurse =
+    closedNurseTicketsWithTAT.length > 0
+      ? closedNurseTicketsWithTAT.reduce((sum, ticket) => sum + ticket.tat, 0) /
+        closedNurseTicketsWithTAT.length
       : 0;
 
   // TAT distribution data
@@ -461,7 +495,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
     .sort((a, b) => b.avgTAT - a.avgTAT); // Sort by highest TAT first
 
   return (
-    <div className="max-w-12xl mx-auto p-4 space-y-6">
+    <div className="max-w-12xl mx-auto  space-y-6">
       {/* Header */}
       <Card className="border border-gray-200">
         <CardHeader className="pb-4">
@@ -477,7 +511,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
 
       {/* Overview Stats */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card className="border border-gray-200">
+        <Card className="border border-blue-200 hover:border hover:border-blue-600 hover:shadow">
           <CardContent className="p-4 text-center">
             <FileText className="w-6 h-6 mx-auto mb-2 text-blue-600" />
             <div className="text-xl font-semibold text-gray-800">
@@ -487,7 +521,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-green-200 hover:border hover:border-green-600 hover:shadow">
           <CardContent className="p-4 text-center">
             <Users2 className="w-6 h-6 mx-auto mb-2 text-green-600" />
             <div className="text-xl font-semibold text-gray-800">
@@ -497,7 +531,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-purple-200 hover:border hover:border-purple-600 hover:shadow">
           <CardContent className="p-4 text-center">
             <Stethoscope className="w-6 h-6 mx-auto mb-2 text-purple-600" />
             <div className="text-xl font-semibold text-gray-800">
@@ -507,7 +541,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-red-200 hover:border hover:border-red-600 hover:shadow">
           <CardContent className="p-4 text-center">
             <Activity className="w-6 h-6 mx-auto mb-2 text-red-600" />
             <div className="text-xl font-semibold text-gray-800">
@@ -517,9 +551,9 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-yellow-200 hover:border hover:border-yellow-600 hover:shadow">
           <CardContent className="p-4 text-center">
-            <Users className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+            <Users className="w-6 h-6 mx-auto mb-2 text-yellow-600" />
             <div className="text-xl font-semibold text-gray-800">
               {qaAnalysisData.length}
             </div>
@@ -527,7 +561,7 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        {/* <Card className="border border-blue-200 hover:border hover:border-blue-600 hover:shadow">
           <CardContent className="p-4 text-center">
             <Clock className="w-6 h-6 mx-auto mb-2 text-blue-600" />
             <div className="text-xl font-semibold text-gray-800">
@@ -535,17 +569,40 @@ const UnifiedFeedbackAnalytics = ({ currentUser }) => {
             </div>
             <div className="text-sm text-gray-600">Avg TAT</div>
           </CardContent>
-        </Card>
+        </Card> */}
+
+        <Card className="border border-blue-200 hover:border-blue-600 hover:shadow">
+  <CardContent className="p-4">
+    <div className="flex items-center justify-center gap-2 mb-4">
+      <Clock className="w-6 h-6 text-blue-600" />
+      <h2 className="text-lg font-semibold text-gray-800">Average TAT</h2>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Doctor TAT */}
+      <div className="rounded-lg border p-3 text-center bg-blue-50 hover:shadow-sm transition">
+        <div className=" text-blue-700 font-semibold">{formatTAT(avgTATofDoctor)}</div>
+        <div className="text-sm text-gray-600">Doctor</div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      {/* Nurse TAT */}
+      <div className="rounded-lg border p-3 text-center bg-blue-50 hover:shadow-sm transition">
+        <div className="text-blue-700 font-semibold ">{formatTAT(avgTATofNurse)}</div>
+        <div className="text-sm text-gray-600">Nurse</div>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+
+      </div>
+
+      <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="categories">Issue Analysis</TabsTrigger>
-          <TabsTrigger value="qa-analysis">QA Performance</TabsTrigger>
-          <TabsTrigger value="state-partner">State/Partner</TabsTrigger>
-          <TabsTrigger value="tat-analysis">TAT Analysis</TabsTrigger>
-          <TabsTrigger value="department-tat">Dept TAT</TabsTrigger>
+          <TabsTrigger value="overview" className={`${activeTab === "overview" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>Overview</TabsTrigger>
+          <TabsTrigger value="categories" className={`${activeTab === "categories" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>Issue Analysis</TabsTrigger>
+          <TabsTrigger value="qa-analysis" className={`${activeTab === "qa-analysis" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>QA Performance</TabsTrigger>
+          <TabsTrigger value="state-partner" className={`${activeTab === "state-partner" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>State/Partner</TabsTrigger>
+          <TabsTrigger value="tat-analysis" className={`${activeTab === "tat-analysis" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>TAT Analysis</TabsTrigger>
+          <TabsTrigger value="department-tat" className={`${activeTab === "department-tat" ? 'border-blue-500 text-blue-600' : 'border-transparent' }`}>Dept TAT</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}

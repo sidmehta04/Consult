@@ -144,6 +144,7 @@ export const exportCasesToExcelWithCustomFormatting = (cases, fileName = 'cases_
     booleanFields = [] // Fields that should be formatted as Yes/No
   } = options;
 
+
   if (!cases || cases.length === 0) {
     console.warn('No cases data to export');
     return;
@@ -158,7 +159,8 @@ export const exportCasesToExcelWithCustomFormatting = (cases, fileName = 'cases_
   // Filter out excluded keys
   const filteredKeys = Array.from(allKeys)
     .filter(key => !excludeKeys.some(excludeKey => key.includes(excludeKey)))
-    .sort();
+    .sort()
+    .reverse();
 
   // Transform cases for Excel export
   const excelData = cases.map(caseItem => {

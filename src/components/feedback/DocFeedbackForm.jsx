@@ -38,10 +38,13 @@ const DoctorFeedbackForm = ({ currentUser }) => {
   const [error, setError] = useState("");
   const [availableQAs, setAvailableQAs] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState('none');
+  const [selectedPartners, setSelectedPartners] = useState(currentUser.partnerName);
   const [selectedSubIssue, setSelectedSubIssue] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [searchTerm, setSearchTerm] = useState('');
+  const [emrNumber, setEMRNumber] = useState('');
   useEffect(() => {
+
     // Get QAs based on partner name
     const qasForPartner = partnerQAMapping[currentUser.partnerName];
     
@@ -64,7 +67,11 @@ const DoctorFeedbackForm = ({ currentUser }) => {
       return;
     }
 
-    if (!formData.description || selectedIssue === 'none' || !selectedSubIssue) {
+    if (emrerror) {
+      return ;
+    }
+
+    if (!formData.description || selectedIssue === 'none' || !selectedSubIssue || !emrNumber) {
       setError("Please fill out all required fields.");
       return;
     }
@@ -84,6 +91,8 @@ const DoctorFeedbackForm = ({ currentUser }) => {
         issue: selectedIssue,
         subIssue: selectedSubIssue,
         partnerName: currentUser.partnerName,
+        emrNumber: emrNumber,
+        selectedPartner: selectedPartners,
         doctorName: currentUser.name,
         comments: [{'time': new Date(), 'comment': formData.description, 'side': 'doctor'}],
         qaEmails: qaEmails,
@@ -106,8 +115,26 @@ const DoctorFeedbackForm = ({ currentUser }) => {
     }
   };
 
+   const filteredCategories = Object.keys(partnerQAMapping).filter((category) =>
+    category.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const [emrerror, setEmrError] = useState('');
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    
+    // Check if input is empty or contains only digits
+    if (value === '' || /^[0-9]*$/.test(value)) {
+      setEMRNumber(value);
+      setEmrError('');
+    } else {
+      // Set error message
+      setEmrError('Please enter numbers only');
+    }
+  };
+
   return (
-    <div className="max-w-12xl mx-auto p-2">
+    <div className="max-w-12xl mx-auto ">
       <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-blue-50">
         <CardHeader className="pb-6">
           <CardTitle className="text-2xl font-bold text-gray-800 flex items-center gap-3">
@@ -169,12 +196,64 @@ const DoctorFeedbackForm = ({ currentUser }) => {
                         <span className="font-medium text-green-800">Name:</span>
                         <span className="text-green-700 ml-2">{currentUser.name}</span>
                     </div>
-                    <div>
-                      <span className="font-medium text-green-800">Partner:</span>
-                      <span className="text-green-700 ml-2">{currentUser.partnerName}</span>
+
+                    <div className="space-y-2 flex items-center gap-4">
+                      <span className="font-medium text-green-800 text-nowrap">Partner:</span>
+                      <Select value={selectedPartners} 
+                       onValueChange={(value) => {
+                          setSelectedPartners(value);
+                          setSearchTerm('');
+                        }}
+                       disabled={isSubmitting}>
+                        <SelectTrigger className="w-full h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60 overflow-y-auto">
+                          <div className="px-1 py-2">
+                            <input
+                              type="text"
+                              placeholder="Search..."
+                              className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                          </div>
+                          {filteredCategories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                          {filteredCategories.length === 0 && (
+                            <div className="px-3 py-2 text-sm text-gray-500">No results found</div>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
-                
-                    
+
+                     <div className="w-full flex items-center space-y-1 gap-1">
+                        <label className="font-medium text-green-800 block text-nowrap ">EMR Number:</label><span className="text-red-500">*</span>
+                        <div className="w-full">
+                        <input
+                            type="text"
+                            required
+                            name="emrNumber"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            placeholder="Enter EMR Number (digits only)"
+                            value={emrNumber}
+                            onChange={handleChange}
+                            className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                              emrerror 
+                                ? 'border-red-500 focus:ring-red-500' 
+                                : 'border-gray-300 focus:ring-blue-600 focus:border-blue-600'
+                            }`}
+                          />
+                          {emrerror && (
+                          <p className="text-sm text-red-600">{emrerror}</p>
+                        )}
+                        </div>
+                      </div>
+
                   </div>
                 </div>
               </div>

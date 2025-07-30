@@ -131,7 +131,7 @@ const CaseManagementModule = ({ currentUser }) => {
   }
   
   return (
-    <div className="container mx-auto p-4">
+    <div className="p-4">
       
       
       {/* Render specific component based on user role */}

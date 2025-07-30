@@ -391,9 +391,9 @@ function AppContent() {
       <Navigation items={getNavigationItems()} userRole={userRole} userUid={currentUser.uid} />
 
       {/* Main Content Area */}
-      <div className="h-[calc(120vh-112px)]">
+      <div className="h-[calc(120vh-112px)] w-full">
         <main className="overflow-auto p-6">
-          <div className="max-w-9xl mx-auto">
+          <div className="w-full mx-auto">
             <Routes>
               {/* Dashboard route (home) */}
               {/*
@@ -589,7 +589,7 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-sky-50">
+      <div className="min-h-screen  bg-gradient-to-b from-blue-50 to-sky-50">
         {isAuthenticated ? (
           <AppContent />
         ) : (

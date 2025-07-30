@@ -52,13 +52,6 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
         emailQA: "mochakms00610@gmail.com",
       },
     ],
-    "Nabfins": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
-      },
-    ],
     "Pahal North": [
       {
         MSID: "MS01382",
@@ -76,13 +69,6 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
         MSID: "MS00568",
         nameQA: "Dharshini",
         emailQA: "mochakms00568@gmail.com",
-      },
-    ],
-    "ACFL": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
       },
     ],
     "TATA North": [
@@ -112,13 +98,6 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
         MSID: "MS00562",
         nameQA: "Chakilam Avinash",
         emailQA: "mochakms00562@gmail.com",
-      },
-    ],
-    "Humana": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
       },
     ],
     "NESFB": [
@@ -185,27 +164,6 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
         MSID: "MS01382",
         nameQA: "Mehjabin Muzid",
         emailQA: "mochakms01382@gmail.com",
-      },
-    ],
-    "Utkarsh": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
-      },
-    ],
-    "Utkarsh foundation": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
-      },
-    ],
-    "Svatantra": [
-      {
-        MSID: "MS00769",
-        nameQA: "Yogesh Kumar Jha",
-        emailQA: "mochakms00769@gmail.com",
       },
     ],
     "ESAF South": [

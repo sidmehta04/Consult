@@ -631,7 +631,7 @@ const DoctorCaseManagement = ({ currentUser }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 ">
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-2">
           <div className="bg-blue-100 p-2 rounded-full">

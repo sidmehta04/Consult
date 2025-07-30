@@ -7,10 +7,10 @@ import DoctorFeedbackTable from "./DoctorFeedbackTable";
 
 const DoctorFeedbackPortal = ({ currentUser }) => {
   const [currentTab, setCurrentTab] = useState("submit");
-
+  // console.log("logged in docter", currentUser);
   return (
-    <div className="container mx-auto p-6 max-w-12xl">
-      <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-blue-50">
+    <div className=" p-6 w-full ">
+      <Card className="shadow-lg w-full border-0 bg-gradient-to-br from-white to-blue-50">
         <CardHeader className="pb-6 border-b border-gray-100">
           <div className="flex items-center justify-center">
             <div className="text-center">
@@ -25,9 +25,9 @@ const DoctorFeedbackPortal = ({ currentUser }) => {
           </div>
         </CardHeader>
         
-        <CardContent className="p-6">
+        <CardContent className="p-4">
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
+            <TabsList className="grid w-full grid-cols-2 h-full">
               <TabsTrigger value="submit" className="flex items-center gap-2 py-3">
                 <PlusCircle className="w-4 h-4" />
                 Submit New Ticket

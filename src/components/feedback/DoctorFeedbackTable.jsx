@@ -80,8 +80,9 @@ const DoctorFeedbackTable = ({ currentUser }) => {
     });
   };
 
+
   return (
-    <div className="max-w-10xl mx-auto p-6">
+    <div className="max-w-10xl mx-auto ">
       <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-blue-50">
         <CardHeader className="pb-6 border-b border-gray-100">
           <div className="flex items-center justify-between">
@@ -148,7 +149,7 @@ const DoctorFeedbackTable = ({ currentUser }) => {
                               <span className="text-xs font-semibold text-blue-700">P</span>
                             </div>
                             <div className="font-medium text-sm text-gray-700">
-                              {ticket.partnerName}
+                              {ticket?.selectedPartner}
                             </div>
                           </div>
                         </TableCell>
