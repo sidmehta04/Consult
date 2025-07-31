@@ -421,7 +421,7 @@ export const doctorSubcategories = {
     },
     {
       value: "weighing-machine-issues",
-      label: "Weighing Machine Not Working or Not Available | वजन मापने की मशीन काम नहीं कर रही है या उपलब्ध नहीं है",
+      label: "Weighting Machine Not Working or Not Available | वजन मापने की मशीन काम नहीं कर रही है या उपलब्ध नहीं है",
     },
     {
       value: "tab-issues",
@@ -434,6 +434,14 @@ export const doctorSubcategories = {
     {
       value: "electricity-issues",
       label: "Electricity Issue | बिजली संबंधी समस्या",
+    },
+    {
+      value: "medicine-issues",
+      label: "Medicine related issue | दवा संबंधी समस्या",
+    },
+    {
+      value: "petient-behaviour-issues",
+      label: "Patient behaviour issue | रोगी के व्यवहार संबंधी समस्या",
     },
   ],
   "offline-team": [

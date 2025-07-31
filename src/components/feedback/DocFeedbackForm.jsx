@@ -43,17 +43,20 @@ const DoctorFeedbackForm = ({ currentUser }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [emrNumber, setEMRNumber] = useState('');
+
+  // console.log("doctor details", currentUser);
+
   useEffect(() => {
 
     // Get QAs based on partner name
-    const qasForPartner = partnerQAMapping[currentUser.partnerName];
+    const qasForPartner = partnerQAMapping[selectedPartners];
     
     if (qasForPartner && Array.isArray(qasForPartner) && qasForPartner.length > 0) {
       setAvailableQAs(qasForPartner);
     } else {
       setAvailableQAs([defaultQADoctor]);
     }
-  }, [currentUser])
+  }, [currentUser, selectedPartners])
   
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -71,7 +74,7 @@ const DoctorFeedbackForm = ({ currentUser }) => {
       return ;
     }
 
-    if (!formData.description || selectedIssue === 'none' || !selectedSubIssue || !emrNumber) {
+    if (!formData.description || selectedIssue === 'none' || !selectedSubIssue || !emrNumber || !selectedPartners) {
       setError("Please fill out all required fields.");
       return;
     }
@@ -132,6 +135,8 @@ const DoctorFeedbackForm = ({ currentUser }) => {
       setEmrError('Please enter numbers only');
     }
   };
+
+  // console.log("filteredCategories", filteredCategories);
 
   return (
     <div className="max-w-12xl mx-auto ">
