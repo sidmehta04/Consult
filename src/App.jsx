@@ -19,13 +19,17 @@ import CaseManagementModule from "./components/CaseManagement";
 import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import AnalyticsDashboard from "./components/Analytics";
-import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText, Stethoscope} from "lucide-react";
+import ClinicInventory from "./components/ClinicInventory.jsx"; // Import the new Clinic Inventory component
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText, Stethoscope, Package} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 import FeedbackPortal from "./components/Feedback";
 import UnifiedQADashboard from "./components/feedback/UnifiedQADashboard.jsx"; // Updated to use unified dashboard
 import DoctorFeedbackPortal from "./components/feedback/DoctorFeedbackPortal"; // New doctor feedback portal
 import { set } from "date-fns";
+
+// Google Sheets API Key - Add this to your .env file
+const GOOGLE_SHEETS_API_KEY = import.meta.env.VITE_SHEET_API;
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
@@ -36,7 +40,6 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   useEffect(() => {
     const auth = getAuth();
-
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -303,6 +306,15 @@ function AppContent() {
       });
     }
 
+    // Medicine Inventory for nurses
+    if (userRole === "nurse") {
+      items.push({
+        name: "Medicine Inventory",
+        href: "/inventory",
+        icon: <Package className="h-5 w-5" />
+      });
+    }
+
     // Individual feedback portals for nurse and doctor
     if (userRole === "nurse") {
       items.push({
@@ -388,7 +400,7 @@ function AppContent() {
       </header>
 
       {/* Navigation */}
-      <Navigation items={getNavigationItems()} userRole={userRole} userUid={currentUser.uid} />
+      <Navigation items={getNavigationItems()} userRole={userRole} userUid={currentUser?.uid} />
 
       {/* Main Content Area */}
       <div className="h-[calc(120vh-112px)] w-full">
@@ -396,16 +408,6 @@ function AppContent() {
           <div className="w-full mx-auto">
             <Routes>
               {/* Dashboard route (home) */}
-              {/*
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardTab currentUser={{...currentUser, role: userRole, ...userData}} />
-                  </ProtectedRoute>
-                }
-              />*/}
-
               <Route
                 path="/"
                 element={
@@ -415,30 +417,8 @@ function AppContent() {
                 }
               />
 
-              {/* Doctor Dashboard route */}
-              {/*}
-              <Route
-                path="/doctor-dashboard"
-                element={
-                  <ProtectedRoute allowedRoles={["zonalHead", "teamLeader", "drManager"]}>
-                    <DoctorDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
-                  </ProtectedRoute>
-                }
-              />
-              */}
               {/* --- Divyansh's code --- */} 
-              {/* Pharmacist Dashboard route */}
-              {/*
-              <Route
-                path="/pharmacist-dashboard"
-                element={
-                  <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead"]}>
-                    <PharmacistDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
-                  </ProtectedRoute>
-                }
-              />
-              */}
-
+              {/* Combined Medical Dashboard */}
               <Route
                 path="/medical-dashboard"
                 element={
@@ -447,7 +427,6 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />  
-
               {/* --- End of Divyansh's code --- */}
 
               {/* User management route */}
@@ -486,6 +465,19 @@ function AppContent() {
                     ]}
                   >
                     <CaseManagementModule currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Medicine Inventory route for nurses */}
+              <Route
+                path="/inventory"
+                element={
+                  <ProtectedRoute allowedRoles={["nurse"]}>
+                    <ClinicInventory 
+                      currentUser={{...currentUser, role: userRole, ...userData}} 
+                      apiKey={GOOGLE_SHEETS_API_KEY}
+                    />
                   </ProtectedRoute>
                 }
               />
@@ -571,7 +563,6 @@ function App() {
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-
       setIsAuthenticated(!!user);
       setLoading(false);
     });
