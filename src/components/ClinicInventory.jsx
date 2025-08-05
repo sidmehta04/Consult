@@ -54,8 +54,9 @@ const ClinicInventory = ({ currentUser }) => {
         // Extract the main clinic code (first part before space)
         const mainClinicCode = clinic.split(' ')[0];
         
-        // Index by both full clinic code and main clinic code
-        [clinic, mainClinicCode].forEach(code => {
+        // Index by both full clinic code and main clinic code (avoid duplicates)
+        const uniqueCodes = [...new Set([clinic, mainClinicCode])];
+        uniqueCodes.forEach(code => {
           if (code) {
             if (!index.has(code)) {
               index.set(code, []);

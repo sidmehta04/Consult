@@ -119,13 +119,6 @@ const UserCreationTab = () => {
             </TabsTrigger>
           )}
           
-          {/* Show pharmacist hierarchy management tab for pharmacists */}
-          {userRole === 'pharmacist' && (
-            <TabsTrigger value="pharmacistHierarchy">
-              <Pill className="h-4 w-4 mr-2" />
-              Pharmacist Hierarchy
-            </TabsTrigger>
-          )}
 
           {/* Show clinic hierarchy management tab for teamLeaders (TLS) */}
           {userRole === 'teamLeader' && (
@@ -152,13 +145,6 @@ const UserCreationTab = () => {
           </TabsContent>
         )}
         
-        {userRole === 'pharmacist' && (
-          <TabsContent value="pharmacistHierarchy" className="pt-4">
-            <PharmacistHierarchyManagement 
-              currentUser={currentUser} 
-            />
-          </TabsContent>
-        )}
 
         {userRole === 'teamLeader' && (
           <TabsContent value="clinicHierarchy" className="pt-4">

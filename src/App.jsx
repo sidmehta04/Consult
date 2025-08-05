@@ -20,7 +20,8 @@ import DashboardNew from "./components/dashboard/Dashboard";
 import CombinedDashboard from "./components/combinedDashboard/DocDashboard"; // Import the Combined Dashboard
 import AnalyticsDashboard from "./components/Analytics";
 import ClinicInventory from "./components/ClinicInventory.jsx"; // Import the new Clinic Inventory component
-import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText, Stethoscope, Package} from "lucide-react";
+import RoomSystem from "./components/RoomSystemNew.jsx"; // Import the Room System component
+import { ClipboardList, UserPlus, Home, LogOut, Activity, PillBottle, ChartColumnBig, MessageSquareText, Stethoscope, Package, Video} from "lucide-react";
 import { createAdminUsers } from "./utils/createadmin";
 import {initializeTopAdmins} from "./utils/admin"; // Import the function to create admin users
 import FeedbackPortal from "./components/Feedback";
@@ -297,14 +298,16 @@ function AppContent() {
       });
     }
 
-    // Case management for relevant roles
+    // Room System for nurses, doctors, and pharmacists  
     if (["nurse", "doctor", "pharmacist"].includes(userRole)) {
       items.push({
-        name: "Case Management",
-        href: "/cases",
-        icon: <ClipboardList className="h-5 w-5" />
+        name: "Room System",
+        href: "/rooms",
+        icon: <Video className="h-5 w-5" />
       });
     }
+
+    // Case Management is no longer needed - all users now use Room System
 
     // Medicine Inventory for nurses
     if (userRole === "nurse") {
@@ -448,15 +451,12 @@ function AppContent() {
                 }
               />
 
-              {/* Case management route */}
+              {/* Case management route - only for management roles */}
               <Route
                 path="/cases"
                 element={
                   <ProtectedRoute
                     allowedRoles={[
-                      "nurse",
-                      "doctor",
-                      "pharmacist",
                       "drManager",
                       "ro",
                       "teamLeader",
@@ -478,6 +478,16 @@ function AppContent() {
                       currentUser={{...currentUser, role: userRole, ...userData}} 
                       apiKey={GOOGLE_SHEETS_API_KEY}
                     />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Room System route for nurses, doctors, and pharmacists */}
+              <Route
+                path="/rooms"
+                element={
+                  <ProtectedRoute allowedRoles={["nurse", "doctor", "pharmacist"]}>
+                    <RoomSystem currentUser={{...currentUser, role: userRole, ...userData}} />
                   </ProtectedRoute>
                 }
               />
