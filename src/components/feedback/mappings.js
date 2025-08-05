@@ -164,6 +164,156 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
   };
 }
 
+export const InventaryMapping = {
+    Bihar: [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+     ],
+    Gujarat: [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    "UP East" : [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    Rajasthan: [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    Chhattisgarh: [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    Jharkhand: [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    "Madhya Pradesh": [
+      {
+        EmpID: "MS01228",
+        name: "Manish Kumar Gupta",
+        email: "manishkumar.gupta@m-swasth.in",
+      },
+    ],
+    "West Bengal": [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Odisha: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Maharashtra: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Uttarakhand: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Haryana: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Assam: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    "UP West": [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    "Himachal Pradesh": [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Punjab: [
+      {
+        EmpID: "MS00588",
+        name: "Akash Bhardwaj",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    "Andhra Pradesh": [
+      {
+        EmpID: "MS00766",
+        name: "Dhanasekar",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ], 
+    Karnataka: [
+      {
+        EmpID: "MS00766",
+        name: "Dhanasekar",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ], 
+    Telangana: [
+      {
+        EmpID: "MS00766",
+        name: "Dhanasekar",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+    Kerala: [
+      {
+        EmpID: "MS00766",
+        name: "Dhanasekar",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ], 
+    "Tamil Nadu": [
+      {
+        EmpID: "MS00766",
+        name: "Dhanasekar",
+        email: "akash.bhardwaj@m-insure.in",
+      },
+    ],
+}
+
 // Helper function to get QA details for a state
 export const getQAForState = (stateName) => {
   const qaList = mappingQA[stateName];
