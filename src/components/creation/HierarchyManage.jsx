@@ -512,7 +512,8 @@ const ClinicHierarchyManagement = ({ currentUser, userRole }) => {
         </div>
       </CardFooter>
 
-      {/* Pharmacist Hierarchy Management Dialog */}
+      {/* 
+       Dialog */}
       {selectedClinic && (
         <Dialog 
           open={!!selectedClinic} 

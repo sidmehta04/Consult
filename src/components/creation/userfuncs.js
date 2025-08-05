@@ -45,6 +45,10 @@ export const useUserCreation = (currentUserRole, currentUser) => {
     supervisorName: "",
     supervisorId: "",
     additionalInfo: "",
+    // Room System fields
+    specialization: "",
+    meetingLink: "",
+    assignedDoctorId: "",
   });
 
   // UI state
@@ -326,6 +330,18 @@ export const useUserCreation = (currentUserRole, currentUser) => {
         userData.assignedClinics = {};
       }
 
+      // Add Room System fields for doctors and pharmacists
+      if (effectiveRoleToCreate === "doctor" || effectiveRoleToCreate === "pharmacist") {
+        userData.specialization = formData.specialization || (effectiveRoleToCreate === "doctor" ? "General Medicine" : "General Pharmacy");
+        userData.meetingLink = formData.meetingLink || "";
+        userData.isOnline = false; // Default to offline
+        userData.availabilityStatus = "available"; // Default availability
+        
+        if (effectiveRoleToCreate === "pharmacist" && formData.assignedDoctorId) {
+          userData.assignedDoctorId = formData.assignedDoctorId;
+        }
+      }
+
       // Save user data to Firestore
       await setDoc(doc(secondaryDb, "users", newUser.uid), userData);
 
@@ -347,6 +363,10 @@ export const useUserCreation = (currentUserRole, currentUser) => {
         supervisorName: formData.supervisorName,
         supervisorId: formData.supervisorId,
         additionalInfo: "",
+        // Reset Room System fields
+        specialization: "",
+        meetingLink: "",
+        assignedDoctorId: "",
       });
 
       setSuccess(

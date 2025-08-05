@@ -46,6 +46,56 @@ import DoctorStatusIndicator from "./DocStatus";
 import PharmacistStatusIndicator from "./PharmasistAvailable";
 
 const NurseCaseForm = ({ currentUser, onCreateCase }) => {
+  // Redirect message component for room system
+  const RoomSystemRedirect = () => (
+    <Card className="border border-blue-200 shadow-md">
+      <CardHeader className="bg-blue-50 pb-4">
+        <CardTitle className="flex items-center text-blue-700">
+          <Video className="h-5 w-5 mr-2 text-blue-500" />
+          New Room System Available
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-6 pb-6">
+        <div className="text-center space-y-4">
+          <p className="text-gray-700">
+            We've introduced a new <strong>Room System</strong> for managing consultations with predefined meeting links.
+          </p>
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+            <h3 className="font-semibold text-blue-800 mb-2">New Features:</h3>
+            <ul className="list-disc list-inside text-left max-w-md mx-auto text-gray-700 space-y-1">
+              <li>Select multiple doctors from your hierarchy</li>
+              <li>Join predefined Google Meet links</li>
+              <li>Real-time participant counts</li>
+              <li>Direct access to pharmacist rooms</li>
+              <li>Streamlined case completion</li>
+            </ul>
+          </div>
+          <div className="flex justify-center space-x-4">
+            <Button 
+              onClick={() => window.location.href = '/rooms'} 
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Video className="h-4 w-4 mr-2" />
+              Go to Room System
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setShowLegacyForm(true)}
+            >
+              Continue with Legacy Form
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const [showLegacyForm, setShowLegacyForm] = useState(false);
+
+  // Show redirect by default
+  if (!showLegacyForm) {
+    return <RoomSystemRedirect />;
+  }
   const [formData, setFormData] = useState({
     patients: [{ patientName: "", emrNumber: "", chiefComplaint: "" }],
     consultationType: "tele",

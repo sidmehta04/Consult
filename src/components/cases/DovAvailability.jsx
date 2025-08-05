@@ -27,6 +27,7 @@ import {
   Users,
   Calendar as CalendarIcon,
   Plane,
+  Video,
 } from "lucide-react";
 import {
   doc,
@@ -159,6 +160,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
         availabilityStatus: status,
         lastStatusUpdate: timestamp,
         availabilityHistory: updatedHistory,
+        isOnline: status === 'available', // Update isOnline for room system
         ...additionalData,
       });
 
@@ -198,10 +200,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
             Available
           </Badge>
         );
-      case "busy":
-        return (
-          <Badge className="bg-red-100 text-red-800 border-red-200">Busy</Badge>
-        );
       case "unavailable":
         return (
           <Badge className="bg-gray-100 text-gray-800 border-gray-200">
@@ -229,8 +227,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
     switch (availabilityStatus) {
       case "available":
         return "bg-green-100 text-green-800 border-green-200";
-      case "busy":
-        return "bg-red-100 text-red-800 border-red-200";
       case "unavailable":
         return "bg-gray-100 text-gray-800 border-gray-200";
       case "on_break":
@@ -242,18 +238,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
     }
   };
 
-  // Auto-update status to busy if case load is high
-  // deprecating busy?
-  ///*
-  useEffect(() => {
-    if (availabilityStatus === "available" && activeCases.length >= 7) {
-      updateDoctorStatus(
-        "busy",
-        "Automatically marked as busy due to high case load"
-      );
-    }
-  }, [activeCases, availabilityStatus]);
-  /**/
+  // Removed auto-busy status management
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
@@ -290,8 +275,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                       className={`w-3 h-3 rounded-full mr-2 ${
                         availabilityStatus === "available"
                           ? "bg-green-500"
-                          : availabilityStatus === "busy"
-                          ? "bg-red-500"
                           : availabilityStatus === "unavailable"
                           ? "bg-gray-500"
                           : availabilityStatus === "on_holiday"
@@ -330,7 +313,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Button
                   variant={
                     availabilityStatus === "available" ? "default" : "outline"
@@ -346,20 +329,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                   Available
                 </Button>
 
-                <Button
-                  variant={
-                    availabilityStatus === "busy" ? "default" : "outline"
-                  }
-                  className={
-                    availabilityStatus === "busy"
-                      ? "bg-red-600 hover:bg-red-700"
-                      : ""
-                  }
-                  //onClick={() => handleStatusChange("busy")}
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Busy
-                </Button>
 
                 <Button
                   variant={
@@ -413,6 +382,20 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                   </div>
                   <div>
                     <p className="font-medium text-blue-800">
+                      Room System Integration
+                    </p>
+                    <div className="mt-2 mb-3">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => window.location.href = '/rooms'}
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                      >
+                        <Video className="h-3 w-3 mr-1" />
+                        Open Room System
+                      </Button>
+                    </div>
+                    <p className="font-medium text-blue-800">
                       Status Explanation
                     </p>
                     <ul className="mt-2 space-y-1 text-sm text-gray-600">
@@ -421,10 +404,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                           Available:
                         </span>{" "}
                         Ready to accept new cases
-                      </li>
-                      <li>
-                        <span className="font-medium text-red-600">Busy:</span>{" "}
-                        Already handling maximum cases
                       </li>
                       <li>
                         <span className="font-medium text-gray-600">
@@ -474,18 +453,16 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                               className={`w-2 h-2 rounded-full mr-2 ${
                                 item.newStatus === "available"
                                   ? "bg-green-500"
-                                  : item.newStatus === "busy"
-                                  ? "bg-red-500"
                                   : item.newStatus === "unavailable"
                                   ? "bg-gray-500"
+                                  : item.newStatus === "on_holiday"
+                                  ? "bg-purple-500"
                                   : "bg-amber-500"
                               }`}
                             ></div>
                             <span className="font-medium">
                               {item.newStatus === "available"
                                 ? "Available"
-                                : item.newStatus === "busy"
-                                ? "Busy"
                                 : item.newStatus === "unavailable"
                                 ? "Unavailable"
                                 : item.newStatus === "on_holiday"
@@ -518,8 +495,6 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                             Previous:{" "}
                             {item.previousStatus === "available"
                               ? "Available"
-                              : item.previousStatus === "busy"
-                              ? "Busy"
                               : item.previousStatus === "unavailable"
                               ? "Unavailable"
                               : item.previousStatus === "on_holiday"
