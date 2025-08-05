@@ -8,6 +8,9 @@ import {
   RefreshCw,
   Filter
 } from "lucide-react";
+import MedicineModal from "./MedicineModal";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../firebase"; // Adjust the path based on your setup
 
 const SPREADSHEET_ID = '17TbBtN9NkiXNnmASazjudB6ac9uIKG_o-OlRu3Iuh34';
 
@@ -44,7 +47,7 @@ const ClinicInventory = ({ currentUser }) => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [clinicCode, setClinicCode] = useState(null);
   const [cacheStatus, setCacheStatus] = useState('fresh'); // 'fresh', 'stale', 'expired'
-
+  const [open, setOpen]=useState(false);
   // Create index for faster clinic-based filtering with flexible matching
   const clinicInventoryIndex = useMemo(() => {
     const index = new Map();
@@ -150,7 +153,10 @@ const ClinicInventory = ({ currentUser }) => {
         throw new Error(`Failed to fetch sheet information: ${sheetsResponse.status}`);
       }
 
+      
       const sheetsData = await sheetsResponse.json();
+      
+      console.log("See the sheet1 data:", sheetsData);
       
       // Find the most recent inventory sheet
       const inventorySheets = sheetsData.sheets
@@ -172,11 +178,13 @@ const ClinicInventory = ({ currentUser }) => {
         `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${latestSheet}?key=${import.meta.env.VITE_SHEET_API}`
       );
 
+      
       if (!dataResponse.ok) {
         throw new Error(`Failed to fetch inventory data: ${dataResponse.status}`);
       }
-
+      
       const data = await dataResponse.json();
+      console.log("See the sheet2 data:", data);
       
       if (!data.values || data.values.length === 0) {
         setAllInventoryData([]);
@@ -290,6 +298,35 @@ const ClinicInventory = ({ currentUser }) => {
     );
   }
 
+  console.log("filteredInventory:", filteredInventory);
+  const handleClose = () =>{
+    setOpen(false);
+  }
+
+
+const FetchInventoryData = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "Inventory"));
+    const inventoryData = [];
+
+    querySnapshot.forEach((doc) => {
+      inventoryData.push({
+        id: doc.id,          // Include document ID if needed
+        ...doc.data(),       // Spread the document data
+      });
+    });
+
+    console.log("✅ Inventory Data:", inventoryData);
+    return inventoryData;
+  } catch (error) {
+    console.error("❌ Error fetching inventory data:", error);
+    return [];
+  }
+};
+
+
+console.log("FetchInventoryData", FetchInventoryData)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -309,6 +346,8 @@ const ClinicInventory = ({ currentUser }) => {
               )}
             </p>
           </div>
+
+
           <div className="flex items-center space-x-3">
             {lastUpdated && (
               <div className="text-sm text-gray-500 flex items-center">
@@ -324,6 +363,17 @@ const ClinicInventory = ({ currentUser }) => {
                 </span>
               </div>
             )}
+
+          <div>
+            <button 
+               onClick={()=>setOpen(true)}
+               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50" >
+                Request for Medicine 
+            </button>
+            <MedicineModal open={open} onClose={handleClose} filteredInventory={filteredInventory} />
+
+          </div>
+          
             <button
               onClick={() => loadInventoryData(true)}
               disabled={loading}

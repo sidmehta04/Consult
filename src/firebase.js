@@ -47,6 +47,7 @@ if (missingVars.length > 0) {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 
@@ -55,4 +56,4 @@ if (import.meta.env.PROD) {
   console.log('Firebase initialized for domain:', currentDomain);
 }
 
-export { app, auth, firestore };
+export { app, auth, firestore, db };
