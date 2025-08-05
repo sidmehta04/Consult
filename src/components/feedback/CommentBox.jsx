@@ -8,6 +8,8 @@ import {
   onSnapshot,
   orderBy,
   updateDoc,
+  setDoc,
+  getDoc,
 } from "firebase/firestore";
 
 import { firestore } from "../../firebase";
@@ -55,16 +57,21 @@ const CommentBox = ({ ticketItem, userType }) => {
   };
 
   useEffect(() => {
-    const ticketRef = doc(firestore, "tickets", ticketItem.id);
+    // Use different collections based on user type
+    // Doctor-related roles go to doctor_tickets, others go to tickets
+    const isDoctorType = ['doctor', 'qa'].includes(userType);
+    const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
+    const ticketRef = doc(firestore, collectionName, ticketItem.id);
+    console.log(`Setting up ticket reference for ${userType} in collection: ${collectionName}`);
     setTicketRef(ticketRef);
-  }, [ticketItem]);
+  }, [ticketItem, userType]);
 
   useEffect(() => {
     scrollToBottom();
   }, [comments]);
 
   const handleSendComment = async () => {
-    if (newComment.trim() === '' || isSending) {
+    if (newComment.trim() === '' || isSending || !ticketRef) {
       return;
     }
 
@@ -80,10 +87,31 @@ const CommentBox = ({ ticketItem, userType }) => {
     setComments(commentsArray);
     
     try {
-      await updateDoc(ticketRef, {
-        comments: commentsArray,
-        lastUpdatedAt: new Date()
-      });
+      // Check if the document exists first
+      const docSnap = await getDoc(ticketRef);
+      
+      if (!docSnap.exists()) {
+        // Document doesn't exist, create it with the ticket data and comments
+        const isDoctorType = ['doctor', 'qa'].includes(userType);
+        const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
+        console.log(`Creating new ticket document for ${userType} in ${collectionName}:`, ticketItem.id);
+        await setDoc(ticketRef, {
+          ...ticketItem,
+          comments: commentsArray,
+          lastUpdatedAt: new Date(),
+          createdAt: new Date()
+        });
+      } else {
+        // Document exists, update it
+        const isDoctorType = ['doctor', 'qa'].includes(userType);
+        const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
+        console.log(`Updating existing ticket document for ${userType} in ${collectionName}:`, ticketItem.id);
+        await updateDoc(ticketRef, {
+          comments: commentsArray,
+          lastUpdatedAt: new Date()
+        });
+      }
+      
       setNewComment('');
     } catch (error) {
       console.error("Error sending comment:", error);

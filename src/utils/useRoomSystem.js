@@ -24,7 +24,6 @@ export const useRoomSystem = (currentUser) => {
   useEffect(() => {
     if (!currentUser) return;
 
-    console.log('RoomSystem: Setting up real-time listeners for user:', currentUser);
     const unsubscribers = [];
 
     const setupRealtimeListeners = async () => {
@@ -33,12 +32,10 @@ export const useRoomSystem = (currentUser) => {
         
         // First, get initial doctors data to know which doctors to listen to
         const initialDoctorsData = await getDoctorsWithPharmacists(currentUser);
-        console.log('RoomSystem: Initial doctors data:', initialDoctorsData);
         setDoctorsData(initialDoctorsData);
 
         // Set up real-time listeners for each doctor's availability
         for (const doctor of initialDoctorsData) {
-          console.log(`[REALTIME] Setting up listener for doctor: ${doctor.name} (${doctor.id})`);
           
           const doctorDocRef = doc(firestore, 'users', doctor.id);
           const unsubscribe = onSnapshot(doctorDocRef, (docSnapshot) => {
@@ -50,19 +47,11 @@ export const useRoomSystem = (currentUser) => {
               // PERFORMANCE: Debounce rapid updates (max 1 update per second)
               const now = Date.now();
               if (now - lastUpdateTime < 1000) {
-                console.log(`[REALTIME] Debouncing update for ${doctor.name}`);
                 return;
               }
               setLastUpdateTime(now);
               
-              console.log(`[REALTIME] Doctor ${doctor.name} availability changed:`, {
-                id: doctor.id,
-                previousStatus,
-                newStatus,
-                previousOnline: doctor.isOnline,
-                newOnline: updatedDoctorData.isOnline
-              });
-
+            
               // Add notification if status actually changed
               if (previousStatus !== newStatus) {
                 const notification = {
@@ -80,7 +69,6 @@ export const useRoomSystem = (currentUser) => {
                   setAvailabilityNotifications(prev => prev.filter(n => n.id !== notification.id));
                 }, 5000);
                 
-                console.log(`[NOTIFICATION] ${doctor.name} changed from ${previousStatus || 'available'} to ${newStatus || 'available'}`);
               }
 
               // Update the specific doctor in the doctors array (preserve pharmacists data for performance)
@@ -102,7 +90,6 @@ export const useRoomSystem = (currentUser) => {
                   return prevDoctor;
                 });
                 
-                console.log(`[REALTIME] Updated doctors data after ${doctor.name} change (preserved pharmacists):`, updatedDoctors);
                 return updatedDoctors;
               });
             }
@@ -124,7 +111,6 @@ export const useRoomSystem = (currentUser) => {
 
     // Cleanup function to unsubscribe from all listeners
     return () => {
-      console.log('[REALTIME] Cleaning up doctor availability listeners');
       unsubscribers.forEach(unsubscribe => unsubscribe());
     };
   }, [currentUser]);
@@ -135,17 +121,14 @@ export const useRoomSystem = (currentUser) => {
     
     // Wait until doctors are loaded before setting up consultation listener
     if (doctorsData.length === 0) {
-      console.log('[ALL CONSULTATIONS DEBUG] Waiting for doctors to load');
       return;
     }
 
-    console.log('[ALL CONSULTATIONS DEBUG] Setting up query for participant counts');
-    console.log('[ALL CONSULTATIONS DEBUG] Nurse assigned doctors:', doctorsData.map(d => ({id: d.id, name: d.name})));
+   
     
     const allConsultationsQuery = query(collection(firestore, 'consultations'));
     
     const unsubscribe = onSnapshot(allConsultationsQuery, (snapshot) => {
-      console.log('[ALL CONSULTATIONS DEBUG] Firestore snapshot received, docs count:', snapshot.docs.length);
       
       const consultationsData = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -172,7 +155,6 @@ export const useRoomSystem = (currentUser) => {
         return hasAssignedDoctor;
       });
       
-      console.log('[ALL CONSULTATIONS DEBUG] Found consultations with assigned doctors:', relevantConsultations.length);
       setAllConsultations(relevantConsultations);
       
       // Update active rooms based on all consultations with assigned doctors
@@ -199,7 +181,6 @@ export const useRoomSystem = (currentUser) => {
     let unsubscribe;
     
     if (currentUser.role === 'nurse') {
-      console.log('[OWN CONSULTATIONS DEBUG] Setting up query for nurse\'s own consultations');
       
       const ownConsultationsQuery = query(
         collection(firestore, 'consultations'),
@@ -218,7 +199,6 @@ export const useRoomSystem = (currentUser) => {
           c.status === 'pending' || c.status === 'doctor_complete'
         );
         
-        console.log('[OWN CONSULTATIONS DEBUG] Found own consultations:', relevantConsultations.length);
         setConsultations(relevantConsultations);
       }, (error) => {
         console.error('[OWN CONSULTATIONS DEBUG] Firestore error:', error);
@@ -266,10 +246,6 @@ export const useRoomSystem = (currentUser) => {
   const updateParticipantCounts = () => {
     const counts = {};
     
-    console.log('[PARTICIPANT DEBUG] Updating participant counts...');
-    console.log('[PARTICIPANT DEBUG] doctorsData:', doctorsData.length, 'doctors');
-    console.log('[PARTICIPANT DEBUG] allConsultations:', allConsultations.length, 'consultations (from all nurses)');
-    console.log('[PARTICIPANT DEBUG] ownConsultations:', consultations.length, 'consultations (own only)');
     
     // Count active consultations (pending status) for each doctor using allConsultations
     doctorsData.forEach(doctor => {
@@ -280,22 +256,14 @@ export const useRoomSystem = (currentUser) => {
         const includesDoctor = consultation.selectedDoctors?.includes(doctorId);
         
         if (isPending && includesDoctor) {
-          console.log(`[PARTICIPANT DEBUG] Doctor ${doctor.name} has active consultation:`, {
-            patientName: consultation.patientName,
-            status: consultation.status,
-            selectedDoctors: consultation.selectedDoctors,
-            createdBy: consultation.createdBy
-          });
         }
         
         return isPending && includesDoctor;
       });
       
       counts[doctorId] = activeConsultationsForDoctor.length;
-      console.log(`[PARTICIPANT DEBUG] Doctor ${doctor.name} (${doctorId}): ${activeConsultationsForDoctor.length} active cases`);
     });
     
-    console.log('[PARTICIPANT DEBUG] Final counts:', counts);
     setParticipantCounts(counts);
   };
 
@@ -331,7 +299,6 @@ export const useRoomSystem = (currentUser) => {
           .filter(Boolean)
           .join(', ');
         
-        console.log(`[AUTO-DESELECT] Auto-deselecting truly unavailable doctors: ${removedDoctorNames}`);
         setSelectedDoctors(newSelectedDoctors);
         
         if (removedDoctorNames) {
@@ -345,14 +312,11 @@ export const useRoomSystem = (currentUser) => {
   // Temporary setup function for debugging
   const handleSetupRoomData = async () => {
     try {
-      console.log('Setting up room system data...');
       const result = await setupRoomSystemData();
-      console.log('Setup result:', result);
       if (result.success) {
         alert('Room system data setup completed! Please refresh to see changes.');
         // Refresh doctors data
         const doctorsWithPharmacists = await getDoctorsWithPharmacists(currentUser);
-        console.log('Refreshed doctors data after setup:', doctorsWithPharmacists);
         setDoctorsData(doctorsWithPharmacists);
       } else {
         alert('Setup failed: ' + result.error);
@@ -498,7 +462,6 @@ export const useRoomSystemActions = (currentUser, setters, state) => {
         });
       }
       
-      console.log('Created consultations:', createdCases);
       
       // Store the case data for the pending view
       setPendingCaseData({
@@ -543,7 +506,6 @@ export const useRoomSystemActions = (currentUser, setters, state) => {
       return;
     }
     
-    console.log(`[ROOM ACCESS] Joining ${doctor.name}'s room - Status: ${doctor.availabilityStatus}`);
     window.open(doctor.gmeetLink, '_blank');
   };
 

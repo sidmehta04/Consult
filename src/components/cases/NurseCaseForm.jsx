@@ -157,8 +157,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
   // NEW: State for real-time monitoring
   const [isReassigning, setIsReassigning] = useState(false);
   const [doctorStatusListener, setDoctorStatusListener] = useState(null);
-  const [pharmacistStatusListener, setPharmacistStatusListener] =
-    useState(null);
   const [nurseHierarchyData, setNurseHierarchyData] = useState(null);
 
   const isDoctorAvailable = (doctor) => {
@@ -439,34 +437,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     setDoctorStatusListener(() => combinedUnsubscribe);
   };
 
-  // 7. UPDATE the pharmacist listener similarly
-  const setupPharmacistStatusListener = (pharmacistId) => {
-    if (pharmacistStatusListener) {
-      pharmacistStatusListener();
-    }
-
-    if (!pharmacistId) return;
-
-    // Real-time listener for pharmacist status changes
-    const pharmacistRef = doc(firestore, "users", pharmacistId);
-    const statusUnsubscribe = onSnapshot(pharmacistRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const pharmacistData = docSnap.data();
-
-        // Update assigned pharmacist immediately
-        if (assignedPharmacist && assignedPharmacist.id === pharmacistId) {
-          setAssignedPharmacist((prev) => ({
-            ...prev,
-            availabilityStatus:
-              pharmacistData.availabilityStatus || "available",
-          }));
-
-          // Check if pharmacist became unavailable (status change only, not capacity)
-          if (
-            pharmacistData.availabilityStatus === "unavailable" ||
-            pharmacistData.availabilityStatus === "on_break" ||
-            pharmacistData.availabilityStatus === "on_holiday"
-          ) {
             console.log(
               `Pharmacist ${pharmacistData.name} status changed to unavailable`
             );
@@ -701,25 +671,12 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
     };
   }, [assignedDoctor?.id]);
 
-  useEffect(() => {
-    if (assignedPharmacist && assignedPharmacist.id) {
-      setupPharmacistStatusListener(assignedPharmacist.id);
-    }
-    return () => {
-      if (pharmacistStatusListener) {
-        pharmacistStatusListener();
-      }
-    };
-  }, [assignedPharmacist?.id]);
 
   // Cleanup listeners on component unmount
   useEffect(() => {
     return () => {
       if (doctorStatusListener) {
         doctorStatusListener();
-      }
-      if (pharmacistStatusListener) {
-        pharmacistStatusListener();
       }
     };
   }, []);
@@ -1402,7 +1359,6 @@ const NurseCaseForm = ({ currentUser, onCreateCase }) => {
           pharmacistId: assignedPharmacist.id,
           pharmacistName: assignedPharmacist.name,
           pharmacistType: assignedPharmacist.type || "primary",
-          pharmacistStatus: assignedPharmacist.availabilityStatus,
           doctorCompleted: false,
           pharmacistCompleted: false,
           doctorCompletedAt: null,

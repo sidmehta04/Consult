@@ -256,28 +256,7 @@ function AppContent() {
       { name: "Dashboard", href: "/", icon: <Home className="h-5 w-5" /> }
     ];
 
-    // ---Divyansh's code---
-    
-    // Replacing following with common dashboard:
-    /*
-    // Doctor Dashboard for management roles
-    if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
-      items.push({
-        name: "Doctor Status",
-        href: "/doctor-dashboard",
-        icon: <Activity className="h-5 w-5" />
-      });
-    }
 
-    // Pharmacist Dashboard (not sure if RO is needed)
-    if (["zonalHead", "teamLeader", "drManager"].includes(userRole)) {
-      items.push({
-        name: "Pharmacist Status",
-        href: "/pharmacist-dashboard",
-        icon: <PillBottle className="h-5 w-5" />
-      });
-    }
-    */
 
     // combined dashboard
     if (["zonalHead", "teamLeader", "drManager","superAdmin"].includes(userRole)) {
