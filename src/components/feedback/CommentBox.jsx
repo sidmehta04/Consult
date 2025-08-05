@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   collection,
   addDoc,
@@ -23,107 +23,100 @@ const formatTime = (date) => {
   if (!date) return "";
   if (!(date instanceof Date)) {
     return new Date(date.toDate()).toLocaleString("en-US", {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric', 
-    hour: '2-digit',
-    minute: '2-digit',
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 };
 
 const statusColors = {
-  "open": "bg-red-100 text-red-800 border-red-200",
+  open: "bg-red-100 text-red-800 border-red-200",
   "in-progress": "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "resolved": "bg-green-100 text-green-800 border-green-200",
-  "closed": "bg-gray-100 text-gray-800 border-gray-200",
+  resolved: "bg-green-100 text-green-800 border-green-200",
+  closed: "bg-gray-100 text-gray-800 border-gray-200",
 };
 
 const CommentBox = ({ ticketItem, userType }) => {
   const [comments, setComments] = useState(ticketItem.comments || []);
-  const [newComment, setNewComment] = useState('');
+  const [newComment, setNewComment] = useState("");
   const [ticketRef, setTicketRef] = useState(null);
   const [isSending, setIsSending] = useState(false);
-  
+
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    // Use different collections based on user type
-    // Doctor-related roles go to doctor_tickets, others go to tickets
-    const isDoctorType = ['doctor', 'qa'].includes(userType);
-    const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
+    // Use userType instead of createdBy to determine collection
+    const collectionName =
+      ticketItem.userType === "nurse" ? "tickets" : "doctor_tickets";
     const ticketRef = doc(firestore, collectionName, ticketItem.id);
-    console.log(`Setting up ticket reference for ${userType} in collection: ${collectionName}`);
+    console.log(
+      `Setting up ticket reference in collection: ${collectionName} (userType: ${ticketItem.userType})`
+    );
     setTicketRef(ticketRef);
-  }, [ticketItem, userType]);
+  }, [ticketItem]); // Keep only ticketItem as dependency
 
   useEffect(() => {
     scrollToBottom();
   }, [comments]);
 
   const handleSendComment = async () => {
-    if (newComment.trim() === '' || isSending || !ticketRef) {
-      return;
-    }
+  if (newComment.trim() === '' || isSending) return;
 
-    setIsSending(true);
+  setIsSending(true);
 
-    const commentToAdd = {
-      comment: newComment,
-      side: userType,
-      time: new Date(),
-    };
-
-    const commentsArray = [...comments, commentToAdd];
-    setComments(commentsArray);
-    
-    try {
-      // Check if the document exists first
-      const docSnap = await getDoc(ticketRef);
-      
-      if (!docSnap.exists()) {
-        // Document doesn't exist, create it with the ticket data and comments
-        const isDoctorType = ['doctor', 'qa'].includes(userType);
-        const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
-        console.log(`Creating new ticket document for ${userType} in ${collectionName}:`, ticketItem.id);
-        await setDoc(ticketRef, {
-          ...ticketItem,
-          comments: commentsArray,
-          lastUpdatedAt: new Date(),
-          createdAt: new Date()
-        });
-      } else {
-        // Document exists, update it
-        const isDoctorType = ['doctor', 'qa'].includes(userType);
-        const collectionName = isDoctorType ? 'doctor_tickets' : 'tickets';
-        console.log(`Updating existing ticket document for ${userType} in ${collectionName}:`, ticketItem.id);
-        await updateDoc(ticketRef, {
-          comments: commentsArray,
-          lastUpdatedAt: new Date()
-        });
-      }
-      
-      setNewComment('');
-    } catch (error) {
-      console.error("Error sending comment:", error);
-      // Revert optimistic update on error
-      setComments(comments);
-    } finally {
-      setIsSending(false);
-    }
+  const commentToAdd = {
+    comment: newComment,
+    side: userType,
+    time: new Date(),
   };
 
+  const updatedComments = [...comments, commentToAdd];
+  setComments(updatedComments);
+  
+  try {
+    // Get the correct collection name based on userType
+    const collectionName = ticketItem.userType === 'nurse' ? 'tickets' : 'doctor_tickets';
+    const ticketRef = doc(firestore, collectionName, ticketItem.id);
+
+    // First try to update the existing document
+    await updateDoc(ticketRef, {
+      comments: updatedComments,
+      lastUpdatedAt: new Date()
+    });
+
+    setNewComment('');
+  } catch (error) {
+    console.error("Error sending comment:", error);
+    
+    // Only create if document doesn't exist AND we're sure we should
+    if (error.code === 'not-found') {
+      console.error(`Ticket not found in ${collectionName}, this should not happen!`);
+      // Instead of creating, you might want to handle this as an error case
+      // since tickets should exist before comments are added
+      setComments(comments);
+    } else {
+      // Revert comments on other errors
+      setComments(comments);
+    }
+  } finally {
+    setIsSending(false);
+  }
+};
+
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSendComment();
     }
@@ -131,8 +124,14 @@ const CommentBox = ({ ticketItem, userType }) => {
 
   const getIssueLabels = () => {
     try {
-      const issue = categories.find((item) => item.value === ticketItem.issue)?.label.split(' | ')[0] || ticketItem.issue;
-      const subissue = subcategories[ticketItem.issue]?.find((item) => item.value === ticketItem.subIssue)?.label.split(' | ')[0] || ticketItem.subIssue;
+      const issue =
+        categories
+          .find((item) => item.value === ticketItem.issue)
+          ?.label.split(" | ")[0] || ticketItem.issue;
+      const subissue =
+        subcategories[ticketItem.issue]
+          ?.find((item) => item.value === ticketItem.subIssue)
+          ?.label.split(" | ")[0] || ticketItem.subIssue;
       return { issue, subissue };
     } catch (error) {
       return { issue: ticketItem.issue, subissue: ticketItem.subIssue };
@@ -147,28 +146,30 @@ const CommentBox = ({ ticketItem, userType }) => {
       <CardHeader className="pb-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              {issue}
-            </h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">{issue}</h2>
             <p className="text-gray-600 font-medium">{subissue}</p>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
               <Building className="w-4 h-4 text-gray-500" />
-              <span className="font-medium text-gray-700">{ticketItem.name}</span>
+              <span className="font-medium text-gray-700">
+                {ticketItem.name}
+              </span>
               <span className="text-gray-500">•</span>
               <span className="text-gray-600">{ticketItem.clinicCode}</span>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-gray-500" />
               <span className="text-gray-600">{ticketItem.state}</span>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-gray-500" />
-              <Badge className={`${statusColors[ticketItem.status]} font-medium`}>
+              <Badge
+                className={`${statusColors[ticketItem.status]} font-medium`}
+              >
                 {ticketItem.status?.toUpperCase()}
               </Badge>
             </div>
@@ -181,47 +182,55 @@ const CommentBox = ({ ticketItem, userType }) => {
         <div className="p-6 space-y-6">
           {comments.map((msg, index) => {
             const isCurrentUser = msg.side === userType;
-            
+
             return (
               <div
                 key={index}
-                className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${
+                  isCurrentUser ? "justify-end" : "justify-start"
+                }`}
               >
                 <div className="flex items-end max-w-lg">
                   {/* Avatar for other user */}
                   {!isCurrentUser && (
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center mr-3 flex-shrink-0 shadow-md">
                       <span className="text-sm font-bold text-white">
-                        {msg.side === 'nurse' ? 'N' : 'Q'}
+                        {msg.side === "nurse" ? "N" : "Q"}
                       </span>
                     </div>
                   )}
-                  
+
                   <div className="flex flex-col">
                     {/* Message bubble */}
                     <div
                       className={`px-4 py-3 shadow-md ${
                         isCurrentUser
-                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl rounded-br-md'
-                          : 'bg-white text-gray-800 rounded-2xl rounded-bl-md border border-blue-100'
+                          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl rounded-br-md"
+                          : "bg-white text-gray-800 rounded-2xl rounded-bl-md border border-blue-100"
                       }`}
                     >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.comment}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {msg.comment}
+                      </p>
                     </div>
-                    
+
                     {/* Timestamp */}
-                    <div className={`mt-1 px-2 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                    <div
+                      className={`mt-1 px-2 ${
+                        isCurrentUser ? "text-right" : "text-left"
+                      }`}
+                    >
                       <span className="text-xs text-gray-500">
                         {formatTime(msg.time)}
                       </span>
                     </div>
                   </div>
-                  
+
                   {/* Avatar for current user */}
                   {isCurrentUser && (
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center ml-3 flex-shrink-0 shadow-md">
                       <span className="text-sm font-bold text-white">
-                        {msg.side === 'nurse' ? 'N' : 'Q'}
+                        {msg.side === "nurse" ? "N" : "Q"}
                       </span>
                     </div>
                   )}
@@ -250,12 +259,16 @@ const CommentBox = ({ ticketItem, userType }) => {
               <span className="text-xs text-blue-600">
                 Press Enter to send, Shift+Enter for new line
               </span>
-              <span className={`text-xs ${newComment.length > 500 ? 'text-red-500' : 'text-blue-500'}`}>
+              <span
+                className={`text-xs ${
+                  newComment.length > 500 ? "text-red-500" : "text-blue-500"
+                }`}
+              >
                 {newComment.length}/1000
               </span>
             </div>
           </div>
-          
+
           <Button
             onClick={handleSendComment}
             disabled={!newComment.trim() || isSending}

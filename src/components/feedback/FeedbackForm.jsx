@@ -81,6 +81,7 @@ const FeedbackForm = ({ currentUser }) => {
         state: currentUser.state,
         name: currentUser.name,
         clinicCode: currentUser.clinicCode,
+        userType: 'nurse',
         comments: [{'time': new Date(), 'comment': formData.description, 'side': 'nurse'}],
         qaEmails: qaEmails,
         qaNames: qaNames,
