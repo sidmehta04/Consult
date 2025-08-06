@@ -4,8 +4,6 @@ import React, {
   useMemo,
   useCallback,
   useReducer,
-  lazy,
-  Suspense,
 } from "react";
 import {
   collection,
@@ -39,21 +37,6 @@ import DoctorTable from "./Table";
 import DoctorCardsGrid from "./Card";
 import StatusFilter from "./StatusFilter";
 
-// Lazy load the CaseTransferMain component for better performance
-const CaseTransferMain = lazy(() => import("./CaseTransfer"));
-
-// Loading component for case transfer module
-const CaseTransferLoader = () => (
-  <div className="flex justify-center items-center py-12 border rounded-lg bg-white">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading case transfer module...</p>
-      <p className="text-sm text-gray-500 mt-2">
-        Please wait while we initialize the transfer system...
-      </p>
-    </div>
-  </div>
-);
 
 // State reducer for better state management
 const dashboardReducer = (state, action) => {
@@ -525,12 +508,6 @@ const CombinedDashboard = ({ currentUser }) => {
     dispatch({ type: "SET_SELECTED_DOCTOR", payload: null });
   }, []);
 
-  // Preload case transfer component on hover (optional optimization)
-  const handleCaseTransferHover = useCallback(() => {
-    if (canTransferCases) {
-      import("./CaseTransfer");
-    }
-  }, [canTransferCases]);
 
   // Loading state
   if (state.isLoading && state.viewMode !== "cases") {
@@ -572,29 +549,12 @@ const CombinedDashboard = ({ currentUser }) => {
         refreshInterval={state.refreshInterval}
         setRefreshInterval={handleRefreshIntervalChange}
         onRefresh={handleRefresh}
-        showCaseTransfer={canTransferCases}
         isRefreshing={state.isRefreshing}
         isTransitioning={isTransitioning}
-        onCaseTransferHover={handleCaseTransferHover}
       />
 
-      {/* Show Case Transfer Component if selected and user has permission */}
-      {state.viewMode === "cases" && canTransferCases ? (
-        <Suspense fallback={<CaseTransferLoader />}>
-          <CaseTransferMain currentUser={currentUser} />
-        </Suspense>
-      ) : state.viewMode === "cases" && !canTransferCases ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <div className="text-yellow-800">
-            <h3 className="text-lg font-medium mb-2">Access Restricted</h3>
-            <p className="text-sm">
-              Case transfer functionality is only available to Team Leaders.
-              Please contact your administrator if you need access.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <>
+      {/* Dashboard Content */}
+      <>
           {/* Summary Cards */}
           <DashboardSummary
             doctorPharmacist={state.doctorPharmacist}
@@ -646,7 +606,6 @@ const CombinedDashboard = ({ currentUser }) => {
             />
           ) : null}
         </>
-      )}
 
       {/* Doctor Detail Modal */}
       {state.selectedDoctor && (

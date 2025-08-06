@@ -6,7 +6,6 @@ import { firestore } from '../firebase';
  */
 export const setupRoomSystemData = async () => {
   try {
-    console.log('Setting up Room System data...');
 
     // Update doctors with meeting links
     const doctorsQuery = query(
@@ -63,7 +62,6 @@ export const setupRoomSystemData = async () => {
       });
     }
 
-    console.log('Room System data setup completed successfully!');
     return { success: true, message: 'Room System data setup completed' };
     
   } catch (error) {
@@ -93,7 +91,6 @@ export const generateMeetingLink = (userId, type = 'room') => {
  */
 export const getDoctorsWithPharmacists = async (currentUser) => {
   const startTime = performance.now();
-  console.log(`[PERF] Starting getDoctorsWithPharmacists for ${currentUser.role}:`, currentUser.uid);
   
   try {
     let doctorsWithPharmacists = [];
@@ -101,7 +98,6 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
     
     if (currentUser.role === 'nurse') {
       // For nurses, get doctors from assignedDoctors field
-      console.log('Fetching doctors for nurse:', currentUser.uid);
       const userDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
       if (!userDoc.exists()) {
         console.error('User document not found');
@@ -109,9 +105,7 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
       }
       
       const userData = userDoc.data();
-      console.log('User data:', userData);
       const assignedDoctors = userData.assignedDoctors || {};
-      console.log('Assigned doctors:', assignedDoctors);
       
       // Extract unique doctor IDs from assignedDoctors object
       const doctorIdsSet = new Set();
@@ -126,7 +120,6 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
       }
       
       const doctorIds = Array.from(doctorIdsSet);
-      console.log('Doctor IDs to fetch:', doctorIds);
       
       // PERFORMANCE OPTIMIZATION: Fetch all pharmacists and filter by assignedDoctorIds array
       let pharmacistsByDoctor = {};
@@ -148,7 +141,6 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
           assignedDoctorIds: pharmDoc.data().assignedDoctorIds || []
         }));
         
-        console.log(`[PERF] Fetched ${allPharmacists.length} pharmacists in single query:`, allPharmacists);
         
         // Group pharmacists by doctor ID for quick lookup (support both old and new systems)
         allPharmacists.forEach(pharmacist => {
@@ -173,36 +165,24 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
             pharmacistsByDoctor[pharmacist.assignedDoctorId].push(pharmacist);
           }
         });
-      } else {
-        console.log('[PERF] No doctor IDs to fetch pharmacists for');
       }
       
       // Fetch each assigned doctor
       for (const doctorId of doctorIds) {
         // Skip if already added
         if (addedDoctorIds.has(doctorId)) {
-          console.log('Doctor already added, skipping:', doctorId);
           continue;
         }
         
         try {
-          console.log('Fetching doctor:', doctorId);
           const doctorDoc = await getDoc(doc(firestore, 'users', doctorId));
           if (doctorDoc.exists()) {
             const doctorData = doctorDoc.data();
-            console.log('Doctor data:', doctorId, doctorData);
             
             // Check assignToAnyDoctor flag to determine filtering strictness
             const assignToAnyDoctor = assignedDoctors.assignToAnyDoctor || false;
             const isAvailable = doctorData.availabilityStatus === 'available' || !doctorData.availabilityStatus;
             
-            console.log('Doctor availability check:', {
-              doctorId,
-              availabilityStatus: doctorData.availabilityStatus,
-              assignToAnyDoctor,
-              isAvailable,
-              willInclude: assignToAnyDoctor ? isAvailable : true // Show assigned doctors regardless of availability when assignToAnyDoctor is false
-            });
             
             // If assignToAnyDoctor is false, show assigned doctors regardless of availability status
             // If assignToAnyDoctor is true, filter by availability
@@ -211,7 +191,6 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
             if (shouldIncludeDoctor) {
               // Use pre-fetched pharmacists data for performance
               const pharmacists = pharmacistsByDoctor[doctorId] || [];
-              console.log(`[PERF] Using cached pharmacists for doctor ${doctorId}:`, pharmacists);
 
               doctorsWithPharmacists.push({
                 id: doctorDoc.id,
@@ -223,27 +202,18 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
                 pharmacists: pharmacists
               });
               addedDoctorIds.add(doctorId);
-              console.log('Added doctor to list:', doctorDoc.id);
-            } else {
-              console.log('Doctor not available or offline:', doctorId);
             }
-          } else {
-            console.log('Doctor document does not exist:', doctorId);
           }
         } catch (error) {
           console.error(`Error fetching doctor ${doctorId}:`, error);
         }
       }
       
-      console.log('Final doctors list:', doctorsWithPharmacists);
       
       // Fallback: If no assigned doctors found, check assignToAnyDoctor flag before showing all available doctors
       if (doctorsWithPharmacists.length === 0) {
         const assignToAnyDoctor = assignedDoctors.assignToAnyDoctor || false;
-        console.log('No assigned doctors found. assignToAnyDoctor flag:', assignToAnyDoctor);
-        
         if (assignToAnyDoctor) {
-          console.log('assignToAnyDoctor is true, falling back to all available doctors...');
           
           const allDoctorsQuery = query(
             collection(firestore, 'users'),
@@ -255,12 +225,10 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
           for (const doctorDoc of allDoctorsSnapshot.docs) {
             // Skip if already added
             if (addedDoctorIds.has(doctorDoc.id)) {
-              console.log('Fallback doctor already added, skipping:', doctorDoc.id);
               continue;
             }
             
             const doctorData = doctorDoc.data();
-            console.log('Fallback doctor check:', doctorDoc.id, doctorData);
             
             const isAvailable = doctorData.availabilityStatus === 'available' || !doctorData.availabilityStatus;
             if (isAvailable) {
@@ -298,13 +266,9 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
                 pharmacists: pharmacists
               });
               addedDoctorIds.add(doctorDoc.id);
-              console.log('Added fallback doctor:', doctorDoc.id);
             }
           }
           
-          console.log('Fallback doctors list:', doctorsWithPharmacists);
-        } else {
-          console.log('assignToAnyDoctor is false, not falling back to other doctors. Only assigned doctors will be shown.');
         }
       }
     } else if (currentUser.role === 'doctor') {
@@ -349,12 +313,9 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
       }
     } else if (currentUser.role === 'pharmacist') {
       // For pharmacists, efficiently get their assigned doctor(s) - support both single and multiple assignments
-      console.log('Fetching assigned doctors for pharmacist:', currentUser.uid);
       
       // First, get the pharmacist's document to find their assignedDoctorIds
-      const pharmacistQueryStart = performance.now();
       const pharmacistDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
-      console.log(`[PERF] Pharmacist document fetch: ${Math.round(performance.now() - pharmacistQueryStart)}ms`);
       
       if (pharmacistDoc.exists()) {
         const pharmacistData = pharmacistDoc.data();
@@ -368,13 +329,9 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
           doctorIdsToFetch.push(singleAssignedDoctorId);
         }
         
-        console.log('Pharmacist assigned to doctors:', doctorIdsToFetch);
-        
         // Fetch all assigned doctors
         for (const assignedDoctorId of doctorIdsToFetch) {
-          const doctorQueryStart = performance.now();
           const doctorDoc = await getDoc(doc(firestore, 'users', assignedDoctorId));
-          console.log(`[PERF] Doctor document fetch: ${Math.round(performance.now() - doctorQueryStart)}ms`);
           
           if (doctorDoc.exists()) {
             const doctorData = doctorDoc.data();
@@ -387,7 +344,6 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
               specialty: pharmacistData.specialization || 'General Pharmacy',
               name: pharmacistData.displayName || pharmacistData.name || pharmacistData.email || currentUser.email
             }];
-            console.log(`[PERF] Skipped pharmacists query for performance - pharmacist only needs to see assigned doctor`);
 
             doctorsWithPharmacists.push({
               id: assignedDoctorId,
@@ -398,18 +354,12 @@ export const getDoctorsWithPharmacists = async (currentUser) => {
               availabilityStatus: doctorData.availabilityStatus,
               pharmacists: pharmacists
             });
-            console.log('Added assigned doctor for pharmacist:', assignedDoctorId);
-          } else {
-            console.log('Assigned doctor document does not exist:', assignedDoctorId);
           }
         }
-      } else {
-        console.log('Pharmacist document does not exist:', currentUser.uid);
       }
     }
 
     const endTime = performance.now();
-    console.log(`[PERF] getDoctorsWithPharmacists completed in ${Math.round(endTime - startTime)}ms. Found ${doctorsWithPharmacists.length} doctors.`);
     
     return doctorsWithPharmacists;
   } catch (error) {

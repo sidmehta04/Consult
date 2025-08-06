@@ -9,7 +9,6 @@ const DashboardHeader = ({
   refreshInterval, 
   setRefreshInterval, 
   onRefresh,
-  showCaseTransfer = false,
   isRefreshing = false
 }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -56,7 +55,7 @@ const DashboardHeader = ({
     <div className="flex justify-between items-center flex-wrap gap-4">
       <div className="flex items-center">
         <h2 className="text-2xl font-bold text-gray-800">
-          {viewMode === "cases" ? "Case Transfer Management" : `${role} Dashboard`}
+{`${role} Dashboard`}
         </h2>
         {/* Show loading indicator during transition */}
         {isTransitioning && (
@@ -120,27 +119,7 @@ const DashboardHeader = ({
           >
             Card View
           </button>
-          {/* Case Transfer option - only show for team leaders */}
-          {showCaseTransfer && (
-            <button 
-              onClick={() => handleViewModeChange("cases")}
-              disabled={isTransitioning}
-              className={`px-3 py-1 text-sm transition-colors duration-200 relative ${
-                viewMode === "cases" 
-                  ? "bg-blue-500 text-white" 
-                  : "bg-gray-100 hover:bg-gray-200"
-              } ${isTransitioning ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {isTransitioning && viewMode !== "cases" ? (
-                <div className="flex items-center">
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  Loading...
-                </div>
-              ) : (
-                "Transfer Cases"
-              )}
-            </button>
-          )}
+      
         </div>
         
         {/* Auto-refresh controls - only show when not in cases view */}

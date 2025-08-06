@@ -4,7 +4,6 @@ import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../firebase';
 import UserCreationForm from './creation/CreateUser';
 import DoctorHierarchyManagement from './creation/DocHierarchy';
-import PharmacistHierarchyManagement from './creation/PharmacistHierarchy';
 import { 
   Tabs, 
   TabsContent, 

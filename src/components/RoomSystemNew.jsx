@@ -74,6 +74,7 @@ const RoomSystem = ({ currentUser }) => {
                 : 'View your assigned doctors and join consultation rooms when needed'
             }
           </p>
+         
         </div>
 
         {/* Navigation */}

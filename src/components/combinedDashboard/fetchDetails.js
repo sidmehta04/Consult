@@ -47,7 +47,6 @@ export const fetchRealtimeData = async () => {
     
     // Return cached data if still valid
     if (realtimeDataCache && (now - realtimeDataCacheTime) < REALTIME_CACHE_DURATION) {
-        console.log("Using cached realtime data");
         return realtimeDataCache;
     }
     
@@ -59,10 +58,8 @@ export const fetchRealtimeData = async () => {
         if (snapshot.exists()) {
             realtimeDataCache = snapshot.val();
             realtimeDataCacheTime = now;
-            console.log("Fetched fresh realtime data");
             return realtimeDataCache;
         } else {
-            console.log("No data available in doctors node of realtime database");
             realtimeDataCache = {};
             realtimeDataCacheTime = now;
             return {};
@@ -79,7 +76,6 @@ const fetchAllTodaysCases = async () => {
     
     // Return cached data if still valid
     if (todayCasesCache && (now - todayCasesCacheTime) < CASES_CACHE_DURATION) {
-        console.log("Using cached cases data");
         return todayCasesCache;
     }
     
@@ -133,7 +129,6 @@ const fetchAllTodaysCases = async () => {
         
         todayCasesCache = casesData;
         todayCasesCacheTime = now;
-        console.log(`Fetched ${casesData.allCases.length} cases for today`);
         
         return casesData;
     } catch (error) {
@@ -377,7 +372,6 @@ export const clearCaches = () => {
     realtimeDataCacheTime = 0;
     todayCasesCache = null;
     todayCasesCacheTime = 0;
-    console.log("All caches cleared");
 };
 
 // BONUS: Function to get cache stats
