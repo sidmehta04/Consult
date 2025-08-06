@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -57,3 +57,32 @@ if (import.meta.env.PROD) {
 }
 
 export { app, auth, firestore, db };
+
+
+// Import the functions you need from the SDKs you need
+
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+
+const medicineDriveConfig = {
+  apiKey: "AIzaSyB2-CU6mpyILswNPpJMPQ_m4huC6i42-2E",
+  authDomain: "medicine-driveautomation.firebaseapp.com",
+  projectId: "medicine-driveautomation",
+  storageBucket: "medicine-driveautomation.firebasestorage.app",
+  messagingSenderId: "648915873887",
+  appId: "1:648915873887:web:bd6b37234ac21d00e32bea"
+};
+
+
+// Initialize or get the already initialized app
+const MEDICINE_APP_NAME = "Medicine-DriveAutomation";
+
+const medicineDriveApp = getApps().find(app => app.name === MEDICINE_APP_NAME)
+  ? getApp(MEDICINE_APP_NAME)
+  : initializeApp(medicineDriveConfig, MEDICINE_APP_NAME);
+  
+const medicineDb = getFirestore(medicineDriveApp);
+
+export { medicineDb };
+

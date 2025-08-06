@@ -164,7 +164,7 @@ if (import.meta.env.VITE_FIREBASE_PROJECT_ID === "consulttest-be8ce") {
   };
 }
 
-export const InventaryMapping = {
+export const InventoryMapping = {
     Bihar: [
       {
         EmpID: "MS01228",
@@ -313,6 +313,8 @@ export const InventaryMapping = {
       },
     ],
 }
+
+
 
 // Helper function to get QA details for a state
 export const getQAForState = (stateName) => {

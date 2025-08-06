@@ -11,8 +11,17 @@ import {
 import MedicineModal from "./MedicineModal";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase"; // Adjust the path based on your setup
-
+import { useGetMedicine } from "../hooks/useGetMedicine";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 const SPREADSHEET_ID = '17TbBtN9NkiXNnmASazjudB6ac9uIKG_o-OlRu3Iuh34';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 // Cache configuration
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -48,6 +57,9 @@ const ClinicInventory = ({ currentUser }) => {
   const [clinicCode, setClinicCode] = useState(null);
   const [cacheStatus, setCacheStatus] = useState('fresh'); // 'fresh', 'stale', 'expired'
   const [open, setOpen]=useState(false);
+  const { medicinesData, fetchMedicinesFromDrive } = useGetMedicine();
+  const [inventoriesData, setInventoriesData] = useState([]);
+  const [activeTab, setActiveTab] = useState("allMedicineTable");
   // Create index for faster clinic-based filtering with flexible matching
   const clinicInventoryIndex = useMemo(() => {
     const index = new Map();
@@ -157,8 +169,6 @@ const ClinicInventory = ({ currentUser }) => {
       
       const sheetsData = await sheetsResponse.json();
       
-      console.log("See the sheet1 data:", sheetsData);
-      
       // Find the most recent inventory sheet
       const inventorySheets = sheetsData.sheets
         .filter(sheet => sheet.properties.title.startsWith('Inventory_'))
@@ -185,7 +195,6 @@ const ClinicInventory = ({ currentUser }) => {
       }
       
       const data = await dataResponse.json();
-      console.log("See the sheet2 data:", data);
       
       if (!data.values || data.values.length === 0) {
         setAllInventoryData([]);
@@ -228,6 +237,7 @@ const ClinicInventory = ({ currentUser }) => {
   };
 
   useEffect(() => {
+    fetchMedicinesFromDrive();
     loadInventoryData();
   }, []);
 
@@ -299,34 +309,121 @@ const ClinicInventory = ({ currentUser }) => {
     );
   }
 
-  console.log("filteredInventory:", filteredInventory);
   const handleClose = () =>{
     setOpen(false);
   }
 
+    const fetchInventoriesData = async () => {
+      try {
+        // setLoading(true);
+        const querySnapshot = await getDocs(collection(db, "Inventory"));
+        let inventoryData = [];
+  
+        querySnapshot.forEach((doc) => {
+          inventoryData.push({
+            id: doc.id,
+            ...doc.data(),
+          });
+        });
 
-const FetchInventoryData = async () => {
-  try {
-    const querySnapshot = await getDocs(collection(db, "Inventory"));
-    const inventoryData = [];
+        setInventoriesData(inventoryData);
+      } catch (error) {
+        console.error("❌ Error fetching inventory data:", error);
+      } finally {
+        // setLoading(false);
+      }
+    };
 
-    querySnapshot.forEach((doc) => {
-      inventoryData.push({
-        id: doc.id,          // Include document ID if needed
-        ...doc.data(),       // Spread the document data
-      });
-    });
+    useEffect(()=>{
+       fetchInventoriesData();
+    },[]);
 
-    console.log("✅ Inventory Data:", inventoryData);
-    return inventoryData;
-  } catch (error) {
-    console.error("❌ Error fetching inventory data:", error);
-    return [];
-  }
+  const ApprovedOrderTable = () => {
+  // if (!approvedOrder || approvedOrder.length === 0) {
+  //   return <p className="text-sm text-muted-foreground">No approved order data found.</p>;
+  // }
+
+ return (
+  <div className="mt-4">
+    <h3 className="text-lg font-semibold mb-2">Approved Order Details</h3>
+    <div className="overflow-x-auto border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Medicine Name</TableHead>
+            <TableHead>Current Qty</TableHead>
+            <TableHead>Requested Qty</TableHead>
+            <TableHead>Approved Qty</TableHead>
+            <TableHead>Clinic Code</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Last Updated</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {inventoriesData?.map((inventory) =>
+            inventory?.approvedOrder && inventory?.approvedOrder?.map((item, idx) => (
+              <TableRow key={`${inventory.clinicCode}-${idx}`}>
+                <TableCell>{item.medicineName}</TableCell>
+                <TableCell>{item.quantity}</TableCell>
+                <TableCell>{item.requestedQuantity}</TableCell>
+                <TableCell>{item.approvedQty}</TableCell>
+                <TableCell>{inventory.clinicCode}</TableCell>
+                <TableCell>{inventory.status}</TableCell>
+                <TableCell>{item.lastUpdated}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  </div>
+)
 };
 
 
-console.log("FetchInventoryData", FetchInventoryData)
+const RequestedOrderTable = () => {
+  // if (!approvedOrder || approvedOrder.length === 0) {
+  //   return <p className="text-sm text-muted-foreground">No approved order data found.</p>;
+  // }
+
+ return (
+  <div className="mt-4">
+    <h3 className="text-lg font-semibold mb-2">Requested Order Details</h3>
+    <div className="overflow-x-auto border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Medicine Name</TableHead>
+            <TableHead>Current Qty</TableHead>
+            <TableHead>Requested Qty</TableHead>
+            {/* <TableHead>Approved Qty</TableHead> */}
+            <TableHead>Clinic Code</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Last Updated</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {inventoriesData?.map((inventory) =>
+            inventory?.requestedOrder && inventory?.requestedOrder?.map((item, idx) => (
+              <TableRow key={`${inventory.clinicCode}-${idx}`}>
+                <TableCell>{item.medicineName}</TableCell>
+                <TableCell>{item.quantity}</TableCell>
+                <TableCell>{item.requestedQuantity}</TableCell>
+                {/* <TableCell>{item.approvedQty}</TableCell> */}
+                <TableCell>{inventory.clinicCode}</TableCell>
+                <TableCell>Open</TableCell>
+                <TableCell>{item.lastUpdated}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  </div>
+)
+};
+
+
 
   return (
     <div className="space-y-6">
@@ -371,7 +468,7 @@ console.log("FetchInventoryData", FetchInventoryData)
                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50" >
                 Request for Medicine 
             </button>
-            <MedicineModal open={open} onClose={handleClose} filteredInventory={filteredInventory} />
+            <MedicineModal fetchInventoriesData={fetchInventoriesData} open={open} onClose={handleClose} currentUser={currentUser} filteredInventory={filteredInventory} />
 
           </div>
           
@@ -438,116 +535,147 @@ console.log("FetchInventoryData", FetchInventoryData)
         </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search medicines..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+
+       <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="allMedicineTable">All Medicine</TabsTrigger>
+          <TabsTrigger value="approvedMedTable">Approved Medicine</TabsTrigger>
+        </TabsList>
+
+        {/* New Ticket Tab */}
+        <TabsContent value="allMedicineTable">
+
+          {/* Search and Filter */}
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search medicines..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Filter className="h-4 w-4 text-gray-400" />
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">All Items</option>
+                  <option value="out-of-stock">Out of Stock</option>
+                  <option value="low-stock">Low Stock</option>
+                </select>
+              </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Filter className="h-4 w-4 text-gray-400" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Items</option>
-              <option value="out-of-stock">Out of Stock</option>
-              <option value="low-stock">Low Stock</option>
-            </select>
-          </div>
-        </div>
-      </div>
 
-      {/* Inventory Table */}
-      <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-        {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+          {/* Inventory Table */}
+          <div className="bg-white rounded-lg mt-4 shadow-sm border overflow-hidden">
+            {loading ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+              </div>
+            ) : error ? (
+              <div className="p-8 text-center">
+                <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Inventory</h3>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <button
+                  onClick={() => loadInventoryData(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : filteredInventory.length === 0 ? (
+              <div className="p-8 text-center">
+                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Inventory Found</h3>
+                <p className="text-gray-600">
+                  {searchTerm ? 'No medicines match your search criteria.' : `No inventory data available for clinic ${displayClinicCode}.`}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Medicine Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity
+                      </th> 
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Amount(Rupee)
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Last Updated
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredInventory.map((item, index) => (
+                      <tr key={`${item.medicineName}-${index}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {item.medicineName}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 font-semibold">
+                            {item.quantity}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 font-semibold">
+                            { 
+                                Math.floor(medicinesData?.find((data)=>data['Medicine Name']?.toLowerCase() === item.medicineName?.toLowerCase())?.price*item?.quantity || 0)
+                            }
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getQuantityBadge(item.quantity)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">
+                            {item.lastUpdated}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        ) : error ? (
-          <div className="p-8 text-center">
-            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Inventory</h3>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button
-              onClick={() => loadInventoryData(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center">
-            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Inventory Found</h3>
-            <p className="text-gray-600">
-              {searchTerm ? 'No medicines match your search criteria.' : `No inventory data available for clinic ${displayClinicCode}.`}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Medicine Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Quantity
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Updated
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredInventory.map((item, index) => (
-                  <tr key={`${item.medicineName}-${index}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {item.medicineName}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 font-semibold">
-                        {item.quantity}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getQuantityBadge(item.quantity)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">
-                        {item.lastUpdated}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
-      {/* Results Summary */}
-      {!loading && !error && filteredInventory.length > 0 && (
-        <div className="text-sm text-gray-600 text-center">
-          Showing {filteredInventory.length} of {inventoryData.length} medicines
-        </div>
-      )}
+          {/* Results Summary */}
+          {!loading && !error && filteredInventory.length > 0 && (
+            <div className="text-sm text-gray-600 text-center">
+              Showing {filteredInventory.length} of {inventoryData.length} medicines
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Your Tickets Tab */}
+        <TabsContent value="approvedMedTable">
+          <ApprovedOrderTable />
+          <RequestedOrderTable />
+        </TabsContent>
+      </Tabs>
+
+
+
     </div>
   );
 };

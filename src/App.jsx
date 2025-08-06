@@ -28,7 +28,7 @@ import FeedbackPortal from "./components/Feedback";
 import UnifiedQADashboard from "./components/feedback/UnifiedQADashboard.jsx"; // Updated to use unified dashboard
 import DoctorFeedbackPortal from "./components/feedback/DoctorFeedbackPortal"; // New doctor feedback portal
 import { set } from "date-fns";
-
+import RequestedMedDashboard from './components/requestedMedicineDashboard/RequestedMedDashboard.jsx'
 // Google Sheets API Key - Add this to your .env file
 const GOOGLE_SHEETS_API_KEY = import.meta.env.VITE_SHEET_API;
 
@@ -287,6 +287,16 @@ function AppContent() {
         icon: <Activity className="h-5 w-5" />
       });
     }
+    
+
+    if (["teamLeader"].includes(userRole)) {
+      items.push({
+        name: "Requested Medicine",
+        href: "/requested-medicine",
+        icon: <Activity className="h-5 w-5" />
+      });
+    }
+
     // --- End of Divyansh's code ---
 
     // User management for administrative roles
@@ -427,6 +437,16 @@ function AppContent() {
                 element={
                   <ProtectedRoute allowedRoles={["teamLeader", "drManager", "zonalHead","superAdmin"]}>
                     <CombinedDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
+                  </ProtectedRoute>
+                }
+              />  
+              
+              {/* Requested medicine */}
+              <Route
+                path="/requested-medicine"
+                element={
+                  <ProtectedRoute allowedRoles={["teamLeader"]}>
+                    <RequestedMedDashboard currentUser={{...currentUser, role: userRole, ...userData}} />
                   </ProtectedRoute>
                 }
               />  

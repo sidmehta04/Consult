@@ -2,11 +2,13 @@ import { Search } from "lucide-react";
 import React, { useMemo, useState } from "react";
 import { db } from "../firebase";
 import { collection, addDoc } from "firebase/firestore";
+import { InventoryMapping } from "./feedback/mappings";
 
-const MedicineModal = ({ open, onClose, filteredInventory }) => {
+const MedicineModal = ({ open, onClose, filteredInventory, currentUser,  fetchInventoriesData }) => {
   const [selectedRows, setSelectedRows] = useState({});
   const [amounts, setAmounts] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setlLoading] = useState(false)
 
   const handleCheckboxChange = (medicineName) => {
     setSelectedRows((prev) => ({
@@ -27,14 +29,21 @@ const MedicineModal = ({ open, onClose, filteredInventory }) => {
       .filter((item) => selectedRows[item.medicineName])
       .map((item) => ({
         ...item,
-        selectedQuantity: Number(amounts[item.medicineName]) || "",
+        requestedQuantity: Number(amounts[item.medicineName]) || "",
+        
+        // QAname:
       }));
 
     sendData(selectedData);
 
-    // console.log("Selected Medicines:", selectedData);
-    onClose(); // Close modal
   };
+  
+
+  const handleClose = () =>{
+    onClose();
+    setSelectedRows({});
+    setAmounts({});
+  }
 
   const InventaryData = useMemo(() => {
     return filteredInventory?.filter((item) => {
@@ -47,14 +56,32 @@ const MedicineModal = ({ open, onClose, filteredInventory }) => {
   }, [searchTerm, filteredInventory]);
 
  const sendData = async (selectedData) => {
+  if (!selectedData || selectedData.length === 0) {
+    return;
+  }
+
   try {
-    for (const item of selectedData) {
-      const docRef = await addDoc(collection(db, "Inventory"), item);
-      console.log("Document written with ID:", docRef.id);
-    }
-    console.log("✅ All data uploaded successfully!");
+    setlLoading(true);
+
+    // Send the whole array as a single field in one document
+    const docRef = await addDoc(collection(db, "Inventory"), {
+      requestedOrder: selectedData, 
+      clinicCode: currentUser?.clinicCode,
+      nurseName: currentUser?.name,
+      partnerName: currentUser.partnerName,
+      state: currentUser?.state,
+      assignedTL: InventoryMapping[currentUser.state],
+      status: 'open',
+      createdAt: new Date(), 
+    });
+    fetchInventoriesData();
+    console.log("✅ Data array uploaded with Document ID:", docRef.id);
+
   } catch (e) {
-    console.error("❌ Error adding document: ", e);
+    console.error("❌ Error adding document:", e);
+  } finally {
+    setlLoading(false);
+    handleClose(); // Close modal
   }
 };
 
@@ -83,13 +110,16 @@ const MedicineModal = ({ open, onClose, filteredInventory }) => {
           <div className=" flex justify-end gap-4 ">
             <button
               onClick={handleSubmit}
+              disabled={loading}
               className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700 cursor-pointer"
             >
-              Submit
+             {
+              loading ? 'Submiting...':'Submit'
+             } 
             </button>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700 cursor-pointer"
             >
               Close
@@ -107,7 +137,7 @@ const MedicineModal = ({ open, onClose, filteredInventory }) => {
               <th className="px-4 py-2 border">Clinic Code</th>
               <th className="px-4 py-2 border">Quantity</th>
               <th className="px-4 py-2 border">Last Updated</th>
-              <th className="px-4 py-2 border">Add Quantity</th>
+              <th className="px-4 py-2 border">Request Qty</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
