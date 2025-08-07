@@ -179,7 +179,7 @@ export const InventoryMapping = {
         email: "manishkumar.gupta@m-swasth.in",
       },
     ],
-    "UP East" : [
+    "Uttar Pradesh" : [
       {
         EmpID: "MS01228",
         name: "Manish Kumar Gupta",
@@ -256,7 +256,7 @@ export const InventoryMapping = {
         email: "akash.bhardwaj@m-insure.in",
       },
     ],
-    "UP West": [
+    "Uttar Pradesh": [
       {
         EmpID: "MS00588",
         name: "Akash Bhardwaj",
