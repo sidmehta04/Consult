@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   collection,
   doc,
@@ -81,6 +81,7 @@ const UnifiedQADashboard = ({ currentUser }) => {
     clinic: "",
     partner: "",
     issue: "__all__",
+    subIssue: "__all__",
     status: "__all__",
     qaAssigned: "",
   });
@@ -125,6 +126,18 @@ const UnifiedQADashboard = ({ currentUser }) => {
     }
   };
 
+  const IssueSubCategories = () =>{
+    const subIssueData = new Set();
+    Object.entries(doctorSubcategories)?.forEach(([issue, subissue]) => {
+       subissue?.forEach((ele)=>{
+           subIssueData.add(ele?.value);
+       })
+    });
+    return subIssueData;
+  }
+
+  const ListOfIssueSubCategories = useMemo(() => IssueSubCategories(), []);
+
   // Combine and filter tickets based on current filters and ticket type
   useEffect(() => {
     let allTickets = [];
@@ -136,6 +149,7 @@ const UnifiedQADashboard = ({ currentUser }) => {
         ...nurseTickets.map((ticket) => ({ ...ticket, ticketType: "nurse" })),
       ];
     }
+    
     if (ticketType === "all" || ticketType === "doctor") {
       allTickets = [
         ...allTickets,
@@ -159,12 +173,10 @@ const UnifiedQADashboard = ({ currentUser }) => {
     }
 
     if (filters.partner) {
-      filtered = filtered.filter((ticket) =>
-        ticket.partnerName
-          ?.toLowerCase()
-          .includes(filters.partner.toLowerCase())
-      );
+      filtered = filtered.filter((ticket) => ticket.partnerName?.toLowerCase().includes(filters.partner.toLowerCase()) || 
+                                             ticket?.state?.toLowerCase().includes(filters.partner.toLowerCase()))
     }
+
 
     if (filters.issue && filters.issue !== "__all__") {
       const nurseCategories = categories;
@@ -196,6 +208,10 @@ const UnifiedQADashboard = ({ currentUser }) => {
       });
     }
 
+    if (filters.subIssue && filters.subIssue !== "__all__") {
+      filtered = filtered.filter((ticket) => ticket.subIssue === filters.subIssue);
+    } 
+    
     if (filters.status && filters.status !== "__all__") {
       filtered = filtered.filter((ticket) => ticket.status === filters.status);
     }
@@ -235,6 +251,7 @@ const UnifiedQADashboard = ({ currentUser }) => {
       clinic: "",
       partner: "",
       issue: "__all__",
+      subIssue: "__all__",
       status: "__all__",
       qaAssigned: "",
     });
@@ -403,7 +420,6 @@ const UnifiedQADashboard = ({ currentUser }) => {
     );
   };
 
-  // console.log("all tickets", currentTickets)
   return (
     <div className="w-full mx-auto p-6">
       <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
@@ -641,7 +657,7 @@ const UnifiedQADashboard = ({ currentUser }) => {
                                 <PopoverContent className="w-56" align="start">
                                   <div className="space-y-2">
                                     <label className="text-sm font-medium">
-                                      Filter by Partner
+                                      Filter by Partner/state
                                     </label>
                                     <Input
                                       placeholder="Search partner..."
@@ -710,6 +726,34 @@ const UnifiedQADashboard = ({ currentUser }) => {
                                         ].map((issue) => (
                                           <SelectItem key={issue} value={issue}>
                                             {issue}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-sm font-medium">
+                                      Filter by Sub-Issue
+                                    </label>
+                                    <Select
+                                      value={filters.subIssue}
+                                      onValueChange={(value) =>
+                                        setFilters((prev) => ({
+                                          ...prev,
+                                          subIssue: value,
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select issue..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__all__">
+                                          All Issues
+                                        </SelectItem>
+                                        {[ ...ListOfIssueSubCategories].map((issue) => (
+                                          <SelectItem key={issue} value={issue}>
+                                            {issue.charAt(0).toUpperCase() + issue.slice(1).toLowerCase()}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
