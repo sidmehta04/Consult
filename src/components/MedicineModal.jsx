@@ -3,7 +3,6 @@ import React, { useMemo, useState, useEffect } from "react";
 import { db } from "../firebase";
 import { collection, addDoc } from "firebase/firestore";
 import { InventoryMapping } from "./feedback/mappings";
-import { MEDICINES_DATA } from "../data/medicines";
 import { useGetMedicine } from "../hooks/useGetMedicine";
 
 const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inventoryData = [] }) => {
@@ -14,42 +13,35 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
   const { medicinesData, fetchMedicinesFromDrive } = useGetMedicine();
 
   const addMedicine = (medicine) => {
-    const isAlreadySelected = selectedMedicines.some(item => item.code === medicine.code);
+    const isAlreadySelected = selectedMedicines.some(item => item.lookup_key === medicine.lookup_key);
     if (!isAlreadySelected) {
       // Get current inventory quantity for this medicine
       const currentInventory = inventoryData.find(item => 
-        item.medicineName?.toLowerCase() === medicine.name.toLowerCase()
+        item.medicineName?.toLowerCase() === medicine['Medicine Name']?.toLowerCase()
       );
       const currentQty = currentInventory?.quantity || 0;
-      
-      // Get price for this medicine
-      const medicinePrice = medicinesData.find(med => 
-        med['Medicine Name']?.toLowerCase() === medicine.name.toLowerCase()
-      );
-      const unitPrice = medicinePrice?.price || 0;
       
       setSelectedMedicines(prev => [...prev, { 
         ...medicine, 
         quantity: 1, 
-        currentInventoryQty: currentQty,
-        unitPrice: unitPrice
+        currentInventoryQty: currentQty
       }]);
     }
     setSearchTerm("");
     setShowDropdown(false);
   };
 
-  const removeMedicine = (code) => {
-    setSelectedMedicines(prev => prev.filter(item => item.code !== code));
+  const removeMedicine = (lookup_key) => {
+    setSelectedMedicines(prev => prev.filter(item => item.lookup_key !== lookup_key));
   };
 
-  const updateQuantity = (code, quantity) => {
+  const updateQuantity = (lookup_key, quantity) => {
     setSelectedMedicines(prev => 
       prev.map(item => 
-        item.code === code ? { 
+        item.lookup_key === lookup_key ? { 
           ...item, 
           quantity: Math.max(1, parseInt(quantity) || 1),
-          totalCost: (Math.max(1, parseInt(quantity) || 1) * (item.unitPrice || 0))
+          totalCost: (Math.max(1, parseInt(quantity) || 1) * (item.price || 0))
         } : item
       )
     );
@@ -81,20 +73,11 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
   }, [open, fetchMedicinesFromDrive]);
 
   const filteredMedicines = useMemo(() => {
-    if (!searchTerm) return [];
-    return MEDICINES_DATA.filter(medicine => 
-      medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      medicine.code.toLowerCase().includes(searchTerm.toLowerCase())
-    ).slice(0, 10).map(medicine => {
-      // Add pricing info to each medicine in dropdown
-      const priceInfo = medicinesData.find(med => 
-        med['Medicine Name']?.toLowerCase() === medicine.name.toLowerCase()
-      );
-      return {
-        ...medicine,
-        unitPrice: priceInfo?.price || 0
-      };
-    });
+    if (!searchTerm || !medicinesData.length) return [];
+    return medicinesData.filter(medicine => 
+      medicine['Medicine Name']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      medicine.lookup_key?.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 10);
   }, [searchTerm, medicinesData]);
 
   const sendData = async (selectedData) => {
@@ -106,12 +89,12 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
       setLoading(true);
 
       const requestedOrder = selectedData.map(medicine => ({
-        medicineName: medicine.name,
-        medicineCode: medicine.code,
+        medicineName: medicine['Medicine Name'],
+        medicineKey: medicine.lookup_key,
         requestedQuantity: medicine.quantity,
         currentInventoryQty: medicine.currentInventoryQty || 0,
-        unitPrice: medicine.unitPrice || 0,
-        estimatedCost: (medicine.quantity * (medicine.unitPrice || 0)),
+        unitPrice: medicine.price || 0,
+        estimatedCost: (medicine.quantity * (medicine.price || 0)),
         approvedQuantity: null,
         totalCost: 0,
         status: 'pending'
@@ -184,17 +167,17 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto z-10 mt-1">
                   {filteredMedicines.map((medicine) => (
                     <div
-                      key={medicine.code}
+                      key={medicine.lookup_key}
                       onClick={() => addMedicine(medicine)}
                       className="px-4 py-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <div className="font-medium text-sm">{medicine.name}</div>
-                          <div className="text-xs text-gray-500">Code: {medicine.code}</div>
+                          <div className="font-medium text-sm">{medicine['Medicine Name']}</div>
+                          <div className="text-xs text-gray-500">Key: {medicine.lookup_key}</div>
                         </div>
                         <div className="text-right text-xs">
-                          <div className="font-medium text-green-600">₹{medicine.unitPrice || 0}/unit</div>
+                          <div className="font-medium text-green-600">₹{medicine.price || 0}/unit</div>
                         </div>
                       </div>
                     </div>
@@ -215,7 +198,7 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
                   <span>Submit Request ({selectedMedicines.length})</span>
                   {selectedMedicines.length > 0 && (
                     <span className="bg-blue-500 px-2 py-1 rounded text-xs">
-                      ₹{selectedMedicines.reduce((sum, med) => sum + (med.quantity * (med.unitPrice || 0)), 0).toFixed(2)}
+                      ₹{selectedMedicines.reduce((sum, med) => sum + (med.quantity * (med.price || 0)), 0).toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -244,12 +227,12 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
           ) : (
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {selectedMedicines.map((medicine) => (
-                <div key={medicine.code} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div key={medicine.lookup_key} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <div className="font-medium text-sm text-gray-900">{medicine.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">Code: {medicine.code}</div>
+                        <div className="font-medium text-sm text-gray-900">{medicine['Medicine Name']}</div>
+                        <div className="text-xs text-gray-500 mt-1">Key: {medicine.lookup_key}</div>
                         <div className="flex items-center gap-4 mt-2 text-xs">
                           <div className="flex items-center gap-1">
                             <span className="text-gray-600">Current Stock:</span>
@@ -263,13 +246,13 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-gray-600">Unit Price:</span>
-                            <span className="font-medium text-blue-600">₹{medicine.unitPrice || 0}</span>
+                            <span className="font-medium text-blue-600">₹{medicine.price || 0}</span>
                           </div>
                         </div>
                       </div>
                       
                       <button
-                        onClick={() => removeMedicine(medicine.code)}
+                        onClick={() => removeMedicine(medicine.lookup_key)}
                         className="text-red-600 hover:text-red-800 p-1 ml-2"
                         title="Remove medicine"
                       >
@@ -284,14 +267,14 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
                           type="number"
                           min="1"
                           value={medicine.quantity}
-                          onChange={(e) => updateQuantity(medicine.code, e.target.value)}
+                          onChange={(e) => updateQuantity(medicine.lookup_key, e.target.value)}
                           className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
                       
                       <div className="text-right">
                         <div className="text-sm text-gray-600">Estimated Cost</div>
-                        <div className="font-bold text-green-600">₹{(medicine.quantity * (medicine.unitPrice || 0)).toFixed(2)}</div>
+                        <div className="font-bold text-green-600">₹{(medicine.quantity * (medicine.price || 0)).toFixed(2)}</div>
                       </div>
                     </div>
                   </div>

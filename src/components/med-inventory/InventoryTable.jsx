@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Package, Search, AlertTriangle, Filter } from "lucide-react";
 import { useGetMedicine } from "../../hooks/useGetMedicine";
@@ -14,7 +14,12 @@ const InventoryTable = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const { medicinesData } = useGetMedicine();
+  const { medicinesData, fetchMedicinesFromDrive } = useGetMedicine();
+
+  // Fetch medicines data when component mounts
+  useEffect(() => {
+    fetchMedicinesFromDrive();
+  }, [fetchMedicinesFromDrive]);
 
   // Optimized filtering with memoization
   const filteredInventory = useMemo(() => {
@@ -238,13 +243,15 @@ const InventoryTable = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900 font-semibold">
-                        {Math.floor(
-                          medicinesData?.find(
+                        ₹{(() => {
+                          const medicinePrice = medicinesData?.find(
                             (data) =>
                               data["Medicine Name"]?.toLowerCase() ===
                               item.medicineName?.toLowerCase()
-                          )?.price * item?.quantity || 0
-                        )}
+                          )?.price;
+                          const totalAmount = (medicinePrice || 0) * (item?.quantity || 0);
+                          return Math.floor(totalAmount);
+                        })()}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
