@@ -314,7 +314,7 @@ const handleAmountChange = (medicineName, value) => {
       <div className="flex gap-4">
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center px-4 py-2  bg-gradient-to-r from-yellow-500 via-yellow-600 to-orange-700  text-white rounded-lg hover:from-yellow-600 hover:via-yellow-700 hover:to-orange-800 disabled:opacity-50"
+          className="flex items-center px-4 py-2  bg-gradient-to-r from-red-500 via-red-600 to-red-700  text-white rounded-lg hover:from-red-600 hover:via-red-700 hover:to-orange-800 disabled:opacity-50"
         >
           Request for Medicine
         </button>
