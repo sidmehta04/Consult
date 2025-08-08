@@ -251,7 +251,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
     <div className="space-y-6">
       <Card className="border border-gray-100 shadow-md">
         <CardHeader className={`pb-4 ${getStatusClass()}`}>
-          <CardTitle className="flex items-center text-xl">
+          <CardTitle className="flex items-center text-xl pt-4">
             <Stethoscope className="h-5 w-5 mr-2" />
             Availability Management
           </CardTitle>
@@ -313,7 +313,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2  gap-3">
                 <Button
                   variant={
                     availabilityStatus === "available" ? "default" : "outline"
@@ -435,7 +435,7 @@ const DoctorAvailabilityManager = ({ currentUser }) => {
                 Recent Status Changes
               </h3>
 
-              <div className="bg-gray-50 p-4 rounded-lg max-h-[300px] overflow-y-auto">
+              <div className="bg-gray-50 p-4 rounded-lg max-h-[365px] overflow-y-auto">
                 {availabilityHistory.length === 0 ? (
                   <p className="text-gray-500 text-center">
                     No status changes recorded

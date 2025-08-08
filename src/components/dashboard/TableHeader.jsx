@@ -106,7 +106,7 @@ const TableHeader = ({
       <th className="p-3 text-left font-medium min-w-[140px]">
         Manual Clinic Code
       </th>
-
+ 
       {/* Partner Column with Filter */}
       <th className="p-3 text-left font-medium min-w-[100px]">
         <div className="flex items-center justify-between gap-1">
@@ -333,7 +333,7 @@ const TableHeader = ({
       {/* Doctor TAT Column */}
       <th className="p-3 text-left font-medium min-w-[140px]">
         <div className="flex items-center justify-between gap-1">
-          <span>Doctor Joined Time</span>
+          <span>Completed</span>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 invisible">
             <Filter className="h-3.5 w-3.5" />
           </Button>
@@ -454,7 +454,7 @@ const TableHeader = ({
         </div>
       </th>
 
-      <th className="p-3 text-center font-medium min-w-[40px]">Meeting</th>             
+      {/* <th className="p-3 text-center font-medium min-w-[40px]">Meeting</th>              */}
 
       <th className="p-3 text-left font-medium min-w-[40px]">Actions</th>
     </tr>

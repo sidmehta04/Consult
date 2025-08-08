@@ -10,7 +10,17 @@ import React from 'react';
 const RoomSystem = ({ currentUser }) => {
   // Use the custom hook for state management
   const roomSystemState = useRoomSystem(currentUser);
-  
+
+  React.useEffect(() => {
+    if (currentUser.role === 'nurse') {
+      roomSystemState.setCurrentView('rooms');
+    } else if (currentUser.role === 'doctor') {
+      roomSystemState.setCurrentView('availability');
+    } else if (currentUser.role === 'pharmacist') {
+      roomSystemState.setCurrentView('assigned-doctors');
+    }
+  }, [currentUser.role, roomSystemState.setCurrentView]);
+
   // Create setters object for actions
   const setters = {
     setSelectedDoctors: roomSystemState.setSelectedDoctors,
@@ -54,114 +64,108 @@ const RoomSystem = ({ currentUser }) => {
           ))}
         </div>
       )}
-      
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            {currentUser.role === 'nurse' 
-              ? 'Medical Consultation System' 
-              : currentUser.role === 'doctor'
-                ? 'Doctor Room Management'
-                : 'Pharmacist Consultation Support'
-            }
-          </h1>
-          <p className="text-gray-600">
-            {currentUser.role === 'nurse' 
-              ? 'Book and manage doctor consultations with integrated Google Meet'
-              : currentUser.role === 'doctor'
-                ? 'Manage your consultation rooms and assigned pharmacists'
-                : 'View your assigned doctors and join consultation rooms when needed'
-            }
-          </p>
-         
-        </div>
 
-        {/* Navigation */}
-        <div className="bg-white rounded-xl shadow-lg p-4 mb-6">
-          <div className="flex space-x-4">
-            {currentUser.role === 'nurse' && (
-              <>
-                <button
-                  onClick={() => {
-                    roomSystemState.setCurrentView('rooms');
-                    roomSystemState.setSelectedDoctors([]);
-                    roomSystemState.setShowCaseForm(false);
-                  }}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'rooms' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <Stethoscope className="inline mr-2 h-5 w-5" />
-                  Select Doctors
-                </button>
-                <button
-                  onClick={() => roomSystemState.setCurrentView('active')}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'active' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <Clock className="inline mr-2 h-5 w-5" />
-                  Active Cases ({roomSystemState.consultations.filter(c => c.status === 'pending' || c.status === 'doctor_complete').length})
-                </button>
-              </>
-            )}
-            {currentUser.role === 'doctor' && (
-              <>
-                <button
-                  onClick={() => roomSystemState.setCurrentView('availability')}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'availability' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <UserCog className="inline mr-2 h-5 w-5" />
-                  Availability Management
-                </button>
-                <button
-                  onClick={() => roomSystemState.setCurrentView('user-management')}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'user-management' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <Users className="inline mr-2 h-5 w-5" />
-                  Manage Pharmacists
-                </button>
-              </>
-            )}
-            {currentUser.role === 'pharmacist' && (
-              <>
-                <button
-                  onClick={() => roomSystemState.setCurrentView('assigned-doctors')}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'assigned-doctors' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <Stethoscope className="inline mr-2 h-5 w-5" />
-                  Assigned Doctors ({roomSystemState.doctorsData.length})
-                </button>
-                <button
-                  onClick={() => roomSystemState.setCurrentView('availability')}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    roomSystemState.currentView === 'availability' 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <UserCog className="inline mr-2 h-5 w-5" />
-                  Availability Management
-                </button>
-              </>
-            )}
+      <div className="max-w-full mx-auto">
+        
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-xl shadow-lg mb-6 overflow-hidden">
+          <div className="border-b border-gray-200">
+            <div className="flex">
+              {currentUser.role === 'nurse' && (
+                <>
+                  <button
+                    onClick={() => {
+                      roomSystemState.setCurrentView('rooms');
+                      roomSystemState.setSelectedDoctors([]);
+                      roomSystemState.setShowCaseForm(false);
+                    }}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'rooms'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Stethoscope className="h-5 w-5 mr-2" />
+                      <span>Select Doctors</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => roomSystemState.setCurrentView('active')}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'active'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Clock className="h-5 w-5 mr-2" />
+                      <span>Active Cases</span>
+                      <span className="ml-2 bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">
+                        {roomSystemState.consultations.filter(c => c.status === 'pending' || c.status === 'doctor_complete').length}
+                      </span>
+                    </div>
+                  </button>
+                </>
+              )}
+              {currentUser.role === 'doctor' && (
+                <>
+                  <button
+                    onClick={() => roomSystemState.setCurrentView('availability')}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'availability'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <UserCog className="h-5 w-5 mr-2" />
+                      <span>Availability Management</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => roomSystemState.setCurrentView('user-management')}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'user-management'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Users className="h-5 w-5 mr-2" />
+                      <span>Manage Pharmacists</span>
+                    </div>
+                  </button>
+                </>
+              )}
+              {currentUser.role === 'pharmacist' && (
+                <>
+                  <button
+                    onClick={() => roomSystemState.setCurrentView('assigned-doctors')}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'assigned-doctors'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Stethoscope className="h-5 w-5 mr-2" />
+                      <span>Assigned Doctors</span>
+                      <span className="ml-2 bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">
+                        {roomSystemState.doctorsData.length}
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => roomSystemState.setCurrentView('availability')}
+                    className={`flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${roomSystemState.currentView === 'availability'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <UserCog className="h-5 w-5 mr-2" />
+                      <span>Availability Management</span>
+                    </div>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -226,11 +230,10 @@ const RoomSystem = ({ currentUser }) => {
               {roomSystemState.consultations.filter(c => c.status === 'case_completed' || c.status === 'case_incomplete').map(consultation => {
                 const completedByDoctor = roomSystemState.doctorsData.find(d => d.id === consultation.completedBy);
                 return (
-                  <div key={consultation.id} className={`flex items-center justify-between p-4 rounded-lg border ${
-                    consultation.status === 'case_completed'
+                  <div key={consultation.id} className={`flex items-center justify-between p-4 rounded-lg border ${consultation.status === 'case_completed'
                       ? 'bg-green-50 border-green-200'
                       : 'bg-red-50 border-red-200'
-                  }`}>
+                    }`}>
                     <div>
                       <h4 className="font-semibold text-gray-800">{consultation.patientName}</h4>
                       <p className="text-sm text-gray-600">
@@ -257,7 +260,7 @@ const RoomSystem = ({ currentUser }) => {
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
                 Confirm {roomSystemState.completionType === 'doctor' ? 'Doctor' : 'Pharmacist'} Completion
               </h3>
-              
+
               <div className="mb-6">
                 <p className="text-gray-600 mb-4">
                   Are you sure you want to mark this {roomSystemState.completionType === 'doctor' ? 'doctor consultation' : 'pharmacist task'} as{' '}
@@ -265,7 +268,7 @@ const RoomSystem = ({ currentUser }) => {
                     {roomSystemState.completionData?.isComplete ? 'COMPLETE' : 'INCOMPLETE'}
                   </span>?
                 </p>
-                
+
                 {roomSystemState.completionType === 'doctor' && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-sm text-blue-800">
@@ -282,22 +285,22 @@ const RoomSystem = ({ currentUser }) => {
                     )}
                   </div>
                 )}
-                
+
                 {roomSystemState.completionType === 'pharmacist' && (
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                     <p className="text-sm text-purple-800">
                       <strong>Pharmacist:</strong> {roomSystemState.completionData?.pharmacistName}
                     </p>
                     <p className="text-sm text-purple-700 mt-1">
-                      {roomSystemState.completionData?.isComplete 
-                        ? '✓ This will mark the entire case as completed' 
+                      {roomSystemState.completionData?.isComplete
+                        ? '✓ This will mark the entire case as completed'
                         : '⚠ This will mark the case as incomplete'
                       }
                     </p>
                   </div>
                 )}
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -313,8 +316,8 @@ const RoomSystem = ({ currentUser }) => {
                   onClick={async () => {
                     if (roomSystemState.completionType === 'doctor') {
                       await actions.completeConsultation(
-                        roomSystemState.completionData.consultationId, 
-                        roomSystemState.completionData.doctorId, 
+                        roomSystemState.completionData.consultationId,
+                        roomSystemState.completionData.doctorId,
                         roomSystemState.completionData.isComplete
                       );
                     } else if (roomSystemState.completionType === 'pharmacist') {
@@ -329,11 +332,10 @@ const RoomSystem = ({ currentUser }) => {
                     roomSystemState.setCompletionData(null);
                     roomSystemState.setCompletionType('');
                   }}
-                  className={`flex-1 px-4 py-2 rounded-lg text-white transition-colors ${
-                    roomSystemState.completionData?.isComplete
+                  className={`flex-1 px-4 py-2 rounded-lg text-white transition-colors ${roomSystemState.completionData?.isComplete
                       ? 'bg-green-600 hover:bg-green-700'
                       : 'bg-red-600 hover:bg-red-700'
-                  }`}
+                    }`}
                 >
                   {roomSystemState.completionData?.isComplete ? 'Mark Complete' : 'Mark Incomplete'}
                 </button>

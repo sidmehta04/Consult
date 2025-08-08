@@ -21,19 +21,23 @@ const enhanceCaseData = (caseItem) => ({
   ...caseItem,
   // Pre-compute commonly used values
   computed: {
+    // isIncomplete: caseItem.isIncomplete === true || 
+    //               caseItem.status === "doctor_incomplete" || 
+    //               caseItem.status === "pharmacist_incomplete",
     isIncomplete: caseItem.isIncomplete === true || 
-                  caseItem.status === "doctor_incomplete" || 
-                  caseItem.status === "pharmacist_incomplete",
+                  caseItem.status === "incomplete" || 
+                  caseItem.status === "case_incomplete",
     
     clinicDisplay: caseItem.clinicCode || caseItem.clinicName || "N/A",
     partnerDisplay: caseItem.partnerName || "N/A",
-    doctorDisplay: caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A",
+    // doctorDisplay: caseItem.doctorName || caseItem.assignedDoctors?.primaryName || "N/A",
+    doctorDisplay: caseItem.completedByName || caseItem.assignedDoctors?.primaryName || "N/A",
     
     // Pre-format dates and times
     createdDate: formatDate(caseItem.createdAt),
     createdTime: formatTime(caseItem.createdAt),
-    doctorJoinedDisplay: caseItem.doctorJoined 
-      ? `${formatDate(caseItem.doctorJoined)} ${formatTime(caseItem.doctorJoined)}`
+    doctorJoinedDisplay: caseItem.doctorCompletedAt
+      ? `${formatDate(caseItem.doctorCompletedAt)} ${formatTime(caseItem.doctorCompletedAt)}`
       : "Pending",
     
     // Pre-calculate TATs
@@ -91,27 +95,33 @@ const formatTime = (dateObj) => {
 const calculateTAT = (caseItem, type) => {
   const isIncomplete = caseItem.isIncomplete === true || 
                       caseItem.status === "doctor_incomplete" || 
-                      caseItem.status === "pharmacist_incomplete";
+                      caseItem.status === "incomplete";
   
   if (isIncomplete) return { type: 'incomplete', display: 'Incomplete' };
   
   if (type === 'doctor') {
-    if (!caseItem.doctorCompleted) {
-      return { type: 'progress', display: 'In progress' };
+    // if (!caseItem.doctorCompletedAt ) {
+    //   return { type: 'progress', display: 'In progress' };
+    // }
+    if (caseItem.status=="incomplete" ) {
+      return { type: 'progress', display: 'Incomplete' };
     }
     const duration = calculateTimeDifference(
-      caseItem.doctorJoined ?? caseItem.createdAt, 
+      caseItem.createdAt, 
       caseItem.doctorCompletedAt
     );
     return { type: 'completed', display: duration };
   }
   
   if (type === 'overall') {
-    if (!caseItem.pharmacistCompleted) {
-      return { type: 'progress', display: 'In progress' };
+    // if (!caseItem.pharmacistCompletedAt) {
+    //   return { type: 'progress', display: 'In progress' };
+    // }
+     if (caseItem.status=="case_incomplete" ) {
+      return { type: 'progress', display: 'Incomplete' };
     }
     const duration = calculateTimeDifference(
-      caseItem.pharmacistJoined ?? caseItem.createdAt, 
+      caseItem.createdAt, 
       caseItem.pharmacistCompletedAt
     );
     return { type: 'completed', display: duration };
@@ -341,7 +351,7 @@ const usePagination = (data, pagination, onPageChange) => {
 const CasesTable = ({ 
   data, 
   loading, 
-  userRole, 
+  userRole,  
   currentUser, 
   showHeader = true,
   pagination = null,
@@ -424,16 +434,16 @@ const CasesTable = ({
           <TATDisplay tat={caseItem.computed.overallTAT} />
         </td>
         <td className="p-3">
-          {caseItem.computed.createdTime}; {caseItem.computed.createdDate}
+          {caseItem.computed.createdDate} {caseItem.computed.createdTime}
         </td>
-        <td className="p-0">
+        {/* <td className="p-0">
           <div className="flex items-center justify-center h-full">
             <ContactButton 
               contactInfo={caseItem.contactInfo}
               contactType={caseItem.computed.contactType}
             />
           </div>
-        </td>
+        </td> */}
         <td className="p-3">
           <ActionButtons 
             actionLinks={caseItem.computed.actionLinks}

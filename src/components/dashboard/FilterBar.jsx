@@ -94,4 +94,4 @@ const FilterBar = ({ searchTerm, onSearchChange, onFilterReset, onSearchSubmit }
   );
 };
 
-export default FilterBar;
+export default FilterBar; 

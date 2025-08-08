@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Select from "react-select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +34,6 @@ import {
 
 import {
   calculateCaseContribution,
-  fetchTabData,
   getClinicMapping,
 } from "./datafetcher";
 
@@ -68,7 +68,7 @@ const Dashboard = ({ currentUser }) => {
   const [exportPartner, setExportPartner] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // OPTIMIZATION 1: Use lazy loading for summary counts
+  // Summary counts state
   const [summaryCounts, setSummaryCounts] = useState({
     totalCases: 0, pendingCases: 0, completedCases: 0, doctorPendingCases: 0,
     pharmacistPendingCases: 0, incompleteCases: 0, todayCases: 0,
@@ -83,7 +83,9 @@ const Dashboard = ({ currentUser }) => {
   const initialLoadCompleteRef = useRef(false);
   const listenerCachePopulatedRef = useRef(false);
 
-  // OPTIMIZATION 2: Memoize clinic mapping and partners setup
+  const [countsLoaded, setCountsLoaded] = useState(false);
+
+  // Setup clinic mapping and partners
   const setupClinicData = useCallback(async () => {
     try {
       const [mapping, partnerNames] = await getClinicMapping();
@@ -109,11 +111,421 @@ const Dashboard = ({ currentUser }) => {
     }
   }, [currentUser?.role, currentUser?.uid, currentUser?.partnerName]);
 
-  // OPTIMIZATION 3: Setup clinic data once on mount
-  useEffect(() => {
-    setupClinicData();
-  }, [setupClinicData]);
+  // Fetch consultation tab data function
+  const fetchConsultationTabData = useCallback(async (uid, role, clinicCode, tabName, filters, pagination) => {
+    const casesRef = collection(firestore, "consultations");
+    let queryConstraints = [where("clinicCode", "==", clinicCode)];
+    
+    // Add partner filter
+    if (filters.partner) {
+      queryConstraints.push(where("partnerName", "==", filters.partner));
+    }
+    
+    // Add date filters
+    if (filters.dateFrom) {
+      queryConstraints.push(where("createdAt", ">=", filters.dateFrom));
+    }
+    if (filters.dateTo) {
+      queryConstraints.push(where("createdAt", "<=", filters.dateTo));
+    }
+    
+    // Tab-specific filters
+    switch (tabName) {
+      case "doctor_queue":
+        queryConstraints.push(where("status", "==", "pending"));
+        break;
+      case "pharmacist_queue":
+        queryConstraints.push(where("status", "==", "doctor_complete"));
+        break;
+      case "completed":
+        queryConstraints.push(where("status", "==", "case_completed"));
+        break;
+      case "incomplete":
+        queryConstraints.push(where("status", "in", ["incomplete", "case_incomplete"]));
+        break;
+      default:
+        break;
+    }
+    
+    queryConstraints.push(orderBy("createdAt", "desc"));
+    queryConstraints.push(limit(pagination.pageSize));
+    
+    const querySnapshot = await getDocs(query(casesRef, ...queryConstraints));
+    
+    const cases = [];
+    const uniquePartners = new Set();
+    const uniqueClinics = new Set();
+    const uniqueDoctors = new Set();
+    
+    querySnapshot.forEach((doc) => {
+      const caseData = { id: doc.id, ...doc.data() };
+      
+      // Apply search filter if provided
+      if (filters.searchTerm) {
+        const searchLower = filters.searchTerm.toLowerCase();
+        const matchesSearch = 
+          caseData.patientName?.toLowerCase().includes(searchLower) ||
+          caseData.emrNumber?.toLowerCase().includes(searchLower) ||
+          caseData.chiefComplaint?.toLowerCase().includes(searchLower);
+        
+        if (!matchesSearch) return;
+      }
+      
+      cases.push(caseData);
+      
+      if (caseData.partnerName) uniquePartners.add(caseData.partnerName);
+      if (caseData.clinicCode) uniqueClinics.add(caseData.clinicCode);
+      
+      // Add doctor names from selectedDoctorsWithNames and completedByName
+      if (caseData.selectedDoctorsWithNames && Array.isArray(caseData.selectedDoctorsWithNames)) {
+        caseData.selectedDoctorsWithNames.forEach(doctor => {
+          if (doctor.name) uniqueDoctors.add(doctor.name);
+        });
+      }
+      if (caseData.completedByName) {
+        uniqueDoctors.add(caseData.completedByName);
+      }
+    });
+    
+    return {
+      cases,
+      uniquePartners: Array.from(uniquePartners),
+      uniqueClinics: Array.from(uniqueClinics),
+      uniqueDoctors: Array.from(uniqueDoctors),
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: cases.length,
+        hasNext: false,
+        hasPrev: false
+      }
+    };
+  }, []);
 
+  // Load specific tab data when requested
+  const loadTabData = useCallback(
+    async (tabName, filters = {}) => {
+      if (!currentUser?.role || !currentUser?.uid || !clinicMapping) {
+        return;
+      }
+      
+      setFetchingData(true);
+      try {
+        const activeFilters = {
+          status: filters.status !== undefined ? filters.status : (statusFilter !== "all" ? statusFilter : null),
+          queue: filters.queue !== undefined ? filters.queue : (queueFilter !== "all" ? queueFilter : null),
+          partner: filters.partner !== undefined ? filters.partner : (partnerName || (partnerFilter !== "all" ? partnerFilter : null)),
+          clinic: filters.clinic !== undefined ? filters.clinic : (clinicFilter !== "all" ? clinicFilter : null),
+          doctor: filters.doctor !== undefined ? filters.doctor : (doctorFilter !== "all" ? doctorFilter : null),
+          dateFrom: filters.dateFrom !== undefined ? filters.dateFrom : dateRange.from,
+          dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
+          searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
+        };
+
+        const tabData = await fetchConsultationTabData(
+          currentUser.uid,
+          currentUser.role,
+          currentUser.clinicCode,
+          tabName,
+          activeFilters,
+          { page: 1, pageSize: 1000 }
+        );
+
+        setTableData({
+          cases: tabData.cases,
+          uniquePartners: tabData.uniquePartners,
+          uniqueClinics: tabData.uniqueClinics,
+          uniqueDoctors: tabData.uniqueDoctors,
+          pagination: tabData.pagination,
+        });
+        console.log('Total cases:', tabData?.cases?.length);
+        setShowTable(true);
+      } catch (err) {
+        console.error("Error fetching tab data:", err);
+        setError("Failed to load case data. Please try again.");
+      } finally {
+        setFetchingData(false);
+      }
+    },
+    [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm, clinicMapping, fetchConsultationTabData]
+  );
+
+  // Load summary counts
+  const loadSummaryCounts = useCallback(async () => {
+    if (!currentUser?.uid || !currentUser?.role || !currentUser?.clinicCode || !firestore || !clinicMapping) { // FIXED2: Added !currentUser?.clinicCode 
+      console.log("Missing requirements for loadSummaryCounts:", {
+        uid: !!currentUser?.uid,
+        role: !!currentUser?.role,
+        firestore: !!firestore,
+        clinicMapping: !!clinicMapping
+      });
+      return;
+    }
+
+    setLoadingCounts(true);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Base query filters consultations by currentUser's clinicCode
+      const casesRef = collection(firestore, "consultations");
+      const baseClinicFilter = where("clinicCode", "==", currentUser.clinicCode);
+
+      // const withPartner = (filters) => {
+      //   const baseFilters = [baseClinicFilter, ...filters];
+      //   return partnerName ? [where("partnerName", "==", partnerName), ...baseFilters] : baseFilters;
+      // };
+      const withPartner = (filters) => {
+        const baseFilters = [where("clinicCode", "==", currentUser.clinicCode), ...filters];
+        
+        // Only add partner filter if partnerName exists and is valid
+        if (partnerName && typeof partnerName === 'string') {
+          return [...baseFilters, where("partnerName", "==", partnerName)];
+        }
+        return baseFilters;
+      };
+
+      // Load essential counts first
+      const essentialQueries = [
+        getCountFromServer(query(casesRef, ...withPartner([]))),
+        getCountFromServer(query(casesRef, ...withPartner([where("status", "==","case_completed")]))),
+        getCountFromServer(query(casesRef, ...withPartner([where("status", "in", ["incomplete", "case_incomplete", "doctor_complete"])]))),
+      ];
+
+      const [totalCount, completedCount, incompletesCount] = await Promise.all(essentialQueries);
+
+      // Set essential counts immediately
+      setSummaryCounts(prev => ({
+        ...prev,
+        totalCases: totalCount.data().count,
+        completedCases: completedCount.data().count,
+        incompleteCases: incompletesCount.data().count
+      }));
+      setLoadingCounts(false);
+
+      // Load remaining counts in background
+      setTimeout(async () => {
+        try {
+          const [
+            incompleteCount,
+            docPendingCount,
+            pharmPendingCount,
+            todayCount,
+            todayCompleted,
+            todayIncomplete
+          ] = await Promise.all([
+            getCountFromServer(query(casesRef, ...withPartner([
+              where("status", "in", ["incomplete", "case_incomplete"])
+            ]))),
+            getCountFromServer(query(casesRef, ...withPartner([where("status", "==", "pending")]))),
+            getCountFromServer(query(casesRef, ...withPartner([where("status", "==", "doctor_complete")]))),
+            getCountFromServer(query(casesRef, ...withPartner([
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ]))),
+            getCountFromServer(query(casesRef, ...withPartner([
+              where("status", "in",["completed","case_completed"]),
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ]))),
+            getCountFromServer(query(casesRef, ...withPartner([
+              where("status", "in", ["incomplete", "case_incomplete"]),
+              where("createdAt", ">=", today),
+              where("createdAt", "<", tomorrow)
+            ])))
+          ]);
+
+          const pendingCases = docPendingCount.data().count + pharmPendingCount.data().count;
+
+          setSummaryCounts({
+            totalCases: totalCount.data().count,
+            pendingCases: pendingCases,
+            completedCases: completedCount.data().count,
+            doctorPendingCases: docPendingCount.data().count,
+            pharmacistPendingCases: pharmPendingCount.data().count,
+            incompleteCases: incompletesCount.data().count,
+            todayCases: todayCount.data().count,
+            todayCompleted: todayCompleted.data().count,
+            todayIncomplete: todayIncomplete.data().count,
+          });
+        } catch (backgroundError) {
+          console.error("Background count loading failed:", backgroundError);
+        }
+      }, 100);
+
+    } catch (e) {
+      console.error("Initial Load Error:", e);
+      setError("Failed to load summary data.");
+      setLoadingCounts(false);
+    }
+  }, [currentUser, partnerName, clinicMapping]);
+
+  // Trigger count loading only when explicitly needed
+  const triggerCountsLoad = useCallback(() => {
+    if (!countsLoaded && clinicMapping) {
+      setCountsLoaded(true);
+      loadSummaryCounts();
+    }
+  }, [countsLoaded, clinicMapping, loadSummaryCounts]);
+
+  // Helper to update global counts
+  const applyCountChanges = useCallback((singleCaseContribution, operation) => {
+    setSummaryCounts(prevGlobalCounts => {
+      const newGlobalCounts = { ...prevGlobalCounts };
+      const factor = operation === 'add' ? 1 : -1;
+      for (const key in singleCaseContribution) {
+        newGlobalCounts[key] = (newGlobalCounts[key] || 0) + (factor * singleCaseContribution[key]);
+      }
+      if (singleCaseContribution.doctorPendingCases !== undefined || singleCaseContribution.pharmacistPendingCases !== undefined) {
+        newGlobalCounts.pendingCases = (newGlobalCounts.doctorPendingCases || 0) + (newGlobalCounts.pharmacistPendingCases || 0);
+      }
+      return newGlobalCounts;
+    });
+  }, []);
+
+  // Setup real-time listener
+  const setupRealtimeListener = useCallback(() => {
+    if (!currentUser?.uid || !currentUser?.role || !firestore || unsubscribeRef.current) {
+      console.log("Cannot setup listener - missing requirements:", {
+        uid: !!currentUser?.uid,
+        role: !!currentUser?.role,
+        firestore: !!firestore,
+        alreadyExists: !!unsubscribeRef.current
+      });
+      return;
+    }
+
+    try {
+      const baseQuery = collection(firestore, "consultations");
+      const listenerQuery = query(
+        baseQuery, 
+        where("clinicCode", "==", currentUser.clinicCode),
+        orderBy("createdAt", "desc"), 
+        limit(1000)
+      );
+
+      unsubscribeRef.current = onSnapshot(listenerQuery, (snapshot) => {
+        if (!initialLoadCompleteRef.current) {
+          snapshot.docs.forEach(doc => {
+            recentCasesCacheRef.current.set(doc.id, doc.data());
+          });
+          listenerCachePopulatedRef.current = true;
+          initialLoadCompleteRef.current = true;
+          return;
+        }
+
+        const snapTodayDate = new Date();
+        snapTodayDate.setHours(0, 0, 0, 0);
+        const snapTomorrowDate = new Date(snapTodayDate);
+        snapTomorrowDate.setDate(snapTomorrowDate.getDate() + 1);
+        const snapTodayEpoch = Math.floor(snapTodayDate.getTime() / 1000);
+        const snapTomorrowEpoch = Math.floor(snapTomorrowDate.getTime() / 1000);
+
+        snapshot.docChanges().forEach((change) => {
+          const docId = change.doc.id;
+          const newCaseData = change.doc.exists() ? change.doc.data() : null;
+          const oldCaseDataFromCache = recentCasesCacheRef.current.get(docId);
+
+          if (change.type === "added" && newCaseData && !oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
+            recentCasesCacheRef.current.set(docId, newCaseData);
+          } else if (change.type === "modified" && newCaseData && oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
+            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
+            recentCasesCacheRef.current.set(docId, newCaseData);
+          } else if (change.type === "removed" && oldCaseDataFromCache) {
+            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
+            recentCasesCacheRef.current.delete(docId);
+          }
+        });
+      }, (err) => {
+        console.error("Listener Error:", err);
+        setError("Real-time updates failed.");
+      });
+    } catch (error) {
+      console.error("Error setting up listener:", error);
+    }
+  }, [currentUser, applyCountChanges, partnerName, clinicMapping]);
+
+  // SuperAdmin Excel Export Function
+  const handleExcelExportForDate = useCallback(async () => {
+    if (!exportDate) {
+      alert("Please select a date for export.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const selectedDate = new Date(exportDate);
+      selectedDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(selectedDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const casesRef = collection(firestore, "consultations");
+      let queryConstraints = [
+        where("clinicCode", "==", currentUser.clinicCode),
+        where("createdAt", ">=", selectedDate),
+        where("createdAt", "<", nextDay),
+        orderBy("createdAt", "desc")
+      ];
+
+      if (exportPartner) {
+        queryConstraints.push(where("partnerName", "==", exportPartner));
+      }
+
+      const querySnapshot = await getDocs(query(casesRef, ...queryConstraints));
+      
+      const allCases = [];
+      querySnapshot.forEach((doc) => {
+        const caseData = doc.data();
+        allCases.push({
+          id: doc.id,
+          ...caseData
+        });
+      });
+
+      console.log(`Found ${allCases.length} cases for export on ${exportDate}`);
+
+      if (allCases.length === 0) {
+        alert(`No cases found for ${exportDate}${exportPartner ? ` for partner: ${exportPartner}` : ''}.`);
+        return;
+      }
+
+      const partnerSuffix = exportPartner ? `_${exportPartner.replace(/\s+/g, '_')}` : '';
+      const fileName = `cases_export_${exportDate}${partnerSuffix}.xlsx`;
+
+      exportCasesToExcel(allCases, fileName);
+      setShowExportModal(false);
+      alert(`Successfully exported ${allCases.length} cases for ${exportDate}${exportPartner ? ` (Partner: ${exportPartner})` : ''}.`);
+
+    } catch (error) {
+      console.error("Error exporting Excel:", error);
+      alert("Failed to export data. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [exportDate, exportPartner, currentUser]);
+
+  // Regular excel export for current table data
+  const handleExcelExport = useCallback(() => {
+    if (!tableData?.cases || tableData.cases.length === 0) {
+      alert("No data available to export.");
+      return;
+    }
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
+    const fileName = `cases_export_${dateStr}.xlsx`;
+    try {
+      exportCasesToExcel(tableData.cases, fileName);
+    } catch (err) {
+      console.error("Error exporting to Excel:", err);
+      alert("Failed to export data. Please try again.");
+    }
+  }, [tableData?.cases]);
+
+  // Handle partner change
   const handlePartnerChange = useCallback((selectedOption) => {
     const newPartnerName = selectedOption ? selectedOption.value : null;
     setPartnerName(newPartnerName);
@@ -149,349 +561,9 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, currentFilters);
     }
-  }, [activeTab, statusFilter, queueFilter, clinicFilter, doctorFilter, dateRange, searchTerm]);
+  }, [activeTab, statusFilter, queueFilter, clinicFilter, doctorFilter, dateRange, searchTerm, loadTabData]);
 
-  // OPTIMIZATION 4: Lazy load summary counts - only when user explicitly requests or after initial render
-  const loadSummaryCounts = useCallback(async () => {
-    // Add firestore check here
-    if (!currentUser?.uid || !currentUser?.role || !firestore || !clinicMapping) {
-      console.log("Missing requirements for loadSummaryCounts:", {
-        uid: !!currentUser?.uid,
-        role: !!currentUser?.role,
-        firestore: !!firestore,
-        clinicMapping: !!clinicMapping
-      });
-      return;
-    }
-
-    setLoadingCounts(true);
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      let initialQueryParam;
-
-      switch (currentUser.role) {
-        case "superAdmin":
-        case "zonalHead":
-        case "drManager":
-        case "teamLeader":
-          break;
-        case "doctor":
-          initialQueryParam = where("assignedDoctors.primary", "==", currentUser.uid);
-          break;
-        case "pharmacist":
-          initialQueryParam = where("pharmacistId", "==", currentUser.uid);
-          break;
-        default:
-          initialQueryParam = where("createdBy", "==", currentUser.uid);
-          break;
-      }
-
-      const casesRef = collection(firestore, "cases");
-
-      const withPartner = (filters) => {
-        const baseFilters = initialQueryParam ? [initialQueryParam, ...filters] : filters;
-        return partnerName ? [where("partnerName", "==", partnerName), ...baseFilters] : baseFilters;
-      };
-
-      // OPTIMIZATION 5: Run only essential counts first, defer others
-      const essentialQueries = [
-        getCountFromServer(query(casesRef, ...withPartner([]))),
-        getCountFromServer(query(casesRef, ...withPartner([where("status", "==", "completed")])))
-      ];
-
-      const [totalCount, completedCount] = await Promise.all(essentialQueries);
-
-      // Set essential counts immediately
-      setSummaryCounts(prev => ({
-        ...prev,
-        totalCases: totalCount.data().count,
-        completedCases: completedCount.data().count,
-      }));
-      setLoadingCounts(false);
-
-      // OPTIMIZATION 6: Load remaining counts in background
-      setTimeout(async () => {
-        try {
-          const [
-            incompleteCount,
-            docPendingCount,
-            pharmPendingCount,
-            todayCount,
-            todayCompleted,
-            todayIncomplete
-          ] = await Promise.all([
-            getCountFromServer(query(casesRef, ...withPartner([where("isIncomplete", "==", true)]))),
-            getCountFromServer(query(casesRef, ...withPartner([where("doctorCompleted", "==", false)]))),
-            getCountFromServer(query(casesRef, ...withPartner([
-              where("doctorCompleted", "==", true),
-              where("pharmacistCompleted", "==", false),
-              where("isIncomplete", "==", false)
-            ]))),
-            getCountFromServer(query(casesRef, ...withPartner([
-              where("createdAt", ">=", today),
-              where("createdAt", "<", tomorrow)
-            ]))),
-            getCountFromServer(query(casesRef, ...withPartner([
-              where("status", "==", "completed"),
-              where("createdAt", ">=", today),
-              where("createdAt", "<", tomorrow)
-            ]))),
-            getCountFromServer(query(casesRef, ...withPartner([
-              where("isIncomplete", "==", true),
-              where("createdAt", ">=", today),
-              where("createdAt", "<", tomorrow)
-            ])))
-          ]);
-
-          const pendingCases = docPendingCount.data().count + pharmPendingCount.data().count;
-
-          setSummaryCounts({
-            totalCases: totalCount.data().count,
-            pendingCases: pendingCases,
-            completedCases: completedCount.data().count,
-            doctorPendingCases: docPendingCount.data().count,
-            pharmacistPendingCases: pharmPendingCount.data().count,
-            incompleteCases: incompleteCount.data().count,
-            todayCases: todayCount.data().count,
-            todayCompleted: todayCompleted.data().count,
-            todayIncomplete: todayIncomplete.data().count,
-          });
-        } catch (backgroundError) {
-          console.error("Background count loading failed:", backgroundError);
-        }
-      }, 100); // Load in background after 100ms
-
-    } catch (e) {
-      console.error("Initial Load Error:", e);
-      setError("Failed to load summary data.");
-      setLoadingCounts(false);
-    }
-  }, [currentUser, partnerName, clinicMapping]);
-
-  // OPTIMIZATION 7: Only load counts when clinicMapping is ready and user requests it
-  const [countsLoaded, setCountsLoaded] = useState(false);
-
-  // Trigger count loading only when explicitly needed
-  const triggerCountsLoad = useCallback(() => {
-    if (!countsLoaded && clinicMapping) {
-      setCountsLoaded(true);
-      loadSummaryCounts();
-    }
-  }, [countsLoaded, clinicMapping, loadSummaryCounts]);
-
-  // Add effect to reload counts when partner changes
-  useEffect(() => {
-    if (countsLoaded && clinicMapping) {
-      loadSummaryCounts();
-    }
-  }, [partnerName, loadSummaryCounts, countsLoaded, clinicMapping]);
-
-  // Auto-load summary cards when clinicMapping becomes available
-  useEffect(() => {
-    if (clinicMapping && !countsLoaded) {
-      setCountsLoaded(true);
-      loadSummaryCounts();
-    }
-  }, [clinicMapping, countsLoaded, loadSummaryCounts]);
-
-  // Handle partner change for summary cards
-  useEffect(() => {
-    if (clinicMapping && partnerName !== null) {
-      // When partner changes, reload the counts
-      setTimeout(() => {
-        if (!countsLoaded) {
-          setCountsLoaded(true);
-        }
-        loadSummaryCounts();
-      }, 100);
-    }
-  }, [partnerName, clinicMapping, loadSummaryCounts, countsLoaded]);
-
-  // OPTIMIZATION 8: Memoized helper to update global counts
-  const applyCountChanges = useCallback((singleCaseContribution, operation) => {
-    setSummaryCounts(prevGlobalCounts => {
-      const newGlobalCounts = { ...prevGlobalCounts };
-      const factor = operation === 'add' ? 1 : -1;
-      for (const key in singleCaseContribution) {
-        newGlobalCounts[key] = (newGlobalCounts[key] || 0) + (factor * singleCaseContribution[key]);
-      }
-      if (singleCaseContribution.doctorPendingCases !== undefined || singleCaseContribution.pharmacistPendingCases !== undefined) {
-        newGlobalCounts.pendingCases = (newGlobalCounts.doctorPendingCases || 0) + (newGlobalCounts.pharmacistPendingCases || 0);
-      }
-      return newGlobalCounts;
-    });
-  }, []);
-
-  // OPTIMIZATION 9: Setup real-time listener only when needed
-  const setupRealtimeListener = useCallback(() => {
-    // Add comprehensive checks before setting up listener
-    if (!currentUser?.uid || !currentUser?.role || !firestore || unsubscribeRef.current) {
-      console.log("Cannot setup listener - missing requirements:", {
-        uid: !!currentUser?.uid,
-        role: !!currentUser?.role,
-        firestore: !!firestore,
-        alreadyExists: !!unsubscribeRef.current
-      });
-      return;
-    }
-
-    try {
-      let listenerQuery;
-      const baseQuery = collection(firestore, "cases");
-      
-      switch (currentUser.role) {
-        case "superAdmin":
-        case "zonalHead":
-        case "drManager":
-        case "teamLeader":
-          listenerQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(1000));
-          break;
-        case "doctor":
-          listenerQuery = query(baseQuery, where("assignedDoctors.primary", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-          break;
-        case "pharmacist":
-          listenerQuery = query(baseQuery, where("pharmacistId", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-          break;
-        default:
-          listenerQuery = query(baseQuery, where("createdBy", "==", currentUser.uid), orderBy("createdAt", "desc"), limit(1000));
-          break;
-      }
-
-      unsubscribeRef.current = onSnapshot(listenerQuery, (snapshot) => {
-        if (!initialLoadCompleteRef.current) {
-          // First snapshot - just populate cache
-          snapshot.docs.forEach(doc => {
-            recentCasesCacheRef.current.set(doc.id, doc.data());
-          });
-          listenerCachePopulatedRef.current = true;
-          initialLoadCompleteRef.current = true;
-          return;
-        }
-
-        // Process changes for real-time updates
-        const snapTodayDate = new Date();
-        snapTodayDate.setHours(0, 0, 0, 0);
-        const snapTomorrowDate = new Date(snapTodayDate);
-        snapTomorrowDate.setDate(snapTomorrowDate.getDate() + 1);
-        const snapTodayEpoch = Math.floor(snapTodayDate.getTime() / 1000);
-        const snapTomorrowEpoch = Math.floor(snapTomorrowDate.getTime() / 1000);
-
-        snapshot.docChanges().forEach((change) => {
-          const docId = change.doc.id;
-          const newCaseData = change.doc.exists() ? change.doc.data() : null;
-          const oldCaseDataFromCache = recentCasesCacheRef.current.get(docId);
-
-          if (change.type === "added" && newCaseData && !oldCaseDataFromCache) {
-            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
-            recentCasesCacheRef.current.set(docId, newCaseData);
-          } else if (change.type === "modified" && newCaseData && oldCaseDataFromCache) {
-            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
-            applyCountChanges(calculateCaseContribution(newCaseData, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'add');
-            recentCasesCacheRef.current.set(docId, newCaseData);
-          } else if (change.type === "removed" && oldCaseDataFromCache) {
-            applyCountChanges(calculateCaseContribution(oldCaseDataFromCache, snapTodayEpoch, snapTomorrowEpoch, partnerName, clinicMapping), 'subtract');
-            recentCasesCacheRef.current.delete(docId);
-          }
-        });
-      }, (err) => {
-        console.error("Listener Error:", err);
-        setError("Real-time updates failed.");
-      });
-    } catch (error) {
-      console.error("Error setting up listener:", error);
-    }
-  }, [currentUser, applyCountChanges, partnerName, clinicMapping]);
-
-  // SuperAdmin Excel Export Function with direct Firestore query (no pagination limits)
-  const handleExcelExportForDate = useCallback(async () => {
-    if (!exportDate) {
-      alert("Please select a date for export.");
-      return;
-    }
-
-    setIsExporting(true);
-    try {
-      // Create date range for the selected day
-      const selectedDate = new Date(exportDate);
-      selectedDate.setHours(0, 0, 0, 0);
-      const nextDay = new Date(selectedDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-
-      // Build Firestore query directly to get ALL records without pagination
-      const casesRef = collection(firestore, "cases");
-      let queryConstraints = [
-        where("createdAt", ">=", selectedDate),
-        where("createdAt", "<", nextDay),
-        orderBy("createdAt", "desc")
-      ];
-
-      // Add partner filter if selected
-      if (exportPartner) {
-        queryConstraints.unshift(where("partnerName", "==", exportPartner));
-      }
-
-      // Execute query to get ALL documents
-      const querySnapshot = await getDocs(query(casesRef, ...queryConstraints));
-      
-      // Convert to array of case data
-      const allCases = [];
-      querySnapshot.forEach((doc) => {
-        const caseData = doc.data();
-        allCases.push({
-          id: doc.id,
-          ...caseData
-        });
-      });
-
-      console.log(`Found ${allCases.length} cases for export on ${exportDate}`);
-
-      if (allCases.length === 0) {
-        alert(`No cases found for ${exportDate}${exportPartner ? ` for partner: ${exportPartner}` : ''}.`);
-        return;
-      }
-
-      // Generate filename with date and partner info
-      const partnerSuffix = exportPartner ? `_${exportPartner.replace(/\s+/g, '_')}` : '';
-      const fileName = `cases_export_${exportDate}${partnerSuffix}.xlsx`;
-
-      // Export to Excel using the dynamic export function
-      exportCasesToExcel(allCases, fileName);
-      
-      // Close modal
-      setShowExportModal(false);
-      
-      // Show success message
-      alert(`Successfully exported ${allCases.length} cases for ${exportDate}${exportPartner ? ` (Partner: ${exportPartner})` : ''}.`);
-
-    } catch (error) {
-      console.error("Error exporting Excel:", error);
-      alert("Failed to export data. Please try again.");
-    } finally {
-      setIsExporting(false);
-    }
-  }, [exportDate, exportPartner, currentUser, clinicMapping]);
-
-  // Regular excel export for current table data (kept for backward compatibility)
-  const handleExcelExport = useCallback(() => {
-    if (!tableData?.cases || tableData.cases.length === 0) {
-      alert("No data available to export.");
-      return;
-    }
-    const now = new Date();
-    const dateStr = now.toISOString().split("T")[0];
-    const fileName = `cases_export_${dateStr}.xlsx`;
-    try {
-      exportCasesToExcel(tableData.cases, fileName);
-    } catch (err) {
-      console.error("Error exporting to Excel:", err);
-      alert("Failed to export data. Please try again.");
-    }
-  }, [tableData?.cases]);
-
+  // Handle refresh
   const handleRefresh = useCallback(async () => {
     setRefresh(!refresh);
     if (activeTab) {
@@ -507,64 +579,9 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, currentFilters);
     }
-  }, [activeTab, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm]);
+  }, [activeTab, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm, loadTabData, refresh]);
 
-  // OPTIMIZATION 10: Debounced auto-refresh
-  useEffect(() => {
-    if (refreshInterval === 0) return;
-    
-    const interval = setInterval(handleRefresh, refreshInterval);
-    return () => clearInterval(interval);
-  }, [refreshInterval, handleRefresh]);
-
-  // Load specific tab data when requested
-  const loadTabData = useCallback(
-    async (tabName, filters = {}) => {
-      if (!currentUser?.role || !currentUser?.uid || !clinicMapping) {
-        return;
-      }
-      
-      setFetchingData(true);
-      try {
-        const activeFilters = {
-          status: filters.status !== undefined ? filters.status : (statusFilter !== "all" ? statusFilter : null),
-          queue: filters.queue !== undefined ? filters.queue : (queueFilter !== "all" ? queueFilter : null),
-          partner: filters.partner !== undefined ? filters.partner : (partnerName || (partnerFilter !== "all" ? partnerFilter : null)),
-          clinic: filters.clinic !== undefined ? filters.clinic : (clinicFilter !== "all" ? clinicFilter : null),
-          doctor: filters.doctor !== undefined ? filters.doctor : (doctorFilter !== "all" ? doctorFilter : null),
-          dateFrom: filters.dateFrom !== undefined ? filters.dateFrom : dateRange.from,
-          dateTo: filters.dateTo !== undefined ? filters.dateTo : dateRange.to,
-          searchTerm: filters.searchTerm !== undefined ? filters.searchTerm : (searchTerm || null),
-        };
-
-        const tabData = await fetchTabData(
-          currentUser.uid,
-          currentUser.role,
-          tabName,
-          activeFilters,
-          { page: 1, pageSize: 1000 },
-          clinicMapping
-        );
-
-        setTableData({
-          cases: tabData.cases,
-          uniquePartners: tabData.uniquePartners,
-          uniqueClinics: tabData.uniqueClinics,
-          uniqueDoctors: tabData.uniqueDoctors,
-          pagination: tabData.pagination,
-        });
-        setShowTable(true);
-      } catch (err) {
-        console.error("Error fetching tab data:", err);
-        setError("Failed to load case data. Please try again.");
-      } finally {
-        setFetchingData(false);
-      }
-    },
-    [currentUser?.uid, currentUser?.role, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm, clinicMapping]
-  );
-
-  // OPTIMIZATION 11: Memoize filters
+  // Filter handlers
   const handleFilterReset = useCallback(() => {
     const emptyFilters = {
       status: null, queue: null, partner: null, clinic: null, doctor: null,
@@ -577,6 +594,7 @@ const Dashboard = ({ currentUser }) => {
     setQueueFilter("all");
     setPartnerFilter("all");
     setClinicFilter("all");
+    setDoctorFilter("all");
     setActiveColumnFilter(null);
     setResetTimestamp(Date.now());
 
@@ -613,7 +631,7 @@ const Dashboard = ({ currentUser }) => {
         loadTabData(activeTab, newFilters);
       }
     },
-    [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm]
+    [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm]
   );
 
   const handleFilterApply = useCallback((filterType, value) => {
@@ -642,7 +660,7 @@ const Dashboard = ({ currentUser }) => {
     if (activeTab) {
       loadTabData(activeTab, updatedFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange, searchTerm]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange, searchTerm]);
 
   const handleSearchChange = useCallback((value) => {
     setSearchTerm(value);
@@ -659,7 +677,7 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, currentFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange]);
 
   const handleSearchSubmit = useCallback((value) => {
     setSearchTerm(value);
@@ -676,7 +694,7 @@ const Dashboard = ({ currentUser }) => {
       };
       loadTabData(activeTab, updatedFilters);
     }
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, dateRange]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, dateRange]);
 
   const handleTabChange = useCallback((newTabName) => {
     if (newTabName === activeTab) return;
@@ -702,9 +720,9 @@ const Dashboard = ({ currentUser }) => {
     };
 
     loadTabData(newTabName, currentFiltersForNewTab);
-  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, searchTerm, clinicMapping, triggerCountsLoad, setupRealtimeListener]);
+  }, [activeTab, loadTabData, statusFilter, queueFilter, partnerName, partnerFilter, clinicFilter, doctorFilter, searchTerm, clinicMapping, triggerCountsLoad, setupRealtimeListener]);
 
-  // OPTIMIZATION 12: Memoize clinic and doctor options
+  // Memoized options
   const clinicOptions = useMemo(() => 
     tableData?.uniqueClinics?.map((clinic) => ({ value: clinic, label: clinic })) || [], 
     [tableData?.uniqueClinics]
@@ -715,7 +733,41 @@ const Dashboard = ({ currentUser }) => {
     [tableData?.uniqueDoctors]
   );
 
-  // Cleanup effect
+  // Effects
+  useEffect(() => {
+    setupClinicData();
+  }, [setupClinicData]);
+
+  useEffect(() => {
+    if (countsLoaded && clinicMapping) {
+      loadSummaryCounts();
+    }
+  }, [partnerName, loadSummaryCounts, countsLoaded, clinicMapping]);
+
+  useEffect(() => {
+    if (clinicMapping && !countsLoaded) {
+      setCountsLoaded(true);
+      loadSummaryCounts();
+    }
+  }, [clinicMapping, countsLoaded, loadSummaryCounts]);
+
+  useEffect(() => {
+    if (clinicMapping && partnerName !== null) {
+      setTimeout(() => {
+        if (!countsLoaded) {
+          setCountsLoaded(true);
+        }
+        loadSummaryCounts();
+      }, 100);
+    }
+  }, [partnerName, clinicMapping, loadSummaryCounts, countsLoaded]);
+
+  useEffect(() => {
+    if (refreshInterval === 0) return;
+    const interval = setInterval(handleRefresh, refreshInterval);
+    return () => clearInterval(interval);
+  }, [refreshInterval, handleRefresh]);
+
   useEffect(() => {
     return () => {
       if (unsubscribeRef.current) {
@@ -883,7 +935,7 @@ const Dashboard = ({ currentUser }) => {
       <DashboardSummaryCards
         data={summaryCounts}
         loading={loadingCounts}
-        onLoadCounts={triggerCountsLoad} // Allow manual trigger
+        onLoadCounts={triggerCountsLoad}
       />
       <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} handleTableRefresh={handleRefresh} />
 

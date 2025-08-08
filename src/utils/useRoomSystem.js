@@ -441,6 +441,7 @@ export const useRoomSystemActions = (currentUser, setters, state) => {
           patientName: patient.patientName,
           emrNumber: patient.emrNumber,
           chiefComplaint: patient.chiefComplaint,
+          manualClinicCode: patient.manualClinicCode,
           consultationType: caseData.consultationType,
           selectedDoctors: caseData.selectedDoctors, // Keep original array for backward compatibility
           selectedDoctorsWithNames: selectedDoctorsWithNames, // New field with names
@@ -451,9 +452,10 @@ export const useRoomSystemActions = (currentUser, setters, state) => {
           createdBy: currentUser.uid,
           createdByName: currentUser.displayName || currentUser.name || currentUser.email, // Add creator name
           createdAt: serverTimestamp(),
-          clinicCode: currentUser.clinicCode
+          clinicCode: currentUser.clinicCode,
+          partnerName : currentUser.partnerName || 'Unknown',
         };
-        
+      
         const docRef = await addDoc(collection(firestore, 'consultations'), consultation);
         createdCases.push({
           id: docRef.id,

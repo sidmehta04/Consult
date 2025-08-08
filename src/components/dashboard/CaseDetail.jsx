@@ -346,12 +346,13 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
     return {
       status,
       caseTitle: `Case ${caseData.emrNumber || caseData.caseNumber || caseData.id?.substring(0, 8) || "Details"}`,
-      canUpdateDoctorStatus: userRole === "doctor" && !caseData.doctorCompleted,
+      canUpdateDoctorStatus: userRole === "doctor" && !caseData.doctorCompletedAt,
       canUpdatePharmacistStatus: userRole === "pharmacist" && !caseData.pharmacistCompleted,
       canUpdateAnyStatus: ["superAdmin", "zonalHead", "teamLeader"].includes(userRole),
       
       // Pre-compute display values
       emrNumbers: caseData.emrNumber || caseData.emrNumbers?.join(", ") || "N/A",
+      manualClinicCodes: caseData.manualClinicCode || caseData.manualClinicCodes?.join(", ") || "N/A",
       patientNames: caseData.patientName || caseData.patientNames?.join(", ") || "N/A",
       chiefComplaints: caseData.chiefComplaint || caseData.chiefComplaints?.join(", ") || "N/A",
       
@@ -458,7 +459,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
             <label className="text-sm font-medium text-gray-500">Doctor</label>
             <div className="flex items-center flex-wrap gap-2">
               <span className="mr-2">
-                {caseData.doctorName || caseData.assignedDoctors?.primaryName || "N/A"}
+                {caseData.completedByName || caseData.assignedDoctors?.primaryName || "N/A"}
               </span>
               <StatusBadge status={computedData.status} type="doctor" />
               {computedData.status.hasDoctorTransfers && (
@@ -473,7 +474,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
           <div>
             <label className="text-sm font-medium text-gray-500">Pharmacist</label>
             <div className="flex items-center flex-wrap gap-2">
-              <span className="mr-2">{caseData.pharmacistName || "N/A"}</span>
+              <span className="mr-2">{caseData.pharmacistCompletedByName || "N/A"}</span>
               <StatusBadge status={computedData.status} type="pharmacist" />
               {computedData.status.hasPharmacistTransfers && (
                 <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
@@ -514,7 +515,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
         <TimelineRow
           leftLabel="Doctor Completed By"
           leftValue={computedData.status.isIncomplete ? "Incomplete" :
-                    caseData.doctorCompleted ? (caseData.doctorCompletedByName || "Unknown") : "Pending"}
+                    caseData.doctorCompletedAt ? (caseData.completedByName || "Unknown") : "Pending"}
           rightLabel="Doctor Completed At"
           rightValue={computedData.timeline.doctorCompletedAt}
         />
@@ -522,7 +523,7 @@ const CaseDetailView = ({ caseData, userRole, currentUser }) => {
         <TimelineRow
           leftLabel="Pharmacist Completed By"
           leftValue={computedData.status.isIncomplete ? "Incomplete" :
-                    caseData.pharmacistCompleted ? (caseData.pharmacistCompletedByName || "Unknown") : "Pending"}
+                    caseData.pharmacistCompletedAt ? (caseData.pharmacistCompletedByName || "Unknown") : "Pending"}
           rightLabel="Pharmacist Completed At"
           rightValue={computedData.timeline.pharmacistCompletedAt}
         />

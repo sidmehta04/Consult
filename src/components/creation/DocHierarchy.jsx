@@ -383,21 +383,21 @@ const DoctorHierarchyManagement = ({ currentUser }) => {
                   </TableBody>
                 </Table>
               )}
-              <div className="flex items-center space-x-4 rounded-md border p-4">
+              {/* <div className="flex items-center space-x-4 rounded-md border p-4">
                 <div className="flex-1 space-y-1">
                   <Label htmlFor="assign-to-any-doc" className="text-base">Fallback Assignment</Label>
                   <p className="text-sm text-muted-foreground">When primary doctors are unavailable, assign cases to any available doctor</p>
                 </div>
                 <Switch id="assign-to-any-doc" checked={assignToAnyDoctor} onCheckedChange={setAssignToAnyDoctor} />
-              </div>
-              {assignedDoctors.length > 0 && (
+              </div> */}
+              {/* {assignedDoctors.length > 0 && (
                 <Alert className="bg-blue-50 border-blue-200">
                   <AlertDescription className="text-blue-800">
                     The order above determines the doctor hierarchy. Primary gets first priority.
                     {assignToAnyDoctor && (<span className="block mt-2 font-medium"><Check className="h-4 w-4 inline mr-1" />Fallback to any available doctor is enabled.</span>)}
                   </AlertDescription>
                 </Alert>
-              )}
+              )} */}
               {error && (<Alert variant="destructive"><AlertCircle className="h-4 w-4 mr-2" /><AlertDescription>{error}</AlertDescription></Alert>)}
               {success && (<Alert className="bg-green-50 border-green-200"><BadgeCheck className="h-4 w-4 text-green-700 mr-2" /><AlertDescription className="text-green-800">{success}</AlertDescription></Alert>)}
             </div>

@@ -3,13 +3,14 @@ import { Users, X } from 'lucide-react';
 
 const CaseForm = ({ selectedDoctors, doctorsData, onSubmit, onCancel }) => {
   const [patients, setPatients] = useState([
-    { patientName: '', emrNumber: '', chiefComplaint: '' }
+    { patientName: '', emrNumber: '', chiefComplaint: '', manualClinicCode: '' }
   ]);
+  const [globalManualClinicCode, setGlobalManualClinicCode] = useState('');
 
   const addPatient = () => {
     setPatients(prev => [
       ...prev,
-      { patientName: '', emrNumber: '', chiefComplaint: '' }
+      { patientName: '', emrNumber: '', chiefComplaint: '', manualClinicCode: '' }
     ]);
   };
 
@@ -28,31 +29,32 @@ const CaseForm = ({ selectedDoctors, doctorsData, onSubmit, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    const isValid = patients.every(patient => 
-      patient.patientName.trim() && patient.chiefComplaint.trim()
-    );
-    
+
+    const isValid = patients.every(patient =>
+      patient.patientName.trim() && patient.emrNumber.trim() && patient.chiefComplaint.trim()
+    ) && globalManualClinicCode.trim();
+
     if (!isValid) {
-      alert('Please fill in patient name and chief complaint for all patients');
+      alert('Please fill in patient name, EMR number, chief complaint for all patients and manual clinic code');
       return;
     }
-    
+
     const caseData = {
       patients: patients.map(patient => ({
         patientName: patient.patientName.trim(),
         emrNumber: patient.emrNumber.trim(),
+        manualClinicCode: globalManualClinicCode.trim(), // Use global manual clinic code for all patients
         chiefComplaint: patient.chiefComplaint.trim()
       })),
       consultationType: 'tele',
       selectedDoctors
     };
-    
+
     onSubmit(caseData);
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
+    <div className="bg-white rounded-xl  p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Patient Case Details</h2>
         <button
@@ -78,7 +80,8 @@ const CaseForm = ({ selectedDoctors, doctorsData, onSubmit, onCancel }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-4">
+        {/* Scrollable Patient Details Section */}
+        <div className="max-h-96 overflow-y-auto space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-800">Patient Details</h3>
             <button
@@ -115,21 +118,21 @@ const CaseForm = ({ selectedDoctors, doctorsData, onSubmit, onCancel }) => {
                     type="text"
                     value={patient.patientName}
                     onChange={(e) => updatePatient(index, 'patientName', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg  focus:border-transparent"
                     placeholder="Enter patient full name"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    EMR Number
+                    EMR Number *
                   </label>
                   <input
                     type="text"
                     value={patient.emrNumber}
                     onChange={(e) => updatePatient(index, 'emrNumber', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter EMR number (optional)"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg  focus:border-transparent"
+                    placeholder="Enter EMR number"
                   />
                 </div>
               </div>
@@ -142,12 +145,26 @@ const CaseForm = ({ selectedDoctors, doctorsData, onSubmit, onCancel }) => {
                   value={patient.chiefComplaint}
                   onChange={(e) => updatePatient(index, 'chiefComplaint', e.target.value)}
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg  focus:border-transparent"
                   placeholder="Describe patient symptoms and chief complaints..."
                 />
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Global Manual Clinic Code - Outside scrollable area */}
+        <div className="rounded-lg bg-blue-50 p-4 border border-gray-200">
+          <label className="block text-sm text-black font-semibold  mb-2">
+            Manual Clinic Code *
+          </label>
+          <input
+            type="text"
+            value={globalManualClinicCode}
+            onChange={(e) => setGlobalManualClinicCode(e.target.value)}
+            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg  focus:border-transparent"
+            placeholder="Enter manual clinic code "
+          />
         </div>
 
         <div className="flex justify-end space-x-4">

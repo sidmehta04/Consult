@@ -49,13 +49,14 @@ if (missingVars.length > 0) {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+const firestore = getFirestore(app);
 
 // Additional security: Log domain access for monitoring
 if (import.meta.env.PROD) {
   console.log('Firebase initialized for domain:', currentDomain);
 }
 
-export { app, auth, db };
+export { app, auth,firestore, db };
 
 
 // Import the functions you need from the SDKs you need

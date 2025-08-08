@@ -9,7 +9,7 @@ const DashboardSummaryCards = memo(({ data, loading, }) => {
     totalCases: 0, pendingCases: 0, completedCases: 0, doctorPendingCases: 0,
     pharmacistPendingCases: 0, incompleteCases: 0, todayCases: 0,
     todayCompleted: 0, todayIncomplete: 0,
-  });
+  }); 
 
   // Update card data when props change
   useEffect(() => {
@@ -56,7 +56,7 @@ const DashboardSummaryCards = memo(({ data, loading, }) => {
             </div>
           </CardContent>
         </Card>
-
+ 
         {/* Completed Cases Card */}
         <Card className="overflow-hidden border-green-100">
           <CardContent className="p-4 bg-green-50">
