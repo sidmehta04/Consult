@@ -1,5 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { medicineDb } from '../firebase';
 
 
@@ -18,10 +18,11 @@ export const useGetMedicine = () => {
       });
     });
     setMedicinesData(medicines);
-    console.log("✅ Medicines fetched:", );
+    console.log("✅ Medicines fetched:", medicines.length, "items");
     // setMedicines(medicines); if using React
   } catch (error) {
     console.error("❌ Error fetching medicines from secondary app:", error);
+    throw error;
   }
 };
 

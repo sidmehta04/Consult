@@ -90,7 +90,7 @@ const InventoryTable = ({
     }
   };
 
-const handleCheckboxChange = (medicineName, item) => {
+  const handleCheckboxChange = (medicineName, item) => {
 
     setSelectedRows((prev) => ({
     ...prev,
@@ -195,7 +195,7 @@ const handleAmountChange = (medicineName, value) => {
       });
       
       console.log("✅ Medicine request uploaded with Document ID:", docRef.id);
-      toast.success("Medicine request uploaded successfuly")
+      toast.success("Medicine request uploaded successfully")
 
     } catch (e) {
       console.error("❌ Error adding document:", e);
@@ -206,8 +206,7 @@ const handleAmountChange = (medicineName, value) => {
       setSelectedRows({});
       setAmounts({});
       setSearchTerm('');
-      setSelectedMedicines([])
-      setAmounts({});
+      setSelectedMedicines([]);
     }
   };
 
@@ -420,7 +419,7 @@ const handleAmountChange = (medicineName, value) => {
                           type="checkbox"
                           checked={!!selectedRows[item.medicineName]}
                           onChange={() =>
-                            handleCheckboxChange(item.medicineName, item, index)
+                            handleCheckboxChange(item.medicineName, item)
                           }
                         />
                       </td>

@@ -49,14 +49,13 @@ if (missingVars.length > 0) {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const firestore = getFirestore(app);
 
 // Additional security: Log domain access for monitoring
 if (import.meta.env.PROD) {
   console.log('Firebase initialized for domain:', currentDomain);
 }
 
-export { app, auth, firestore, db };
+export { app, auth, db };
 
 
 // Import the functions you need from the SDKs you need
@@ -66,12 +65,12 @@ export { app, auth, firestore, db };
 
 
 const medicineDriveConfig = {
-  apiKey: "AIzaSyB2-CU6mpyILswNPpJMPQ_m4huC6i42-2E",
-  authDomain: "medicine-driveautomation.firebaseapp.com",
-  projectId: "medicine-driveautomation",
-  storageBucket: "medicine-driveautomation.firebasestorage.app",
-  messagingSenderId: "648915873887",
-  appId: "1:648915873887:web:bd6b37234ac21d00e32bea"
+  apiKey: import.meta.env.VITE_MEDICINE_FIREBASE_API_KEY || "AIzaSyB2-CU6mpyILswNPpJMPQ_m4huC6i42-2E",
+  authDomain: import.meta.env.VITE_MEDICINE_FIREBASE_AUTH_DOMAIN || "medicine-driveautomation.firebaseapp.com",
+  projectId: import.meta.env.VITE_MEDICINE_FIREBASE_PROJECT_ID || "medicine-driveautomation",
+  storageBucket: import.meta.env.VITE_MEDICINE_FIREBASE_STORAGE_BUCKET || "medicine-driveautomation.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_MEDICINE_FIREBASE_MESSAGING_SENDER_ID || "648915873887",
+  appId: import.meta.env.VITE_MEDICINE_FIREBASE_APP_ID || "1:648915873887:web:bd6b37234ac21d00e32bea"
 };
 
 
