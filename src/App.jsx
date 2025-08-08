@@ -30,6 +30,7 @@ import DoctorFeedbackPortal from "./components/feedback/DoctorFeedbackPortal"; /
 import { set } from "date-fns";
 import RequestedMedDashboard from './components/requestedMedicineDashboard/RequestedMedDashboard.jsx'
 import { ToastContainer } from "react-toastify";
+import UnderDevelopment from "./components/dashboard/TempDash.jsx";
 // Google Sheets API Key - Add this to your .env file
 const GOOGLE_SHEETS_API_KEY = import.meta.env.VITE_SHEET_API;
 
@@ -254,6 +255,7 @@ function AppContent() {
   // Define navigation items based on user role
   const getNavigationItems = () => {
     const items = [
+      // { name: "Dashboard", href: "/", icon: <Home className="h-5 w-5" /> }
       { name: "Dashboard", href: "/", icon: <Home className="h-5 w-5" /> }
     ];
 
@@ -406,7 +408,8 @@ function AppContent() {
                 path="/"
                 element={
                   <ProtectedRoute>
-                    <DashboardNew currentUser={{...currentUser, role: userRole, ...userData}} />
+                    {/* <DashboardNew currentUser={{...currentUser, role: userRole, ...userData}} /> */}
+                    <UnderDevelopment />
                   </ProtectedRoute>
                 }
               />
