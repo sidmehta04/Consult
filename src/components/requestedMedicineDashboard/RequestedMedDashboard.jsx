@@ -268,7 +268,7 @@ const RequestedMedDashboard = ({ currentUser }) => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-4 space-y-4">
         {/* Simplified Header */}
-        <div className="bg-white rounded-lg shadow-sm border p-4">
+        {/* <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-blue-500 rounded-lg">
@@ -298,7 +298,7 @@ const RequestedMedDashboard = ({ currentUser }) => {
               )}
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Simplified Tabs Navigation */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

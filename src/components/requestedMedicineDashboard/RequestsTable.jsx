@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, Clock, User, MapPin, Package, AlertTriangle, CheckCircle, MessageSquare, Send, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, User, MapPin, Package, AlertTriangle, CheckCircle, MessageSquare, Send, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   collection,
   addDoc,
@@ -79,6 +79,22 @@ const RequestsTable = ({
   const [chatDialogOpen, setChatDialogOpen] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState(null);
   const [chatUnsubscribes, setChatUnsubscribes] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+
+  var totalPages = Math.ceil(filteredInventoryData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };    
 
   const toggleRow = (id) => {
     setExpandedRows((prev) => ({
@@ -187,7 +203,7 @@ const RequestsTable = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredInventoryData.map((inventory) => {
+            {filteredInventoryData.slice(startIndex, endIndex).map((inventory) => {
               const StatusIcon = statusIcons[inventory.status] || AlertTriangle;
               return (
                 <React.Fragment key={inventory.id}>
@@ -526,6 +542,33 @@ const RequestsTable = ({
           </TableBody>
         </Table>
       </div>
+
+      <div className="flex justify-between items-center px-6 py-4 border-t">
+          <div className="text-sm text-gray-500">
+            Showing {itemsPerPage * (currentPage - 1) + 1} to {Math.min(itemsPerPage * currentPage, filteredInventoryData?.length)} of {filteredInventoryData.length}
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={prevPage}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={nextPage}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       
       {/* Chat Dialog */}
       <Dialog open={chatDialogOpen} onOpenChange={closeChatDialog}>

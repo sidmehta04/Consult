@@ -2,24 +2,34 @@ import { useState, useMemo, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Package, Search, AlertTriangle, Filter } from "lucide-react";
 import { useGetMedicine } from "../../hooks/useGetMedicine";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "../../firebase";
+import { InventoryMapping } from "../feedback/mappings";
+import { toast } from "react-toastify";
 
-const InventoryTable = ({ 
-  inventoryData, 
-  loading, 
-  error, 
+const InventoryTable = ({
+  inventoryData,
+  loading,
+  error,
   displayClinicCode,
   lastUpdated,
   cacheStatus,
-  loadInventoryData 
+  loadInventoryData,
+  currentUser
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const { medicinesData, fetchMedicinesFromDrive } = useGetMedicine();
-
+  const [selectedRows, setSelectedRows] = useState({});
+  const [amounts, setAmounts] = useState({});
+  const [open, setOpen] = useState(false);
+  const [selectedMedicines, setSelectedMedicines] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emptyMedError, setEmptyMedError] = useState('')
   // Fetch medicines data when component mounts
   useEffect(() => {
     fetchMedicinesFromDrive();
-  }, [fetchMedicinesFromDrive]);
+  }, []);
 
   // Optimized filtering with memoization
   const filteredInventory = useMemo(() => {
@@ -78,6 +88,136 @@ const InventoryTable = ({
         </Badge>
       );
     }
+  };
+
+const handleCheckboxChange = (medicineName, item) => {
+
+    setSelectedRows((prev) => ({
+    ...prev,
+    [medicineName]: !prev[medicineName],
+  }));
+
+  const isSelected = selectedMedicines.some(
+    (med) => med.medicineName === medicineName
+  );
+
+  if (isSelected) {
+    // Remove from selected
+    setSelectedMedicines((prev) =>
+      prev.filter((med) => med.medicineName !== medicineName)
+    );
+  } else {
+    const priceObj = medicinesData?.find(
+      (data) =>
+        data["Medicine Name"]?.toLowerCase() === medicineName.toLowerCase()
+    );
+    const price = priceObj?.price || 0;
+    const lookup_key = priceObj?.lookup_key;
+    const totalAmount = price * item.quantity;
+
+    const newMedicine = {
+      medicineName,
+      price,
+      quantity: item.quantity,
+      totalAmount,
+      lookup_key,
+      requestQuantity: amounts[medicineName] || 0,
+    };
+
+    setSelectedMedicines((prev) => [...prev, newMedicine]);
+  }
+};
+
+
+const handleAmountChange = (medicineName, value) => {
+  setEmptyMedError("");
+  setAmounts((prev) => ({
+    ...prev,
+    [medicineName]: value,
+  }));
+
+  setSelectedMedicines((prev) =>
+    prev.map((med) =>
+      med.medicineName === medicineName
+        ? {
+            ...med,
+            requestQuantity: value,
+          }
+        : med
+    )
+  );
+};
+
+  const sendData = async () => {
+    if (!selectedMedicines || selectedMedicines.length === 0) {
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+
+      const requestedOrder = selectedMedicines.map(medicine => ({
+        medicineName: medicine?.medicineName,
+        medicineKey: medicine?.lookup_key,
+        requestedQuantity: medicine?.requestQuantity,
+        currentInventoryQty: medicine?.quantity || 0,
+        unitPrice: medicine.price || 0,
+        estimatedCost: (medicine.requestQuantity * (medicine.price || 0)),
+        approvedQuantity: null,
+        totalCost: 0,
+        status: 'pending'
+      }));
+
+      
+      const totalOrderValue = requestedOrder.reduce((sum, item) => sum + item.estimatedCost, 0);
+
+      const docRef = await addDoc(collection(db, "Inventory"), {
+        requestedOrder,
+        updatedOrder: null, // Will be filled by TL
+        clinicCode: currentUser?.clinicCode,
+        nurseName: currentUser?.name,
+        nurseEmail: currentUser?.email,
+        partnerName: currentUser?.partnerName,
+        state: currentUser?.state,
+        assignedTL: InventoryMapping[currentUser?.state] || [],
+        status: 'open',
+        priority: 'medium',
+        totalOrderValue,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        statusHistory: [
+          {
+            status: 'open',
+            updatedBy: currentUser?.name,
+            updatedAt: new Date(),
+            comments: 'Order created by nurse'
+          }
+        ]
+      });
+      
+      console.log("✅ Medicine request uploaded with Document ID:", docRef.id);
+      toast.success("Medicine request uploaded successfuly")
+
+    } catch (e) {
+      console.error("❌ Error adding document:", e);
+      toast.error("Error submitting request. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+      setOpen(false);
+      setSelectedRows({});
+      setAmounts({});
+      setSearchTerm('');
+      setSelectedMedicines([])
+      setAmounts({});
+    }
+  };
+
+  const handleSubmit = () => {
+    if (Object.keys(selectedRows).length !== Object.keys(amounts).length) {
+      setEmptyMedError("Please enter the amount for the selected medicine.");
+      toast.error("Please enter the amount for the selected medicine.");
+      return;
+    }
+    sendData();
   };
 
   return (
@@ -171,6 +311,38 @@ const InventoryTable = ({
         </div>
       </div>
 
+      <div className="flex gap-4">
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center px-4 py-2  bg-gradient-to-r from-yellow-500 via-yellow-600 to-orange-700  text-white rounded-lg hover:from-yellow-600 hover:via-yellow-700 hover:to-orange-800 disabled:opacity-50"
+        >
+          Request for Medicine
+        </button>
+         <button
+              onClick={handleSubmit}
+              disabled={loading || selectedMedicines.length === 0}
+              className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Submitting...' : (
+                <div className="flex items-center gap-2">
+                  <span>Submit Request ({selectedMedicines.length})</span>
+                  {selectedMedicines.length > 0 && (
+                    <span className="bg-blue-500 px-2 py-1 rounded text-xs">
+                      ₹{selectedMedicines.reduce((sum, med) => sum + (med.requestQuantity * (med.price || 0)), 0).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              )}
+         </button>
+         {
+          emptyMedError && (
+            <div className="bg-red-400 text-white px-6 py-2 rounded hover:bg-red-500">
+                {emptyMedError}
+            </div>
+          )
+         }
+      </div>
+
       {/* Inventory Table */}
       <div className="bg-white rounded-lg mt-4 shadow-sm border overflow-hidden">
         {loading ? (
@@ -208,9 +380,19 @@ const InventoryTable = ({
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  {open && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Select Medicine
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Medicine Name
                   </th>
+                  {open && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Request Quantity
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Quantity
                   </th>
@@ -231,25 +413,62 @@ const InventoryTable = ({
                     key={`${item.medicineName}-${index}`}
                     className="hover:bg-gray-50"
                   >
+                    {open && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          className="w-5 h-5"
+                          type="checkbox"
+                          checked={!!selectedRows[item.medicineName]}
+                          onChange={() =>
+                            handleCheckboxChange(item.medicineName, item, index)
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {item.medicineName}
                       </div>
                     </td>
+                    {
+                      open && (
+                      <td className="px-6 py-2 whitespace-nowrap">
+                      { selectedRows[item.medicineName] && (
+                          <input
+                            type="number"
+                            className="border rounded px-2 py-1 w-24"
+                            placeholder="Amount"
+                            min={0}
+                            value={amounts[item.medicineName] || ""}
+                            onChange={(e) =>
+                              handleAmountChange(
+                                item.medicineName,
+                                e.target.value
+                              )
+                            }
+                          />
+                        )}
+                      </td>
+                      )
+                    }
+
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900 font-semibold">
                         {item.quantity}
                       </div>
                     </td>
+
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900 font-semibold">
-                        ₹{(() => {
+                        ₹
+                        {(() => {
                           const medicinePrice = medicinesData?.find(
                             (data) =>
                               data["Medicine Name"]?.toLowerCase() ===
                               item.medicineName?.toLowerCase()
                           )?.price;
-                          const totalAmount = (medicinePrice || 0) * (item?.quantity || 0);
+                          const totalAmount =
+                            (medicinePrice || 0) * (item?.quantity || 0);
                           return Math.floor(totalAmount);
                         })()}
                       </div>
@@ -273,8 +492,7 @@ const InventoryTable = ({
       {/* Results Summary */}
       {!loading && !error && filteredInventory.length > 0 && (
         <div className="text-sm text-gray-600 text-center mt-4">
-          Showing {filteredInventory.length} of {inventoryData.length}{" "}
-          medicines
+          Showing {filteredInventory.length} of {inventoryData.length} medicines
         </div>
       )}
     </>

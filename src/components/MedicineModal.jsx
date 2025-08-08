@@ -70,7 +70,7 @@ const MedicineModal = ({ open, onClose, currentUser, fetchInventoriesData, inven
       // Fetch current inventory for the clinic
       // This would typically come from props or a hook
     }
-  }, [open, fetchMedicinesFromDrive]);
+  }, [open]);
 
   const filteredMedicines = useMemo(() => {
     if (!searchTerm || !medicinesData.length) return [];

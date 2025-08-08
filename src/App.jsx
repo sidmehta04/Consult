@@ -29,6 +29,7 @@ import UnifiedQADashboard from "./components/feedback/UnifiedQADashboard.jsx"; /
 import DoctorFeedbackPortal from "./components/feedback/DoctorFeedbackPortal"; // New doctor feedback portal
 import { set } from "date-fns";
 import RequestedMedDashboard from './components/requestedMedicineDashboard/RequestedMedDashboard.jsx'
+import { ToastContainer } from "react-toastify";
 // Google Sheets API Key - Add this to your .env file
 const GOOGLE_SHEETS_API_KEY = import.meta.env.VITE_SHEET_API;
 
@@ -359,6 +360,7 @@ function AppContent() {
 
   return (
     <>
+    <ToastContainer />
       <header className={`shadow-md ${getHeaderColor()} text-white`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-xl font-semibold">

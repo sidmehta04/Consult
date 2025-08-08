@@ -49,7 +49,6 @@ const ClinicInventory = ({ currentUser }) => {
   const { fetchMedicinesFromDrive } = useGetMedicine();
   const [inventoriesData, setInventoriesData] = useState([]);
   const [activeTab, setActiveTab] = useState("allMedicineTable");
-
   // Create index for faster clinic-based filtering with flexible matching
   const clinicInventoryIndex = useMemo(() => {
     const index = new Map();
@@ -377,7 +376,7 @@ const ClinicInventory = ({ currentUser }) => {
               </div>
             )}
 
-            <div>
+            {/* <div>
               <button
                 onClick={() => setOpen(true)}
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -391,7 +390,7 @@ const ClinicInventory = ({ currentUser }) => {
                 currentUser={currentUser}
                 inventoryData={inventoryData}
               />
-            </div>
+            </div> */}
 
             <button
               onClick={() => loadInventoryData(true)}
@@ -425,6 +424,7 @@ const ClinicInventory = ({ currentUser }) => {
             lastUpdated={lastUpdated}
             cacheStatus={cacheStatus}
             loadInventoryData={loadInventoryData}
+            currentUser={currentUser}
           />
         </TabsContent>
 

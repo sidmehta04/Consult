@@ -171,6 +171,16 @@ export const InventoryMapping = {
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
       },
+      {
+        EmpID: "MS00693",
+        name: "Prabhat Yadav",
+        email: "mochakms00693@gmail.com",
+      },
+      {
+        EmpID: "MS01428",
+        name: "Arbaz Khan",
+        email: "mochakms01428@gmail.com",
+      },
      ],
     Gujarat: [
       {
@@ -178,12 +188,22 @@ export const InventoryMapping = {
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
       },
+      {
+        EmpID: "MS02348",
+        name: "Ishav Beg",
+        email: "ishvamirza786@gmail.com",
+      },
     ],
-    "Uttar Pradesh" : [
+    "UP East" : [
       {
         EmpID: "MS01228",
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
+      },
+      {
+        EmpID: "MS02348",
+        name: "Ishav Beg",
+        email: "ishvamirza786@gmail.com",
       },
     ],
     Rajasthan: [
@@ -192,12 +212,22 @@ export const InventoryMapping = {
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
       },
+      {
+        EmpID: "MS00245",
+        name: "Syed Avez",
+        email: "mochakms00245@gmail.com",
+      },
     ],
     Chhattisgarh: [
       {
         EmpID: "MS01228",
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
+      },
+      {
+        EmpID: "MS02348",
+        name: "Ishav Beg",
+        email: "ishvamirza786@gmail.com",
       },
     ],
     Jharkhand: [
@@ -206,6 +236,11 @@ export const InventoryMapping = {
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
       },
+      {
+        EmpID: "MS00245",
+        name: "Syed Avez",
+        email: "mochakms00245@gmail.com",
+      },
     ],
     "Madhya Pradesh": [
       {
@@ -213,6 +248,11 @@ export const InventoryMapping = {
         name: "Manish Kumar Gupta",
         email: "manishkumar.gupta@m-swasth.in",
       },
+      {
+        EmpID: "MS02348",
+        name: "Ishav Beg",
+        email: "ishvamirza786@gmail.com",
+      }
     ],
     "West Bengal": [
       {
@@ -220,6 +260,11 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS01018",
+        name: "Dheeraj Namdev",
+        email: "mochakms01018@gmail.com",
+      }
     ],
     Odisha: [
       {
@@ -227,6 +272,11 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS02346",
+        name: "Dhanashree Bhere",
+        email: "dhanshreevbhere@gmail.com",
+      }
     ],
     Maharashtra: [
       {
@@ -234,12 +284,22 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS02346",
+        name: "Dhanashree Bhere",
+        email: "dhanshreevbhere@gmail.com",
+      }
     ],
     Uttarakhand: [
       {
         EmpID: "MS00588",
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
+      },
+      {
+        EmpID: "MS02346",
+        name: "Dhanashree Bhere",
+        email: "dhanshreevbhere@gmail.com",
       },
     ],
     Haryana: [
@@ -248,6 +308,11 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS02346",
+        name: "Dhanashree Bhere",
+        email: "dhanshreevbhere@gmail.com",
+      }
     ],
     Assam: [
       {
@@ -255,19 +320,35 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS01018",
+        name: "Dheeraj Namdev",
+        email: "mochakms01018@gmail.com",
+      }
     ],
-    "Uttar Pradesh": [
+    "UP West": [
       {
         EmpID: "MS00588",
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS02346",
+        name: "Dhanashree Bhere",
+        email: "dhanshreevbhere@gmail.com",
+      },
+
     ],
     "Himachal Pradesh": [
       {
         EmpID: "MS00588",
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
+      },
+      {
+        EmpID: "MS01018",
+        name: "Dheeraj Namdev",
+        email: "mochakms01018@gmail.com",
       },
     ],
     Punjab: [
@@ -276,40 +357,60 @@ export const InventoryMapping = {
         name: "Akash Bhardwaj",
         email: "akash.bhardwaj@m-insure.in",
       },
+      {
+        EmpID: "MS01018",
+        name: "Dheeraj Namdev",
+        email: "mochakms01018@gmail.com",
+      }
     ],
     "Andhra Pradesh": [
       {
         EmpID: "MS00766",
         name: "Dhanasekar",
-        email: "akash.bhardwaj@m-insure.in",
+        email: "dhanasekar.d@m-insure.in",
+      },
+      {
+        EmpID: "MS01472",
+        name: "Suraj Gopi",
+        email: "mochakms01472@gmail.com",
       },
     ], 
     Karnataka: [
       {
         EmpID: "MS00766",
         name: "Dhanasekar",
-        email: "akash.bhardwaj@m-insure.in",
+        email: "dhanasekar.d@m-insure.in",
       },
+      {
+        EmpID: "MS01472",
+        name: "Suraj Gopi",
+        email: "mochakms01472@gmail.com",
+      }
     ], 
     Telangana: [
       {
         EmpID: "MS00766",
         name: "Dhanasekar",
-        email: "akash.bhardwaj@m-insure.in",
+        email: "dhanasekar.d@m-insure.in",
       },
     ],
     Kerala: [
       {
         EmpID: "MS00766",
         name: "Dhanasekar",
-        email: "akash.bhardwaj@m-insure.in",
+        email: "dhanasekar.d@m-insure.in",
       },
+      {
+        EmpID: "MS01472",
+        name: "Suraj Gopi",
+        email: "mochakms01472@gmail.com",
+      }
     ], 
     "Tamil Nadu": [
       {
         EmpID: "MS00766",
         name: "Dhanasekar",
-        email: "akash.bhardwaj@m-insure.in",
+        email: "dhanasekar.d@m-insure.in",
       },
     ],
 }
@@ -521,6 +622,11 @@ export const subcategories = {
       value: "location-issues",
       label:
         "Clinic Location Related Issues | क्लिनिक के स्थान से जुड़ी समस्याएं",
+    },
+    {
+      value: "network-issues",
+      label:
+        "Network Problm in Clinic | क्लिनिक में नेटवर्क से जुड़ी समस्याएं",
     },
     {
       value: "other-issues",
